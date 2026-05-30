@@ -1160,6 +1160,28 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     refute rendered =~ "Dashboard:"
   end
 
+  test "status dashboard renders multiple linear project links in header" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_project_slug: nil,
+      tracker_project_slugs: ["portal", "billing"],
+      codex_command: "/bin/sh app-server"
+    )
+
+    snapshot_data =
+      {:ok,
+       %{
+         running: [],
+         retrying: [],
+         codex_totals: %{input_tokens: 0, output_tokens: 0, total_tokens: 0, seconds_running: 0},
+         rate_limits: nil
+       }}
+
+    rendered = StatusDashboard.format_snapshot_content_for_test(snapshot_data, 0.0)
+
+    assert rendered =~ "https://linear.app/project/portal/issues"
+    assert rendered =~ "https://linear.app/project/billing/issues"
+  end
+
   test "status dashboard renders dashboard url on its own line when server port is configured" do
     previous_port_override = Application.get_env(:symphony_elixir, :server_port_override)
 

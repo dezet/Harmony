@@ -115,6 +115,45 @@ defmodule SymphonyElixirWeb.DashboardLive do
         <section class="section-card">
           <div class="section-header">
             <div>
+              <h2 class="section-title">Projects</h2>
+              <p class="section-copy">Linear project grouping for the active Harmony runtime.</p>
+            </div>
+          </div>
+
+          <%= if Map.get(@payload, :projects, []) == [] do %>
+            <p class="empty-state">No project activity yet.</p>
+          <% else %>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 640px;">
+                <thead>
+                  <tr>
+                    <th>Project</th>
+                    <th>Running</th>
+                    <th>Retrying</th>
+                    <th>Blocked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={project <- @payload.projects}>
+                    <td>
+                      <div class="issue-stack">
+                        <span class="issue-id"><%= project.name || project.slug || "Unknown" %></span>
+                        <span class="muted"><%= project.slug || project.id || "n/a" %></span>
+                      </div>
+                    </td>
+                    <td class="numeric"><%= project.counts.running %></td>
+                    <td class="numeric"><%= project.counts.retrying %></td>
+                    <td class="numeric"><%= project.counts.blocked %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
               <h2 class="section-title">Rate limits</h2>
               <p class="section-copy">Latest upstream rate-limit snapshot, when available.</p>
             </div>
@@ -138,6 +177,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
               <table class="data-table data-table-running">
                 <colgroup>
                   <col style="width: 12rem;" />
+                  <col style="width: 12rem;" />
                   <col style="width: 8rem;" />
                   <col style="width: 7.5rem;" />
                   <col style="width: 8.5rem;" />
@@ -147,6 +187,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                 <thead>
                   <tr>
                     <th>Issue</th>
+                    <th>Project</th>
                     <th>State</th>
                     <th>Session</th>
                     <th>Runtime / turns</th>
@@ -162,6 +203,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                         <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON details</a>
                       </div>
                     </td>
+                    <td><%= project_label(entry) %></td>
                     <td>
                       <span class={state_badge_class(entry.state)}>
                         <%= entry.state %>
@@ -228,6 +270,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                 <thead>
                   <tr>
                     <th>Issue</th>
+                    <th>Project</th>
                     <th>State</th>
                     <th>Session</th>
                     <th>Blocked at</th>
@@ -243,6 +286,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                         <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON details</a>
                       </div>
                     </td>
+                    <td><%= project_label(entry) %></td>
                     <td>
                       <span class={state_badge_class(entry.state || "Blocked")}>
                         <%= entry.state || "Blocked" %>
@@ -302,6 +346,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                 <thead>
                   <tr>
                     <th>Issue</th>
+                    <th>Project</th>
                     <th>Attempt</th>
                     <th>Due at</th>
                     <th>Error</th>
@@ -315,6 +360,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                         <a class="issue-link" href={"/api/v1/#{entry.issue_identifier}"}>JSON details</a>
                       </div>
                     </td>
+                    <td><%= project_label(entry) %></td>
                     <td><%= entry.attempt %></td>
                     <td class="mono"><%= entry.due_at || "n/a" %></td>
                     <td><%= entry.error || "n/a" %></td>
@@ -358,6 +404,12 @@ defmodule SymphonyElixirWeb.DashboardLive do
 
   defp format_runtime_and_turns(started_at, _turn_count, now),
     do: format_runtime_seconds(runtime_seconds_from_started_at(started_at, now))
+
+  defp project_label(%{project: %{name: name, slug: slug}}) do
+    name || slug || "n/a"
+  end
+
+  defp project_label(_entry), do: "n/a"
 
   defp format_runtime_seconds(seconds) when is_number(seconds) do
     whole_seconds = max(trunc(seconds), 0)

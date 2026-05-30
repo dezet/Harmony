@@ -356,6 +356,7 @@ defmodule SymphonyElixir.ExtensionsTest do
                  "last_message" => "rendered",
                  "started_at" => state_payload["running"] |> List.first() |> Map.fetch!("started_at"),
                  "last_event_at" => nil,
+                 "project" => %{"id" => "project-portal", "name" => "Portal", "slug" => "portal"},
                  "tokens" => %{"input_tokens" => 4, "output_tokens" => 8, "total_tokens" => 12}
                }
              ],
@@ -367,7 +368,8 @@ defmodule SymphonyElixir.ExtensionsTest do
                  "due_at" => state_payload["retrying"] |> List.first() |> Map.fetch!("due_at"),
                  "error" => "boom",
                  "worker_host" => nil,
-                 "workspace_path" => nil
+                 "workspace_path" => nil,
+                 "project" => %{"id" => "project-billing", "name" => "Billing", "slug" => "billing"}
                }
              ],
              "blocked" => [
@@ -382,7 +384,22 @@ defmodule SymphonyElixir.ExtensionsTest do
                  "blocked_at" => state_payload["blocked"] |> List.first() |> Map.fetch!("blocked_at"),
                  "last_event" => "turn_input_required",
                  "last_message" => "turn blocked: waiting for user input",
-                 "last_event_at" => state_payload["blocked"] |> List.first() |> Map.fetch!("last_event_at")
+                 "last_event_at" => state_payload["blocked"] |> List.first() |> Map.fetch!("last_event_at"),
+                 "project" => %{"id" => "project-portal", "name" => "Portal", "slug" => "portal"}
+               }
+             ],
+             "projects" => [
+               %{
+                 "id" => "project-billing",
+                 "name" => "Billing",
+                 "slug" => "billing",
+                 "counts" => %{"running" => 0, "retrying" => 1, "blocked" => 0}
+               },
+               %{
+                 "id" => "project-portal",
+                 "name" => "Portal",
+                 "slug" => "portal",
+                 "counts" => %{"running" => 1, "retrying" => 0, "blocked" => 1}
                }
              ],
              "codex_totals" => %{
@@ -401,6 +418,7 @@ defmodule SymphonyElixir.ExtensionsTest do
              "issue_identifier" => "MT-HTTP",
              "issue_id" => "issue-http",
              "status" => "running",
+             "project" => %{"id" => "project-portal", "name" => "Portal", "slug" => "portal"},
              "workspace" => %{
                "path" => Path.join(Config.settings!().workspace.root, "MT-HTTP"),
                "host" => nil
@@ -729,6 +747,9 @@ defmodule SymphonyElixir.ExtensionsTest do
           codex_input_tokens: 4,
           codex_output_tokens: 8,
           codex_total_tokens: 12,
+          project_id: "project-portal",
+          project_name: "Portal",
+          project_slug: "portal",
           started_at: DateTime.utc_now()
         }
       ],
@@ -738,7 +759,10 @@ defmodule SymphonyElixir.ExtensionsTest do
           identifier: "MT-RETRY",
           attempt: 2,
           due_in_ms: 2_000,
-          error: "boom"
+          error: "boom",
+          project_id: "project-billing",
+          project_name: "Billing",
+          project_slug: "billing"
         }
       ],
       blocked: [
@@ -750,6 +774,9 @@ defmodule SymphonyElixir.ExtensionsTest do
           worker_host: "dm-dev2",
           workspace_path: "/workspaces/MT-BLOCKED",
           session_id: "thread-blocked",
+          project_id: "project-portal",
+          project_name: "Portal",
+          project_slug: "portal",
           blocked_at: DateTime.utc_now(),
           last_codex_event: :turn_input_required,
           last_codex_message: %{
