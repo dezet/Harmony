@@ -50,6 +50,7 @@ defmodule SymphonyElixir.CoreTest do
 
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_project_slug: "project",
+      tracker_project_slugs: ["project", "project-two", "project"],
       codex_command: ""
     )
 
@@ -130,6 +131,20 @@ defmodule SymphonyElixir.CoreTest do
 
     assert Config.settings!().tracker.api_key == env_api_key
     assert Config.settings!().tracker.project_slug == "project"
+    assert Config.settings!().tracker.project_slugs == ["project"]
+    assert :ok = Config.validate!()
+  end
+
+  test "linear project_slugs supports multi-project workflows without project_slug" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_api_token: "token",
+      tracker_project_slug: nil,
+      tracker_project_slugs: ["portal", "billing", "portal"],
+      codex_command: "/bin/sh app-server"
+    )
+
+    assert Config.settings!().tracker.project_slug == nil
+    assert Config.settings!().tracker.project_slugs == ["portal", "billing"]
     assert :ok = Config.validate!()
   end
 

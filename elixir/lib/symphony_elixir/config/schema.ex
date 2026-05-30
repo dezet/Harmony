@@ -49,6 +49,7 @@ defmodule SymphonyElixir.Config.Schema do
       field(:endpoint, :string, default: "https://api.linear.app/graphql")
       field(:api_key, :string)
       field(:project_slug, :string)
+      field(:project_slugs, {:array, :string}, default: [])
       field(:assignee, :string)
       field(:active_states, {:array, :string}, default: ["Todo", "In Progress"])
       field(:terminal_states, {:array, :string}, default: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"])
@@ -59,9 +60,20 @@ defmodule SymphonyElixir.Config.Schema do
       schema
       |> cast(
         attrs,
-        [:kind, :endpoint, :api_key, :project_slug, :assignee, :active_states, :terminal_states],
+        [:kind, :endpoint, :api_key, :project_slug, :project_slugs, :assignee, :active_states, :terminal_states],
         empty_values: []
       )
+      |> validate_project_slugs()
+    end
+
+    defp validate_project_slugs(changeset) do
+      validate_change(changeset, :project_slugs, fn :project_slugs, slugs ->
+        if Enum.all?(slugs, &(is_binary(&1) and String.trim(&1) != "")) do
+          []
+        else
+          [project_slugs: "must contain only non-blank strings"]
+        end
+      end)
     end
   end
 
@@ -366,9 +378,12 @@ defmodule SymphonyElixir.Config.Schema do
   end
 
   defp finalize_settings(settings) do
+    project_slugs = normalize_project_slugs(settings.tracker.project_slug, settings.tracker.project_slugs)
+
     tracker = %{
       settings.tracker
       | api_key: resolve_secret_setting(settings.tracker.api_key, System.get_env("LINEAR_API_KEY")),
+        project_slugs: project_slugs,
         assignee: resolve_secret_setting(settings.tracker.assignee, System.get_env("LINEAR_ASSIGNEE"))
     }
 
@@ -384,6 +399,14 @@ defmodule SymphonyElixir.Config.Schema do
     }
 
     %{settings | tracker: tracker, workspace: workspace, codex: codex}
+  end
+
+  defp normalize_project_slugs(project_slug, project_slugs) do
+    ([project_slug] ++ List.wrap(project_slugs))
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 
   defp normalize_keys(value) when is_map(value) do

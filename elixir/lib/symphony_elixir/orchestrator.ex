@@ -728,6 +728,9 @@ defmodule SymphonyElixir.Orchestrator do
     blocked_entry = %{
       issue_id: issue_id,
       identifier: Map.get(running_entry, :identifier, issue_id),
+      project_id: Map.get(running_entry, :project_id),
+      project_name: Map.get(running_entry, :project_name),
+      project_slug: Map.get(running_entry, :project_slug),
       issue: Map.get(running_entry, :issue),
       worker_host: Map.get(running_entry, :worker_host),
       workspace_path: Map.get(running_entry, :workspace_path),
@@ -937,6 +940,9 @@ defmodule SymphonyElixir.Orchestrator do
             pid: pid,
             ref: ref,
             identifier: issue.identifier,
+            project_id: issue.project_id,
+            project_name: issue.project_name,
+            project_slug: issue.project_slug,
             issue: issue,
             worker_host: worker_host,
             workspace_path: nil,
@@ -969,6 +975,9 @@ defmodule SymphonyElixir.Orchestrator do
 
         schedule_issue_retry(state, issue.id, next_attempt, %{
           identifier: issue.identifier,
+          project_id: issue.project_id,
+          project_name: issue.project_name,
+          project_slug: issue.project_slug,
           error: "failed to spawn agent: #{inspect(reason)}",
           worker_host: worker_host
         })
@@ -1035,6 +1044,9 @@ defmodule SymphonyElixir.Orchestrator do
             retry_token: retry_token,
             due_at_ms: due_at_ms,
             identifier: identifier,
+            project_id: metadata[:project_id],
+            project_name: metadata[:project_name],
+            project_slug: metadata[:project_slug],
             error: error,
             worker_host: worker_host,
             workspace_path: workspace_path
@@ -1154,6 +1166,9 @@ defmodule SymphonyElixir.Orchestrator do
          attempt + 1,
          Map.merge(metadata, %{
            identifier: issue.identifier,
+           project_id: issue.project_id,
+           project_name: issue.project_name,
+           project_slug: issue.project_slug,
            error: "no available orchestrator slots"
          })
        )}
@@ -1353,6 +1368,9 @@ defmodule SymphonyElixir.Orchestrator do
         %{
           issue_id: issue_id,
           identifier: metadata.identifier,
+          project_id: Map.get(metadata, :project_id),
+          project_name: Map.get(metadata, :project_name),
+          project_slug: Map.get(metadata, :project_slug),
           state: metadata.issue.state,
           worker_host: Map.get(metadata, :worker_host),
           workspace_path: Map.get(metadata, :workspace_path),
@@ -1378,6 +1396,9 @@ defmodule SymphonyElixir.Orchestrator do
           attempt: attempt,
           due_in_ms: max(0, due_at_ms - now_ms),
           identifier: Map.get(retry, :identifier),
+          project_id: Map.get(retry, :project_id),
+          project_name: Map.get(retry, :project_name),
+          project_slug: Map.get(retry, :project_slug),
           error: Map.get(retry, :error),
           worker_host: Map.get(retry, :worker_host),
           workspace_path: Map.get(retry, :workspace_path)
@@ -1390,6 +1411,9 @@ defmodule SymphonyElixir.Orchestrator do
         %{
           issue_id: issue_id,
           identifier: Map.get(metadata, :identifier),
+          project_id: Map.get(metadata, :project_id),
+          project_name: Map.get(metadata, :project_name),
+          project_slug: Map.get(metadata, :project_slug),
           state: blocked_issue_state(metadata),
           worker_host: Map.get(metadata, :worker_host),
           workspace_path: Map.get(metadata, :workspace_path),

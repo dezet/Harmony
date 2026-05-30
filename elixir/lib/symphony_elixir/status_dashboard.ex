@@ -394,9 +394,14 @@ defmodule SymphonyElixir.StatusDashboard do
 
   defp format_project_link_lines do
     project_part =
-      case Config.settings!().tracker.project_slug do
-        project_slug when is_binary(project_slug) and project_slug != "" ->
+      case Config.settings!().tracker.project_slugs do
+        [project_slug] ->
           colorize(linear_project_url(project_slug), @ansi_cyan)
+
+        project_slugs when is_list(project_slugs) and project_slugs != [] ->
+          project_slugs
+          |> Enum.map_join(", ", &linear_project_url/1)
+          |> colorize(@ansi_cyan)
 
         _ ->
           colorize("n/a", @ansi_gray)

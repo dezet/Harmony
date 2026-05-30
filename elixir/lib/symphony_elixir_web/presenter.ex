@@ -24,6 +24,7 @@ defmodule SymphonyElixirWeb.Presenter do
           codex_totals: snapshot.codex_totals,
           rate_limits: snapshot.rate_limits
         }
+        |> maybe_put_projects(snapshot)
 
       :timeout ->
         %{generated_at: generated_at, error: %{code: "snapshot_timeout", message: "Snapshot timed out"}}
@@ -86,10 +87,58 @@ defmodule SymphonyElixirWeb.Presenter do
       last_error: (blocked && blocked.error) || (retry && retry.error),
       tracked: %{}
     }
+    |> maybe_put_project(project_from_entries(running, retry, blocked))
   end
 
   defp issue_id_from_entries(running, retry, blocked),
     do: (running && running.issue_id) || (retry && retry.issue_id) || (blocked && blocked.issue_id)
+
+  defp project_from_entries(running, retry, blocked), do: project_payload(running || retry || blocked)
+
+  defp project_payload(nil), do: nil
+
+  defp project_payload(entry) do
+    %{
+      id: Map.get(entry, :project_id),
+      name: Map.get(entry, :project_name),
+      slug: Map.get(entry, :project_slug)
+    }
+  end
+
+  defp projects_payload(snapshot) do
+    entries = snapshot.running ++ snapshot.retrying ++ Map.get(snapshot, :blocked, [])
+
+    entries
+    |> Enum.map(&project_payload/1)
+    |> Enum.reject(&blank_project?/1)
+    |> Enum.uniq_by(&project_key/1)
+    |> Enum.sort_by(&(&1.name || &1.slug || ""))
+    |> Enum.map(fn project ->
+      Map.put(project, :counts, %{
+        running: Enum.count(snapshot.running, &(project_key(project_payload(&1)) == project_key(project))),
+        retrying: Enum.count(snapshot.retrying, &(project_key(project_payload(&1)) == project_key(project))),
+        blocked: Enum.count(Map.get(snapshot, :blocked, []), &(project_key(project_payload(&1)) == project_key(project)))
+      })
+    end)
+  end
+
+  defp maybe_put_projects(payload, snapshot) do
+    case projects_payload(snapshot) do
+      [] -> payload
+      projects -> Map.put(payload, :projects, projects)
+    end
+  end
+
+  defp maybe_put_project(payload, project) do
+    if blank_project?(project), do: payload, else: Map.put(payload, :project, project)
+  end
+
+  defp blank_project?(nil), do: true
+  defp blank_project?(%{id: nil, name: nil, slug: nil}), do: true
+  defp blank_project?(_project), do: false
+
+  defp project_key(nil), do: nil
+  defp project_key(%{slug: slug, id: id, name: name}), do: slug || id || name
 
   defp restart_count(retry), do: max(retry_attempt(retry) - 1, 0)
   defp retry_attempt(nil), do: 0
@@ -118,6 +167,7 @@ defmodule SymphonyElixirWeb.Presenter do
         total_tokens: entry.codex_total_tokens
       }
     }
+    |> maybe_put_project(project_payload(entry))
   end
 
   defp retry_entry_payload(entry) do
@@ -130,6 +180,7 @@ defmodule SymphonyElixirWeb.Presenter do
       worker_host: Map.get(entry, :worker_host),
       workspace_path: Map.get(entry, :workspace_path)
     }
+    |> maybe_put_project(project_payload(entry))
   end
 
   defp blocked_entry_payload(entry) do
@@ -146,6 +197,7 @@ defmodule SymphonyElixirWeb.Presenter do
       last_message: summarize_message(entry.last_codex_message),
       last_event_at: iso8601(entry.last_codex_timestamp)
     }
+    |> maybe_put_project(project_payload(entry))
   end
 
   defp running_issue_payload(running) do

@@ -115,6 +115,8 @@ Title: {{ issue.title }} Body: {{ issue.description }}
 Notes:
 
 - If a value is missing, defaults are used.
+- Use `tracker.project_slug` for one Linear project, or `tracker.project_slugs` for multiple
+  projects. When both are present, Symphony polls the de-duplicated union.
 - Safer Codex defaults are used when policy fields are omitted:
   - `codex.approval_policy` defaults to `{"reject":{"sandbox_approval":true,"rules":true,"mcp_elicitations":true}}`
   - `codex.thread_sandbox` defaults to `workspace-write`

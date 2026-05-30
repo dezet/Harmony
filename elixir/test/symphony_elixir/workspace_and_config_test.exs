@@ -429,6 +429,52 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert_receive {:fetch_issue_states_page, ^query, %{ids: ^second_batch_ids, first: 5, relationFirst: 50}}
   end
 
+  test "linear client fetches candidate issues across multiple project slugs" do
+    graphql_fun = fn query, variables ->
+      send(self(), {:fetch_project_page, query, variables})
+
+      project_slug = variables.projectSlug
+
+      body = %{
+        "data" => %{
+          "issues" => %{
+            "nodes" => [
+              %{
+                "id" => "issue-#{project_slug}",
+                "identifier" => "MT-#{project_slug}",
+                "title" => "Issue #{project_slug}",
+                "description" => "Description #{project_slug}",
+                "state" => %{"name" => "Todo"},
+                "project" => %{
+                  "id" => "project-id-#{project_slug}",
+                  "name" => String.capitalize(project_slug),
+                  "slugId" => project_slug
+                },
+                "labels" => %{"nodes" => []},
+                "inverseRelations" => %{"nodes" => []}
+              }
+            ],
+            "pageInfo" => %{"hasNextPage" => false, "endCursor" => nil}
+          }
+        }
+      }
+
+      {:ok, body}
+    end
+
+    assert {:ok, issues} =
+             Client.fetch_issues_by_states_for_test(["portal", "billing"], ["Todo"], graphql_fun)
+
+    assert Enum.map(issues, & &1.project_slug) == ["portal", "billing"]
+    assert Enum.map(issues, & &1.project_name) == ["Portal", "Billing"]
+
+    assert_receive {:fetch_project_page, query, %{projectSlug: "portal", stateNames: ["Todo"]}}
+    assert query =~ "SymphonyLinearPoll"
+    assert query =~ "project {"
+
+    assert_receive {:fetch_project_page, ^query, %{projectSlug: "billing", stateNames: ["Todo"]}}
+  end
+
   test "linear client logs response bodies for non-200 graphql responses" do
     log =
       ExUnit.CaptureLog.capture_log(fn ->
