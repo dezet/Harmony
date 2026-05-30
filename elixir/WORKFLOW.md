@@ -1,7 +1,8 @@
 ---
 tracker:
   kind: linear
-  project_slug: "symphony-0c79b11b75ea"
+  project_slugs:
+    - "symphony-0c79b11b75ea"
   active_states:
     - Todo
     - In Progress
@@ -51,6 +52,8 @@ Issue context:
 Identifier: {{ issue.identifier }}
 Title: {{ issue.title }}
 Current status: {{ issue.state }}
+Project: {{ issue.project_name }} ({{ issue.project_slug }})
+Project ID: {{ issue.project_id }}
 Labels: {{ issue.labels }}
 URL: {{ issue.url }}
 

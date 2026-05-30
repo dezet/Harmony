@@ -1005,7 +1005,7 @@ Validation:
 
 ## Progress Update
 
-### 2026-05-30: Multi-project implementation ready for review
+### 2026-05-30: Multi-project implementation merged
 
 Completed:
 
@@ -1028,6 +1028,13 @@ Completed:
 - Opened PR:
   - `https://github.com/dezet/Harmony/pull/1`
 - Updated PR body with current status and validation checklist.
+- PR #1 was merged to `main`.
+- Opened follow-up PR #2 to keep operational planning in the repo:
+  - `https://github.com/dezet/Harmony/pull/2`
+- PR #2 now includes:
+  - this plan under `.hermes/plans/2026-05-30_124242-harmony-setup-plan.md`,
+  - an update to `elixir/WORKFLOW.md` so the checked-in workflow uses `tracker.project_slugs`,
+  - project metadata in the default issue prompt context.
 
 Validation completed:
 
@@ -1040,13 +1047,17 @@ Validation completed:
   - coverage run result: `237 tests, 0 failures, 2 skipped`
 - PR body validation passed:
   - `mix pr_body.check`
+- Follow-up PR #2 workflow/config validation passed after updating `elixir/WORKFLOW.md`:
+  - `mix format --check-formatted`
+  - `mix test test/symphony_elixir/core_test.exs test/symphony_elixir/workspace_and_config_test.exs`
+  - result: `87 tests, 0 failures`
 
 Current status:
 
-- PR #1 is open, non-draft, and waiting for human review.
-- GitHub status checks are not configured/reported for this PR yet.
-- Local Harmony repo worktree is clean after the commit and push.
-- The original recommendation of multiple Harmony instances as the first multi-project workaround is now obsolete if PR #1 is merged.
+- PR #1 is merged.
+- PR #2 is open and tracks the repo-local plan/workflow documentation update.
+- GitHub status checks are not configured/reported for PR #2 yet.
+- The original recommendation of multiple Harmony instances as the first multi-project workaround is now obsolete on `main`.
 
 Scope notes:
 
@@ -1056,11 +1067,13 @@ Scope notes:
   - project B -> repo B.
 - The dashboard now exposes project grouping/counts, but a richer interactive project selector/filter remains future UI work if needed.
 
-## Proposed Steps After PR Merge
+## Proposed Steps After PR #2 Merge
 
-1. Sync the server checkout to the merged `main`:
+1. Sync the server checkout to the merged `main` after PR #2 lands:
    - fetch/pull `origin/main`,
-   - confirm the merge commit includes `82e18da` or equivalent changes,
+   - confirm the merge history includes the multi-project change from PR #1,
+   - confirm `.hermes/plans/2026-05-30_124242-harmony-setup-plan.md` exists in the checkout,
+   - confirm `elixir/WORKFLOW.md` uses `tracker.project_slugs`,
    - rebuild with `mise exec -- mix build`.
 2. Re-run the full local gate on merged `main`:
    - `make all MIX='mise exec -- mix'`.
