@@ -21,6 +21,10 @@
 7. `docs/superpowers/plans/2026-05-31-07-operations-hardening.md`
 8. `docs/superpowers/plans/2026-05-31-08-platform-expansion.md`
 
+Post-repair E2E proof plan:
+
+- `docs/superpowers/plans/2026-05-31-09-roadmap-e2e-video-proof.md`
+
 ## Cross-Plan Rules
 
 - Keep `WORKFLOW.md` as global runtime policy and prompt contract.
@@ -71,4 +75,3 @@ Each manual run must record:
 - validation commands,
 - blocker or handoff result,
 - artifact paths when browser evidence is required.
-
