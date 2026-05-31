@@ -25,4 +25,20 @@ defmodule SymphonyElixir.WorkRunTest do
     assert run.github_base_ref == "develop"
     assert run.payload.issue.title == "Smoke test"
   end
+
+  test "linear issue source maps tracker issues to work runs" do
+    issue = %Issue{id: "issue-1", identifier: "COD-5", title: "Smoke", state: "Todo", project_slug: "portal"}
+
+    fetcher = fn -> {:ok, [issue]} end
+
+    assert {:ok, [run]} =
+             SymphonyElixir.WorkSources.LinearIssueSource.fetch_candidates(
+               issue_fetcher: fetcher,
+               project_slug: "portal",
+               base_branch: "develop"
+             )
+
+    assert run.type == "implementation"
+    assert run.linear_identifier == "COD-5"
+  end
 end
