@@ -1264,19 +1264,28 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
     parent = self()
 
+    issues_by_slug =
+      for project <- [admin, portal], into: %{} do
+        issue =
+          %Issue{
+            id: "issue-#{project.slug}",
+            identifier: "#{project.linear_team_key}-1",
+            title: "Implement #{project.slug}",
+            state: "In Progress",
+            project_id: project.id,
+            project_slug: project.slug
+          }
+
+        {project.slug, issue}
+      end
+
+    Application.put_env(:symphony_elixir, :memory_tracker_issues, Map.values(issues_by_slug))
     Application.put_env(:symphony_elixir, :project_fetcher, &SymphonyElixir.Storage.list_projects/0)
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _project -> {:ok, []} end)
 
     Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
-      issue = %Issue{
-        id: "issue-#{project.slug}",
-        identifier: "#{project.linear_team_key}-1",
-        title: "Implement #{project.slug}",
-        state: "In Progress",
-        project_id: project.id,
-        project_slug: project.slug
-      }
+      issue = Map.fetch!(issues_by_slug, project.slug)
 
       {:ok,
        [
