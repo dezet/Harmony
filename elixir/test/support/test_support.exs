@@ -54,12 +54,17 @@ defmodule SymphonyElixir.TestSupport do
           Application.delete_env(:symphony_elixir, :github_projects)
           Application.delete_env(:symphony_elixir, :github_ci_projects)
           Application.delete_env(:symphony_elixir, :github_review_projects)
+          Application.delete_env(:symphony_elixir, :project_fetcher)
+          Application.delete_env(:symphony_elixir, :linear_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :github_ci_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :github_review_work_source_fetcher)
           Application.delete_env(:symphony_elixir, :agent_runner_fun)
           Application.delete_env(:symphony_elixir, :review_handoff_fun)
           File.rm_rf(workflow_root)
         end)
 
         Application.put_env(:symphony_elixir, :durable_blockers_enabled, false)
+        Application.put_env(:symphony_elixir, :project_fetcher, fn -> [] end)
 
         :ok
       end

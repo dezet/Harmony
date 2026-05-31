@@ -29,6 +29,10 @@ defmodule SymphonyElixir.WorkRun do
 
   @spec from_linear_issue(Issue.t(), keyword()) :: t()
   def from_linear_issue(%Issue{} = issue, opts) when is_list(opts) do
+    payload =
+      %{issue: issue}
+      |> maybe_put_payload(:project_id, Keyword.get(opts, :project_id))
+
     %__MODULE__{
       project_slug: Keyword.get(opts, :project_slug) || issue.project_slug,
       type: "implementation",
@@ -39,7 +43,10 @@ defmodule SymphonyElixir.WorkRun do
       linear_identifier: issue.identifier,
       linear_url: issue.url,
       agent_backend: "codex",
-      payload: %{issue: issue}
+      payload: payload
     }
   end
+
+  defp maybe_put_payload(payload, _key, nil), do: payload
+  defp maybe_put_payload(payload, key, value), do: Map.put(payload, key, value)
 end

@@ -32,16 +32,41 @@ defmodule SymphonyElixir.ProjectConfigTest do
     assert project.github_base_branch == "develop"
   end
 
-  defp write_project_config!(project_file) do
+  @tag :db
+  test "syncs multiple project yaml files into storage", %{projects_dir: projects_dir} do
+    write_project_config!(Path.join(projects_dir, "portal.yaml"),
+      slug: "portal",
+      github_repo: "portal",
+      linear_project_slug: "portal-linear"
+    )
+
+    write_project_config!(Path.join(projects_dir, "admin.yaml"),
+      slug: "admin",
+      github_repo: "admin",
+      linear_project_slug: "admin-linear"
+    )
+
+    :ok = checkout_repo(%{})
+
+    assert {:ok, projects} = SymphonyElixir.ProjectConfig.Sync.sync_dir(projects_dir)
+    assert Enum.map(projects, & &1.slug) == ["admin", "portal"]
+    assert Enum.map(projects, & &1.linear_project_slug) == ["admin-linear", "portal-linear"]
+  end
+
+  defp write_project_config!(project_file, opts \\ []) do
+    slug = Keyword.get(opts, :slug, "portal")
+    github_repo = Keyword.get(opts, :github_repo, "portal")
+    linear_project_slug = Keyword.get(opts, :linear_project_slug, "portal-6d90492ea04f")
+
     File.write!(project_file, """
-    slug: portal
+    slug: #{slug}
     linear:
-      project_slug: portal-6d90492ea04f
+      project_slug: #{linear_project_slug}
       team_key: COD
       human_review_state: Human Review
     github:
       owner: dezet
-      repo: portal
+      repo: #{github_repo}
       base_branch: develop
     review:
       trigger: "@hreview"

@@ -1227,6 +1227,103 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
   end
 
   @tag :db
+  test "orchestrator schedules work from multiple stored projects within concurrency limit" do
+    :ok = checkout_repo(%{})
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      tracker_api_token: nil,
+      max_concurrent_agents: 1
+    )
+
+    {:ok, portal} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        linear_project_slug: "portal-linear",
+        linear_team_key: "COD",
+        linear_human_review_state: "Human Review",
+        github_owner: "dezet",
+        github_repo: "portal",
+        github_base_branch: "develop",
+        config_version: 1,
+        config: %{}
+      })
+
+    {:ok, admin} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "admin",
+        linear_project_slug: "admin-linear",
+        linear_team_key: "ADM",
+        linear_human_review_state: "Human Review",
+        github_owner: "dezet",
+        github_repo: "admin",
+        github_base_branch: "main",
+        config_version: 1,
+        config: %{}
+      })
+
+    parent = self()
+
+    Application.put_env(:symphony_elixir, :project_fetcher, &SymphonyElixir.Storage.list_projects/0)
+    Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _project -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _project -> {:ok, []} end)
+
+    Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
+      issue = %Issue{
+        id: "issue-#{project.slug}",
+        identifier: "#{project.linear_team_key}-1",
+        title: "Implement #{project.slug}",
+        state: "In Progress",
+        project_id: project.id,
+        project_slug: project.slug
+      }
+
+      {:ok,
+       [
+         SymphonyElixir.WorkRun.from_linear_issue(issue,
+           project_id: project.id,
+           project_slug: project.slug,
+           base_branch: project.github_base_branch
+         )
+       ]}
+    end)
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, opts ->
+      send(parent, {:agent_run, self(), issue, opts})
+
+      receive do
+        :stop -> :ok
+      after
+        5_000 -> :ok
+      end
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :MultiProjectSchedulingOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+    Ecto.Adapters.SQL.Sandbox.allow(SymphonyElixir.Repo, self(), pid)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:agent_run, runner_pid, issue, _opts}, 1_000
+    assert issue.project_slug in ["admin", "portal"]
+
+    state = :sys.get_state(pid)
+    assert map_size(state.running) == 1
+
+    queued_runs = SymphonyElixir.Storage.list_queued_runs()
+    assert Enum.map(queued_runs, & &1.project_id) |> Enum.sort() == Enum.sort([admin.id, portal.id])
+    assert Enum.map(queued_runs, & &1.dedupe_key) |> Enum.sort() == ["linear:issue-admin", "linear:issue-portal"]
+
+    send(runner_pid, :stop)
+  end
+
+  @tag :db
   test "orchestrator records durable blocker after app-server input required" do
     :ok = checkout_repo(%{})
     Application.put_env(:symphony_elixir, :durable_blockers_enabled, true)

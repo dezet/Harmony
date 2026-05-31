@@ -395,11 +395,113 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp fetch_from_configured_sources do
+    with {:ok, projects} <- fetch_configured_projects() do
+      case projects do
+        [] -> fetch_from_legacy_configured_sources()
+        projects -> fetch_from_project_sources(projects)
+      end
+    end
+  end
+
+  defp fetch_from_legacy_configured_sources do
     with {:ok, linear_runs} <- LinearIssueSource.fetch_candidates(),
          {:ok, github_ci_runs} <- fetch_github_ci_runs(),
          {:ok, github_review_runs} <- fetch_github_review_runs() do
       {:ok, linear_runs ++ github_ci_runs ++ github_review_runs}
     end
+  end
+
+  defp fetch_configured_projects do
+    case project_fetcher().() do
+      {:ok, projects} when is_list(projects) -> {:ok, projects}
+      projects when is_list(projects) -> {:ok, projects}
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:invalid_project_fetcher_result, other}}
+    end
+  end
+
+  defp project_fetcher do
+    Application.get_env(:symphony_elixir, :project_fetcher, &Storage.list_projects/0)
+  end
+
+  defp fetch_from_project_sources(projects) when is_list(projects) do
+    with {:ok, linear_runs} <- fetch_project_runs(projects, linear_work_source_fetcher()),
+         {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
+         {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()) do
+      persist_fetched_work_runs(linear_runs ++ github_ci_runs ++ github_review_runs)
+    end
+  end
+
+  defp fetch_project_runs(projects, fetcher) when is_list(projects) and is_function(fetcher, 1) do
+    Enum.reduce_while(projects, {:ok, []}, fn project, {:ok, acc} ->
+      case fetcher.(project) do
+        {:ok, runs} when is_list(runs) -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+        other -> {:halt, {:error, {:invalid_work_source_result, other}}}
+      end
+    end)
+  end
+
+  defp linear_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
+      LinearIssueSource.fetch_candidates(
+        project_id: project_value(project, :id),
+        project_slug: project_value(project, :slug),
+        base_branch: project_value(project, :github_base_branch)
+      )
+    end)
+  end
+
+  defp github_ci_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :github_ci_work_source_fetcher, &GithubFailedCiSource.fetch_candidates/1)
+  end
+
+  defp github_review_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :github_review_work_source_fetcher, &GithubReviewRequestSource.fetch_candidates/1)
+  end
+
+  defp persist_fetched_work_runs(work_runs) when is_list(work_runs) do
+    Enum.reduce_while(work_runs, {:ok, []}, fn work_run, {:ok, acc} ->
+      case persist_fetched_work_run(work_run) do
+        {:ok, run} -> {:cont, {:ok, acc ++ [run]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp persist_fetched_work_run(%WorkRun{} = run) do
+    case payload_value(run.payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        case Storage.upsert_work_run(work_run_storage_attrs(run, project_id)) do
+          {:ok, stored_run} -> {:ok, %{run | id: stored_run.id}}
+          {:error, reason} -> {:error, {:work_run_persist_failed, run.dedupe_key, reason}}
+        end
+
+      _missing_project_id ->
+        {:ok, run}
+    end
+  end
+
+  defp persist_fetched_work_run(run), do: {:ok, run}
+
+  defp work_run_storage_attrs(%WorkRun{} = run, project_id) do
+    %{
+      project_id: project_id,
+      type: run.type,
+      status: run.status || "queued",
+      dedupe_key: run.dedupe_key,
+      github_owner: run.github_owner,
+      github_repo: run.github_repo,
+      github_pr_number: run.github_pr_number,
+      github_head_sha: run.github_head_sha,
+      github_head_ref: run.github_head_ref,
+      github_base_ref: run.github_base_ref,
+      linear_issue_id: run.linear_issue_id,
+      linear_identifier: run.linear_identifier,
+      linear_url: run.linear_url,
+      agent_backend: run.agent_backend || "codex",
+      payload: json_safe(run.payload)
+    }
   end
 
   defp fetch_github_ci_runs do
@@ -426,6 +528,29 @@ defmodule SymphonyElixir.Orchestrator do
     Application.get_env(:symphony_elixir, specific_key) ||
       Application.get_env(:symphony_elixir, :github_projects, [])
   end
+
+  defp project_value(project, key) when is_map(project) do
+    Map.get(project, key) || Map.get(project, to_string(key))
+  end
+
+  defp json_safe(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp json_safe(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
+  defp json_safe(%Date{} = value), do: Date.to_iso8601(value)
+  defp json_safe(%Time{} = value), do: Time.to_iso8601(value)
+
+  defp json_safe(%_struct{} = value) do
+    value
+    |> Map.from_struct()
+    |> json_safe()
+  end
+
+  defp json_safe(%{} = value) do
+    Map.new(value, fn {key, nested} -> {to_string(key), json_safe(nested)} end)
+  end
+
+  defp json_safe(value) when is_list(value), do: Enum.map(value, &json_safe/1)
+  defp json_safe(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: value
+  defp json_safe(value), do: inspect(value)
 
   defp reconcile_running_issues(%State{} = state) do
     state = reconcile_stalled_running_issues(state)

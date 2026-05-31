@@ -33,11 +33,48 @@ defmodule SymphonyElixir.Storage do
     )
   end
 
+  @spec list_projects() :: [Project.t()]
+  def list_projects do
+    Project
+    |> order_by([project], asc: project.slug)
+    |> Repo.all()
+  end
+
   @spec create_work_run(map()) :: {:ok, WorkRun.t()} | {:error, Ecto.Changeset.t()}
   def create_work_run(attrs) when is_map(attrs) do
     %WorkRun{}
     |> WorkRun.changeset(stringify_keys(attrs))
     |> Repo.insert()
+  end
+
+  @spec upsert_work_run(map()) :: {:ok, WorkRun.t()} | {:error, Ecto.Changeset.t()}
+  def upsert_work_run(attrs) when is_map(attrs) do
+    attrs = stringify_keys(attrs)
+
+    %WorkRun{}
+    |> WorkRun.changeset(attrs)
+    |> Repo.insert(
+      on_conflict:
+        {:replace,
+         [
+           :type,
+           :status,
+           :github_owner,
+           :github_repo,
+           :github_pr_number,
+           :github_head_sha,
+           :github_head_ref,
+           :github_base_ref,
+           :linear_issue_id,
+           :linear_identifier,
+           :linear_url,
+           :agent_backend,
+           :payload,
+           :updated_at
+         ]},
+      conflict_target: {:unsafe_fragment, "(project_id, dedupe_key) WHERE dedupe_key IS NOT NULL"},
+      returning: true
+    )
   end
 
   @spec append_event(map()) :: {:ok, WorkEvent.t()} | {:error, Ecto.Changeset.t()}
