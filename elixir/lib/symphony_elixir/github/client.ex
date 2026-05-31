@@ -61,6 +61,19 @@ defmodule SymphonyElixir.Github.Client do
     end
   end
 
+  @spec get_workflow_run_logs(String.t(), String.t(), pos_integer(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def get_workflow_run_logs(owner, repo, run_id, opts \\ [])
+      when is_binary(owner) and is_binary(repo) and is_integer(run_id) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{@api_root}/repos/#{owner}/#{repo}/actions/runs/#{run_id}/logs"
+
+    with {:ok, response} <- request_fun.(method: :get, url: url, headers: headers(token), redirect: true),
+         :ok <- expect_status(response, 200) do
+      {:ok, response.body}
+    end
+  end
+
   defp github_token(opts), do: Keyword.get(opts, :token) || System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
 
   defp headers(token) when is_binary(token) and token != "" do
