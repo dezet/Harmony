@@ -60,6 +60,22 @@ defmodule SymphonyElixir.Github.Client do
     end
   end
 
+  @spec create_pull_request_review(String.t(), String.t(), pos_integer(), String.t(), keyword()) ::
+          :ok | {:error, term()}
+  def create_pull_request_review(owner, repo, pr_number, body, opts \\ [])
+      when is_binary(owner) and is_binary(repo) and is_integer(pr_number) and is_binary(body) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    event = Keyword.get(opts, :event, "COMMENT")
+    url = "#{@api_root}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews"
+
+    with {:ok, response} <-
+           request_fun.(method: :post, url: url, json: %{body: body, event: event}, headers: headers(token)),
+         :ok <- expect_status(response, [200, 201]) do
+      :ok
+    end
+  end
+
   @spec list_workflow_runs(String.t(), String.t(), keyword()) ::
           {:ok, [WorkflowRun.t()]} | {:error, term()}
   def list_workflow_runs(owner, repo, opts \\ [])
@@ -99,6 +115,10 @@ defmodule SymphonyElixir.Github.Client do
   end
 
   defp headers(_token), do: [{"accept", "application/vnd.github+json"}]
+
+  defp expect_status(%{status: status, body: body}, expected) when is_list(expected) do
+    if status in expected, do: :ok, else: {:error, {:github_status, status, body}}
+  end
 
   defp expect_status(%{status: status}, expected) when status == expected, do: :ok
   defp expect_status(%{status: status, body: body}, _expected), do: {:error, {:github_status, status, body}}

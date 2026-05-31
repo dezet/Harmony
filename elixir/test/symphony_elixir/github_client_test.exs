@@ -101,4 +101,25 @@ defmodule SymphonyElixir.GithubClientTest do
     assert run.id == 123
     assert run.conclusion == "failure"
   end
+
+  test "creates pull request review comment" do
+    request_fun = fn opts ->
+      send(self(), {:github_request, opts})
+
+      {:ok, %Req.Response{status: 201, body: %{"id" => 321}}}
+    end
+
+    assert :ok =
+             Client.create_pull_request_review("dezet", "portal", 7, "Review body",
+               token: "token",
+               event: "COMMENT",
+               request_fun: request_fun
+             )
+
+    assert_received {:github_request, opts}
+    assert opts[:method] == :post
+    assert opts[:url] =~ "/repos/dezet/portal/pulls/7/reviews"
+    assert opts[:json] == %{body: "Review body", event: "COMMENT"}
+    assert {"authorization", "Bearer token"} in opts[:headers]
+  end
 end
