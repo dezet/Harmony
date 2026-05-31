@@ -34,7 +34,7 @@ defmodule SymphonyElixir.TestSupport do
         workflow_root =
           Path.join(
             System.tmp_dir!(),
-            "symphony-elixir-workflow-#{System.unique_integer([:positive])}"
+            "symphony-elixir-workflow-#{Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)}"
           )
 
         File.mkdir_p!(workflow_root)
