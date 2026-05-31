@@ -84,4 +84,45 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
                dedupe_seen?: fn _project_id, _key -> true end
              )
   end
+
+  test "marks fork PR as repair branch required" do
+    project = %{
+      id: "project-1",
+      slug: "portal",
+      github_owner: "dezet",
+      github_repo: "portal",
+      github_base_branch: "develop",
+      linear_team_key: "COD",
+      config: %{}
+    }
+
+    pull_requests = fn _owner, _repo, _opts ->
+      {:ok,
+       [
+         %PullRequest{
+           number: 7,
+           title: "Fix COD-5",
+           body: "Linear: COD-5",
+           head_sha: "abc123",
+           head_ref: "fix-cod-5",
+           head_repo_full_name: "fork/portal",
+           base_ref: "develop",
+           base_repo_full_name: "dezet/portal"
+         }
+       ]}
+    end
+
+    workflow_runs = fn _owner, _repo, _opts ->
+      {:ok, [%WorkflowRun{id: 123, name: "CI", head_sha: "abc123", status: "completed", conclusion: "failure"}]}
+    end
+
+    assert {:ok, [run]} =
+             GithubFailedCiSource.fetch_candidates(project,
+               list_pull_requests: pull_requests,
+               list_workflow_runs: workflow_runs,
+               dedupe_seen?: fn _project_id, _key -> false end
+             )
+
+    assert run.payload.repo_policy == "repair_branch_required"
+  end
 end

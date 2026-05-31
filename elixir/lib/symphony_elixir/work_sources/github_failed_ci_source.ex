@@ -3,7 +3,7 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   Polls open GitHub PRs and emits failed GitHub Actions repair work.
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.{Github, RuntimePolicy, Storage, WorkRun}
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
@@ -38,6 +38,7 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
 
   defp build_run(project, owner, repo, pr, workflow_run) do
     link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(project_value(project, :linear_team_key)))
+    repo_policy = repo_policy(project, pr)
 
     %WorkRun{
       project_slug: project_value(project, :slug),
@@ -53,9 +54,37 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",
-      payload: %{pull_request: pr, workflow_run: workflow_run}
+      payload: %{pull_request: pr, workflow_run: workflow_run, repo_policy: repo_policy}
     }
   end
+
+  defp repo_policy(project, pr) do
+    case RuntimePolicy.RepoPolicy.authorize_push(%{
+           head_repo_full_name: pr.head_repo_full_name,
+           base_repo_full_name: pr.base_repo_full_name || "#{project_value(project, :github_owner)}/#{project_value(project, :github_repo)}",
+           head_ref: pr.head_ref,
+           base_ref: pr.base_ref || project_value(project, :github_base_branch),
+           protected_branches: protected_branches(project)
+         }) do
+      :ok -> "direct_push_allowed"
+      {:error, :fork_pr_requires_repair_branch} -> "repair_branch_required"
+      {:error, reason} -> "blocked:#{reason}"
+    end
+  end
+
+  defp protected_branches(project) do
+    config = project_value(project, :config) || %{}
+
+    config
+    |> map_get_any(:protected_branches)
+    |> case do
+      branches when is_list(branches) -> branches
+      _other -> List.wrap(project_value(project, :github_base_branch))
+    end
+  end
+
+  defp map_get_any(%{} = map, key), do: Map.get(map, key) || Map.get(map, to_string(key))
+  defp map_get_any(_map, _key), do: nil
 
   defp dedupe_key(owner, repo, pr, workflow_run) do
     "github-ci-fix:#{owner}/#{repo}:#{pr.number}:#{pr.head_sha}:#{workflow_run.id}"
