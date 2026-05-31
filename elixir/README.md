@@ -70,6 +70,10 @@ mise exec -- mix build
 mise exec -- ./bin/symphony ./WORKFLOW.md
 ```
 
+For the dedicated `harmony` system user proof-of-life runtime, use the controlled operations
+runbook in [`docs/harmony-operations.md`](../docs/harmony-operations.md). The service should be
+started manually and enabled only after stable proof-of-life runs.
+
 ## Configuration
 
 Pass a custom workflow file path to `./bin/symphony` when starting the service:
