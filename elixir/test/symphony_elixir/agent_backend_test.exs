@@ -95,4 +95,25 @@ defmodule SymphonyElixir.AgentBackendTest do
     assert {:error, :claude_code_execution_not_implemented} =
              SymphonyElixir.AgentBackends.ClaudeCode.run("/tmp/workspace", "prompt", issue, [])
   end
+
+  test "pi backend reports missing executable" do
+    find_executable = fn "pi" -> nil end
+
+    assert {:error, :pi_not_found} =
+             SymphonyElixir.AgentBackends.Pi.capability_check(find_executable: find_executable)
+  end
+
+  test "pi backend reports available executable" do
+    find_executable = fn "pi" -> "/usr/local/bin/pi" end
+
+    assert :ok =
+             SymphonyElixir.AgentBackends.Pi.capability_check(find_executable: find_executable)
+  end
+
+  test "pi backend does not execute work before invocation contract is implemented" do
+    issue = %Issue{id: "issue-pi", identifier: "COD-PI", title: "Pi spike"}
+
+    assert {:error, :pi_execution_not_implemented} =
+             SymphonyElixir.AgentBackends.Pi.run("/tmp/workspace", "prompt", issue, [])
+  end
 end
