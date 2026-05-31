@@ -36,6 +36,24 @@ defmodule SymphonyElixir.RuntimePolicyTest do
              })
   end
 
+  test "handoff moves linked linear issue to configured human review state" do
+    parent = self()
+
+    tracker = fn issue_id, state_name ->
+      send(parent, {:state_update, issue_id, state_name})
+      :ok
+    end
+
+    assert :ok =
+             SymphonyElixir.RuntimePolicy.Handoff.move_to_human_review(
+               %{linear_issue_id: "issue-1"},
+               "Human Review",
+               tracker_update: tracker
+             )
+
+    assert_received {:state_update, "issue-1", "Human Review"}
+  end
+
   @tag :db
   test "records blocker and suppresses duplicate open blocker" do
     :ok = checkout_repo(%{})
