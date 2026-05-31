@@ -3,7 +3,7 @@ defmodule SymphonyElixir.Evidence.Manifest do
   Reads browser evidence manifests from workspaces.
   """
 
-  @allowed_artifact_kinds ["screenshot", "trace", "report"]
+  @allowed_artifact_kinds ["screenshot", "trace", "report", "video"]
 
   defstruct frontend_changed: false, scenario: nil, artifacts: []
 
@@ -55,6 +55,7 @@ defmodule SymphonyElixir.Evidence.Manifest do
   defp parse_artifact(%{"kind" => kind, "path" => path} = artifact, workspace)
        when is_binary(kind) and is_binary(path) do
     with :ok <- validate_artifact_kind(kind),
+         :ok <- validate_artifact_description(kind, path, artifact),
          {:ok, expanded_path} <- expand_artifact_path(path, workspace) do
       {:ok,
        %{
@@ -69,6 +70,22 @@ defmodule SymphonyElixir.Evidence.Manifest do
 
   defp validate_artifact_kind(kind) when kind in @allowed_artifact_kinds, do: :ok
   defp validate_artifact_kind(kind), do: {:error, {:unsupported_evidence_artifact_kind, kind}}
+
+  defp validate_artifact_description("video", path, artifact) do
+    case string_or_nil(Map.get(artifact, "description")) do
+      description when is_binary(description) ->
+        if String.trim(description) == "" do
+          {:error, {:missing_video_evidence_description, path}}
+        else
+          :ok
+        end
+
+      _missing ->
+        {:error, {:missing_video_evidence_description, path}}
+    end
+  end
+
+  defp validate_artifact_description(_kind, _path, _artifact), do: :ok
 
   defp expand_artifact_path(path, workspace) do
     expanded_path = Path.expand(path, workspace)
