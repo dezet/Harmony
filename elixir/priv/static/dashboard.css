@@ -407,6 +407,33 @@ pre,
   font-size: 0.9rem;
 }
 
+.project-form-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.form-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.text-input {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.52rem 0.68rem;
+}
+
+.text-input:focus {
+  outline: 2px solid rgba(16, 163, 127, 0.18);
+  border-color: var(--accent);
+}
+
 .empty-state {
   margin: 1rem 0 0;
   color: var(--muted);

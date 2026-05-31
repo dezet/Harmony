@@ -156,6 +156,11 @@ defmodule SymphonyElixir.Storage do
     Repo.get_by(Project, slug: slug)
   end
 
+  @spec get_project!(Ecto.UUID.t()) :: Project.t()
+  def get_project!(id) when is_binary(id) do
+    Repo.get!(Project, id)
+  end
+
   @spec list_queued_runs() :: [WorkRun.t()]
   def list_queued_runs do
     WorkRun
