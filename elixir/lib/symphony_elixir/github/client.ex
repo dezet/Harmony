@@ -3,7 +3,7 @@ defmodule SymphonyElixir.Github.Client do
   Minimal GitHub REST client for Harmony PR polling.
   """
 
-  alias SymphonyElixir.Github.PullRequest
+  alias SymphonyElixir.Github.{Comment, PullRequest, WorkflowRun}
 
   @api_root "https://api.github.com"
 
@@ -26,6 +26,42 @@ defmodule SymphonyElixir.Github.Client do
       {:ok, Enum.map(response.body, &PullRequest.from_api/1)}
     end
   end
+
+  @spec list_issue_comments(String.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, [Comment.t()]} | {:error, term()}
+  def list_issue_comments(owner, repo, issue_number, opts \\ [])
+      when is_binary(owner) and is_binary(repo) and is_integer(issue_number) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{@api_root}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
+
+    with {:ok, response} <-
+           request_fun.(method: :get, url: url, params: [per_page: 100], headers: headers(token)),
+         :ok <- expect_status(response, 200) do
+      {:ok, Enum.map(response.body, &Comment.from_api/1)}
+    end
+  end
+
+  @spec list_workflow_runs(String.t(), String.t(), keyword()) ::
+          {:ok, [WorkflowRun.t()]} | {:error, term()}
+  def list_workflow_runs(owner, repo, opts \\ [])
+      when is_binary(owner) and is_binary(repo) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{@api_root}/repos/#{owner}/#{repo}/actions/runs"
+
+    params =
+      [per_page: 100]
+      |> Keyword.merge(if Keyword.get(opts, :head_sha), do: [head_sha: Keyword.fetch!(opts, :head_sha)], else: [])
+
+    with {:ok, response} <-
+           request_fun.(method: :get, url: url, params: params, headers: headers(token)),
+         :ok <- expect_status(response, 200) do
+      {:ok, response.body["workflow_runs"] |> List.wrap() |> Enum.map(&WorkflowRun.from_api/1)}
+    end
+  end
+
+  defp github_token(opts), do: Keyword.get(opts, :token) || System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
 
   defp headers(token) when is_binary(token) and token != "" do
     [{"authorization", "Bearer #{token}"}, {"accept", "application/vnd.github+json"}]

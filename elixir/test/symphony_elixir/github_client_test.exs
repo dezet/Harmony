@@ -46,4 +46,59 @@ defmodule SymphonyElixir.GithubClientTest do
     assert opts[:url] =~ "/repos/dezet/portal/pulls"
     assert {"authorization", "Bearer token"} in opts[:headers]
   end
+
+  test "lists PR comments" do
+    request_fun = fn opts ->
+      assert opts[:url] =~ "/repos/dezet/portal/issues/7/comments"
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: [%{"id" => 99, "body" => "@hreview please", "user" => %{"login" => "alice"}}]
+       }}
+    end
+
+    assert {:ok, [comment]} =
+             Client.list_issue_comments("dezet", "portal", 7,
+               token: "token",
+               request_fun: request_fun
+             )
+
+    assert comment.id == 99
+    assert comment.body == "@hreview please"
+  end
+
+  test "lists workflow runs for a head sha" do
+    request_fun = fn opts ->
+      assert opts[:url] =~ "/repos/dezet/portal/actions/runs"
+      assert opts[:params][:head_sha] == "abc123"
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{
+           "workflow_runs" => [
+             %{
+               "id" => 123,
+               "name" => "CI",
+               "head_sha" => "abc123",
+               "status" => "completed",
+               "conclusion" => "failure",
+               "html_url" => "https://github.com/dezet/portal/actions/runs/123"
+             }
+           ]
+         }
+       }}
+    end
+
+    assert {:ok, [run]} =
+             Client.list_workflow_runs("dezet", "portal",
+               head_sha: "abc123",
+               token: "token",
+               request_fun: request_fun
+             )
+
+    assert run.id == 123
+    assert run.conclusion == "failure"
+  end
 end
