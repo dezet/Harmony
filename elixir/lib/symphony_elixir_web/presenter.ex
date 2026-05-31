@@ -21,6 +21,7 @@ defmodule SymphonyElixirWeb.Presenter do
           running: Enum.map(snapshot.running, &running_entry_payload/1),
           retrying: Enum.map(snapshot.retrying, &retry_entry_payload/1),
           blocked: Enum.map(Map.get(snapshot, :blocked, []), &blocked_entry_payload/1),
+          runtime: runtime_payload(Map.get(snapshot, :runtime, %{})),
           artifacts: Enum.map(Map.get(snapshot, :artifacts, []), &artifact_payload/1),
           codex_totals: snapshot.codex_totals,
           rate_limits: snapshot.rate_limits
@@ -207,6 +208,27 @@ defmodule SymphonyElixirWeb.Presenter do
       path: Map.get(artifact, :path) || Map.get(artifact, "path")
     }
   end
+
+  defp runtime_payload(runtime) when is_map(runtime) do
+    %{sandbox: sandbox_payload(Map.get(runtime, :sandbox) || Map.get(runtime, "sandbox") || %{})}
+  end
+
+  defp runtime_payload(_runtime), do: %{sandbox: sandbox_payload(%{})}
+
+  defp sandbox_payload(sandbox) when is_map(sandbox) do
+    %{
+      bubblewrap_available: Map.get(sandbox, :bubblewrap_available) || Map.get(sandbox, "bubblewrap_available") || false,
+      apparmor_restrict_unprivileged_userns:
+        Map.get(sandbox, :apparmor_restrict_unprivileged_userns) ||
+          Map.get(sandbox, "apparmor_restrict_unprivileged_userns"),
+      thread_sandbox: Map.get(sandbox, :thread_sandbox) || Map.get(sandbox, "thread_sandbox"),
+      turn_sandbox_type: Map.get(sandbox, :turn_sandbox_type) || Map.get(sandbox, "turn_sandbox_type"),
+      posture: Map.get(sandbox, :posture) || Map.get(sandbox, "posture"),
+      warnings: Map.get(sandbox, :warnings) || Map.get(sandbox, "warnings") || []
+    }
+  end
+
+  defp sandbox_payload(_sandbox), do: sandbox_payload(%{})
 
   defp running_issue_payload(running) do
     %{

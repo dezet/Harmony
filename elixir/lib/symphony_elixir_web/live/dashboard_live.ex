@@ -115,6 +115,44 @@ defmodule SymphonyElixirWeb.DashboardLive do
         <section class="section-card">
           <div class="section-header">
             <div>
+              <h2 class="section-title">Runtime diagnostics</h2>
+              <p class="section-copy">Sandbox posture and host capability detected by the Harmony runtime.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" style="min-width: 760px;">
+              <thead>
+                <tr>
+                  <th>Posture</th>
+                  <th>Bubblewrap</th>
+                  <th>AppArmor userns</th>
+                  <th>Thread sandbox</th>
+                  <th>Turn sandbox</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="state-badge"><%= @payload.runtime.sandbox.posture || "unknown" %></span></td>
+                  <td><%= bool_label(@payload.runtime.sandbox.bubblewrap_available) %></td>
+                  <td class="numeric"><%= value_label(@payload.runtime.sandbox.apparmor_restrict_unprivileged_userns) %></td>
+                  <td><%= @payload.runtime.sandbox.thread_sandbox || "n/a" %></td>
+                  <td><%= @payload.runtime.sandbox.turn_sandbox_type || "n/a" %></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <%= if @payload.runtime.sandbox.warnings != [] do %>
+            <ul class="detail-list">
+              <li :for={warning <- @payload.runtime.sandbox.warnings}><%= warning %></li>
+            </ul>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
               <h2 class="section-title">Projects</h2>
               <p class="section-copy">Linear project grouping for the active Harmony runtime.</p>
             </div>
@@ -440,6 +478,13 @@ defmodule SymphonyElixirWeb.DashboardLive do
   end
 
   defp project_label(_entry), do: "n/a"
+
+  defp bool_label(true), do: "yes"
+  defp bool_label(false), do: "no"
+  defp bool_label(_value), do: "unknown"
+
+  defp value_label(nil), do: "n/a"
+  defp value_label(value), do: to_string(value)
 
   defp format_runtime_seconds(seconds) when is_number(seconds) do
     whole_seconds = max(trunc(seconds), 0)

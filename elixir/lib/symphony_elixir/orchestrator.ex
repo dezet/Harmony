@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Orchestrator do
   import Bitwise, only: [<<<: 2]
 
   alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
+  alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixPrompt, ReviewHandoff, ReviewPrompt}
   alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubReviewRequestSource, LinearIssueSource}
@@ -1838,6 +1839,7 @@ defmodule SymphonyElixir.Orchestrator do
        blocked: blocked,
        codex_totals: state.codex_totals,
        rate_limits: Map.get(state, :codex_rate_limits),
+       runtime: runtime_snapshot(),
        polling: %{
          checking?: state.poll_check_in_progress == true,
          next_poll_in_ms: next_poll_in_ms(state.next_poll_due_at_ms, now_ms),
@@ -1859,6 +1861,18 @@ defmodule SymphonyElixir.Orchestrator do
        requested_at: DateTime.utc_now(),
        operations: ["poll", "reconcile"]
      }, state}
+  end
+
+  defp runtime_snapshot do
+    settings = Config.settings!()
+
+    %{
+      sandbox:
+        Sandbox.report(
+          thread_sandbox: settings.codex.thread_sandbox,
+          turn_sandbox_policy: Config.codex_turn_sandbox_policy()
+        )
+    }
   end
 
   defp blocked_issue_state(%{issue: %Issue{state: state}}), do: state
