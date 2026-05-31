@@ -1,0 +1,77 @@
+defmodule SymphonyElixir.AgentBackendTest do
+  use SymphonyElixir.TestSupport
+
+  alias SymphonyElixir.{AgentBackend, AgentRunner}
+  alias SymphonyElixir.Linear.Issue
+
+  defmodule FakeBackend do
+    @behaviour AgentBackend
+
+    @impl true
+    def run(workspace, prompt, issue, opts) do
+      send(Keyword.fetch!(opts, :test_pid), {:backend_run, workspace, prompt, issue})
+      {:ok, %{session_id: "fake-session"}}
+    end
+
+    @impl true
+    def capability_check(_opts), do: :ok
+  end
+
+  test "codex backend delegates to app server run" do
+    parent = self()
+
+    run = fn workspace, prompt, issue, opts ->
+      send(parent, {:codex_run, workspace, prompt, issue, opts})
+      {:ok, %{session_id: "thread-turn"}}
+    end
+
+    backend = SymphonyElixir.AgentBackends.Codex
+    issue = %Issue{id: "issue-1", identifier: "COD-5", title: "Smoke"}
+
+    assert {:ok, %{session_id: "thread-turn"}} =
+             backend.run("/tmp/workspace", "prompt", issue, run: run, metadata: "kept")
+
+    assert_received {:codex_run, "/tmp/workspace", "prompt", ^issue, opts}
+    assert Keyword.fetch!(opts, :metadata) == "kept"
+    refute Keyword.has_key?(opts, :run)
+  end
+
+  test "resolves configured backend names" do
+    assert {:ok, SymphonyElixir.AgentBackends.Codex} = AgentBackend.resolve("codex")
+    assert {:ok, SymphonyElixir.AgentBackends.ClaudeCode} = AgentBackend.resolve("claude_code")
+    assert {:ok, SymphonyElixir.AgentBackends.Pi} = AgentBackend.resolve("pi")
+    assert {:error, {:unsupported_agent_backend, "unknown"}} = AgentBackend.resolve("unknown")
+  end
+
+  test "agent runner can execute through a configured backend" do
+    workspace_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-agent-backend-runner-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(), workspace_root: workspace_root)
+
+      issue = %Issue{
+        identifier: "MT-BACKEND",
+        title: "Run through backend",
+        description: "Exercise AgentBackend routing",
+        state: "In Progress"
+      }
+
+      assert :ok =
+               AgentRunner.run(issue, nil,
+                 agent_backend: FakeBackend,
+                 prompt: "backend prompt for MT-BACKEND",
+                 test_pid: self()
+               )
+
+      assert_receive {:backend_run, workspace, prompt, ^issue}
+      assert workspace == Path.join(workspace_root, "MT-BACKEND")
+      assert prompt == "backend prompt for MT-BACKEND"
+    after
+      File.rm_rf(workspace_root)
+    end
+  end
+end
