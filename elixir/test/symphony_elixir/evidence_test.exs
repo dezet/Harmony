@@ -98,4 +98,37 @@ defmodule SymphonyElixir.EvidenceTest do
       File.rm_rf(workspace)
     end
   end
+
+  test "handoff blocks when browser evidence is required and missing" do
+    run = %SymphonyElixir.WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
+
+    assert {:error, {:missing_required_evidence, ["browser"]}} =
+             SymphonyElixir.RuntimePolicy.Handoff.verify_required_evidence(run, [])
+  end
+
+  test "handoff passes when browser evidence artifact exists" do
+    run = %SymphonyElixir.WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
+    artifacts = [%{kind: "screenshot", path: "/tmp/screen.png"}]
+
+    assert :ok = SymphonyElixir.RuntimePolicy.Handoff.verify_required_evidence(run, artifacts)
+  end
+
+  test "move to human review does not update issue when required evidence is missing" do
+    parent = self()
+
+    tracker = fn issue_id, state_name ->
+      send(parent, {:state_update, issue_id, state_name})
+      :ok
+    end
+
+    assert {:error, {:missing_required_evidence, ["browser"]}} =
+             SymphonyElixir.RuntimePolicy.Handoff.move_to_human_review(
+               %{linear_issue_id: "issue-1", required_evidence: ["browser"]},
+               "Human Review",
+               artifacts: [],
+               tracker_update: tracker
+             )
+
+    refute_received {:state_update, _issue_id, _state_name}
+  end
 end
