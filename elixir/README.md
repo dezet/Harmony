@@ -80,6 +80,22 @@ Pass a custom workflow file path to `./bin/symphony` when starting the service:
 
 If no path is passed, Symphony defaults to `./WORKFLOW.md`.
 
+Harmony now uses Postgres for durable runtime state. Configure it with:
+
+- `HARMONY_DATABASE_NAME` defaults to `harmony_dev` and `harmony_test` under `MIX_ENV=test`
+- `HARMONY_DATABASE_USER` defaults to `postgres`
+- `HARMONY_DATABASE_PASSWORD` defaults to `postgres`
+- `HARMONY_DATABASE_HOST` defaults to `localhost`
+- `HARMONY_DATABASE_PORT` defaults to `5432`
+- `HARMONY_DATABASE_POOL_SIZE` defaults to `10`
+
+Create and migrate the database before running DB-backed workflows:
+
+```bash
+mix ecto.create
+mix ecto.migrate
+```
+
 Optional flags:
 
 - `--logs-root` tells Symphony to write logs under a different directory (default: `./log`)
@@ -87,6 +103,26 @@ Optional flags:
 
 The `WORKFLOW.md` file uses YAML front matter for configuration, plus a Markdown body used as the
 Codex session prompt.
+
+Project-specific production settings live in `projects/<slug>.yaml` and are synchronized into
+Postgres on application startup. `WORKFLOW.md` remains the global runtime contract and prompt.
+
+Minimal project config:
+
+```yaml
+slug: portal
+linear:
+  project_slug: portal-6d90492ea04f
+  team_key: COD
+  human_review_state: Human Review
+github:
+  owner: dezet
+  repo: portal
+  base_branch: develop
+review:
+  trigger: "@hreview"
+  template_version: 1
+```
 
 Minimal example:
 

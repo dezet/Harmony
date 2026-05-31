@@ -6,6 +6,7 @@ defmodule SymphonyElixir.StorageTest do
   end
 
   describe "durable records" do
+    @tag :db
     setup :checkout_repo
 
     test "creates a project and stores work run history" do

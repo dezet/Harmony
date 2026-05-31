@@ -18,6 +18,7 @@ defmodule SymphonyElixir.Application do
   """
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
@@ -25,6 +26,7 @@ defmodule SymphonyElixir.Application do
 
     children = [
       SymphonyElixir.Repo,
+      {Task, fn -> sync_project_configs() end},
       {Phoenix.PubSub, name: SymphonyElixir.PubSub},
       {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
       SymphonyElixir.WorkflowStore,
@@ -44,5 +46,12 @@ defmodule SymphonyElixir.Application do
   def stop(_state) do
     SymphonyElixir.StatusDashboard.render_offline_status()
     :ok
+  end
+
+  defp sync_project_configs do
+    case SymphonyElixir.ProjectConfig.Sync.sync_default_dir() do
+      :ok -> :ok
+      {:error, reason} -> Logger.error("Project config sync failed: #{inspect(reason)}")
+    end
   end
 end
