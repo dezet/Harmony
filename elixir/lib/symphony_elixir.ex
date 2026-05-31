@@ -19,6 +19,7 @@ defmodule SymphonyElixir.Application do
 
   use Application
   require Logger
+  alias SymphonyElixir.ProjectConfig.Sync
 
   @impl true
   def start(_type, _args) do
@@ -49,7 +50,7 @@ defmodule SymphonyElixir.Application do
   end
 
   defp sync_project_configs do
-    case SymphonyElixir.ProjectConfig.Sync.sync_default_dir() do
+    case Sync.sync_default_dir() do
       :ok -> :ok
       {:error, reason} -> Logger.error("Project config sync failed: #{inspect(reason)}")
     end

@@ -1,6 +1,9 @@
 defmodule SymphonyElixir.VideoEvidenceTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Evidence.{Collector, Manifest}
+  alias SymphonyElixir.Storage.Artifact
+
   test "collector persists video artifacts declared in evidence manifest" do
     workspace =
       Path.join(
@@ -12,7 +15,7 @@ defmodule SymphonyElixir.VideoEvidenceTest do
 
     persist_artifact = fn attrs ->
       send(parent, {:artifact_attrs, attrs})
-      {:ok, struct(SymphonyElixir.Storage.Artifact, attrs)}
+      {:ok, struct(Artifact, attrs)}
     end
 
     try do
@@ -25,8 +28,8 @@ defmodule SymphonyElixir.VideoEvidenceTest do
         ~s({"frontend_changed":true,"artifacts":[{"kind":"video","path":".harmony/artifacts/walkthrough.webm","description":"Feature walkthrough"}]})
       )
 
-      assert {:ok, [%SymphonyElixir.Storage.Artifact{kind: "video"}]} =
-               SymphonyElixir.Evidence.Collector.collect("project-1", "run-1", workspace, persist_artifact: persist_artifact)
+      assert {:ok, [%Artifact{kind: "video"}]} =
+               Collector.collect("project-1", "run-1", workspace, persist_artifact: persist_artifact)
 
       assert_received {:artifact_attrs,
                        %{
@@ -58,7 +61,7 @@ defmodule SymphonyElixir.VideoEvidenceTest do
       )
 
       assert {:error, {:missing_video_evidence_description, ".harmony/artifacts/walkthrough.webm"}} =
-               SymphonyElixir.Evidence.Manifest.read(workspace)
+               Manifest.read(workspace)
     after
       File.rm_rf(workspace)
     end

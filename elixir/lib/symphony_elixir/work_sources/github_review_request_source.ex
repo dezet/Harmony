@@ -24,23 +24,29 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
       |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        case list_issue_comments.(owner, repo, pr.number, []) do
-          {:ok, comments} ->
-            candidates =
-              comments
-              |> Enum.filter(&trigger_comment?(&1, project))
-              |> Enum.reject(fn comment ->
-                dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, comment, project))
-              end)
-              |> Enum.map(&build_run(project, owner, repo, pr, &1))
-
-            {:cont, {:ok, runs ++ candidates}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
+        append_review_candidates(project, owner, repo, list_issue_comments, dedupe_seen?, pr, runs)
       end)
     end
+  end
+
+  defp append_review_candidates(project, owner, repo, list_issue_comments, dedupe_seen?, pr, runs) do
+    case list_issue_comments.(owner, repo, pr.number, []) do
+      {:ok, comments} ->
+        candidates = review_candidates(project, owner, repo, pr, comments, dedupe_seen?)
+        {:cont, {:ok, runs ++ candidates}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
+  end
+
+  defp review_candidates(project, owner, repo, pr, comments, dedupe_seen?) do
+    comments
+    |> Enum.filter(&trigger_comment?(&1, project))
+    |> Enum.reject(fn comment ->
+      dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, comment, project))
+    end)
+    |> Enum.map(&build_run(project, owner, repo, pr, &1))
   end
 
   defp build_run(project, owner, repo, pr, comment) do

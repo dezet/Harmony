@@ -1,6 +1,7 @@
 defmodule SymphonyElixir.InlineReviewCommentsTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Github.Client
   alias SymphonyElixir.Workflows.InlineReviewComments
 
   @diff """
@@ -55,7 +56,7 @@ defmodule SymphonyElixir.InlineReviewCommentsTest do
     comments = [%{path: "lib/example.ex", line: 11, side: "RIGHT", body: "Inline finding."}]
 
     assert :ok =
-             SymphonyElixir.Github.Client.create_pull_request_review(
+             Client.create_pull_request_review(
                "dezet",
                "portal",
                7,

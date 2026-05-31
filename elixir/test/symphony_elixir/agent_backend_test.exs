@@ -2,6 +2,7 @@ defmodule SymphonyElixir.AgentBackendTest do
   use SymphonyElixir.TestSupport
 
   alias SymphonyElixir.{AgentBackend, AgentRunner}
+  alias SymphonyElixir.AgentBackends.{ClaudeCode, Codex, Pi}
   alias SymphonyElixir.Linear.Issue
 
   defmodule FakeBackend do
@@ -25,7 +26,7 @@ defmodule SymphonyElixir.AgentBackendTest do
       {:ok, %{session_id: "thread-turn"}}
     end
 
-    backend = SymphonyElixir.AgentBackends.Codex
+    backend = Codex
     issue = %Issue{id: "issue-1", identifier: "COD-5", title: "Smoke"}
 
     assert {:ok, %{session_id: "thread-turn"}} =
@@ -37,9 +38,9 @@ defmodule SymphonyElixir.AgentBackendTest do
   end
 
   test "resolves configured backend names" do
-    assert {:ok, SymphonyElixir.AgentBackends.Codex} = AgentBackend.resolve("codex")
-    assert {:ok, SymphonyElixir.AgentBackends.ClaudeCode} = AgentBackend.resolve("claude_code")
-    assert {:ok, SymphonyElixir.AgentBackends.Pi} = AgentBackend.resolve("pi")
+    assert {:ok, Codex} = AgentBackend.resolve("codex")
+    assert {:ok, ClaudeCode} = AgentBackend.resolve("claude_code")
+    assert {:ok, Pi} = AgentBackend.resolve("pi")
     assert {:error, {:unsupported_agent_backend, "unknown"}} = AgentBackend.resolve("unknown")
   end
 
@@ -79,41 +80,41 @@ defmodule SymphonyElixir.AgentBackendTest do
     find_executable = fn "claude" -> nil end
 
     assert {:error, :claude_code_not_found} =
-             SymphonyElixir.AgentBackends.ClaudeCode.capability_check(find_executable: find_executable)
+             ClaudeCode.capability_check(find_executable: find_executable)
   end
 
   test "claude code backend reports available executable" do
     find_executable = fn "claude" -> "/usr/local/bin/claude" end
 
     assert :ok =
-             SymphonyElixir.AgentBackends.ClaudeCode.capability_check(find_executable: find_executable)
+             ClaudeCode.capability_check(find_executable: find_executable)
   end
 
   test "claude code backend does not execute work before invocation contract is implemented" do
     issue = %Issue{id: "issue-claude", identifier: "COD-CLAUDE", title: "Claude spike"}
 
     assert {:error, :claude_code_execution_not_implemented} =
-             SymphonyElixir.AgentBackends.ClaudeCode.run("/tmp/workspace", "prompt", issue, [])
+             ClaudeCode.run("/tmp/workspace", "prompt", issue, [])
   end
 
   test "pi backend reports missing executable" do
     find_executable = fn "pi" -> nil end
 
     assert {:error, :pi_not_found} =
-             SymphonyElixir.AgentBackends.Pi.capability_check(find_executable: find_executable)
+             Pi.capability_check(find_executable: find_executable)
   end
 
   test "pi backend reports available executable" do
     find_executable = fn "pi" -> "/usr/local/bin/pi" end
 
     assert :ok =
-             SymphonyElixir.AgentBackends.Pi.capability_check(find_executable: find_executable)
+             Pi.capability_check(find_executable: find_executable)
   end
 
   test "pi backend does not execute work before invocation contract is implemented" do
     issue = %Issue{id: "issue-pi", identifier: "COD-PI", title: "Pi spike"}
 
     assert {:error, :pi_execution_not_implemented} =
-             SymphonyElixir.AgentBackends.Pi.run("/tmp/workspace", "prompt", issue, [])
+             Pi.run("/tmp/workspace", "prompt", issue, [])
   end
 end

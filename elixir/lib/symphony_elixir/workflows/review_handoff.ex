@@ -11,16 +11,15 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
   def publish(%WorkRun{} = run, body, opts \\ []) when is_binary(body) do
     create_review = Keyword.get(opts, :create_review, &Github.Client.create_pull_request_review/5)
 
-    with :ok <-
-           create_review.(
-             run.github_owner,
-             run.github_repo,
-             run.github_pr_number,
-             body_with_processed_marker(body, run),
-             event: "COMMENT"
-           ),
-         :ok <- mark_dedupe_processed(run, opts) do
-      :ok
+    case create_review.(
+           run.github_owner,
+           run.github_repo,
+           run.github_pr_number,
+           body_with_processed_marker(body, run),
+           event: "COMMENT"
+         ) do
+      :ok -> mark_dedupe_processed(run, opts)
+      {:error, reason} -> {:error, reason}
     end
   end
 

@@ -1,6 +1,9 @@
 defmodule SymphonyElixir.OrchestratorStatusTest do
   use SymphonyElixir.TestSupport
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SymphonyElixir.{Repo, Storage, WorkRun}
+
   test "snapshot returns :timeout when snapshot server is unresponsive" do
     server_name = Module.concat(__MODULE__, :UnresponsiveSnapshotServer)
     parent = self()
@@ -1090,7 +1093,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     parent = self()
     dedupe_key = "github-ci-fix:dezet/portal:7:abc123:123"
 
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       project_slug: "portal",
       type: "ci_fix",
       status: "queued",
@@ -1150,7 +1153,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     parent = self()
     dedupe_key = "github-review:dezet/portal:7:99:abc123:1"
 
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       project_slug: "portal",
       type: "code_review",
       status: "queued",
@@ -1237,7 +1240,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     )
 
     {:ok, portal} =
-      SymphonyElixir.Storage.upsert_project(%{
+      Storage.upsert_project(%{
         slug: "portal",
         linear_project_slug: "portal-linear",
         linear_team_key: "COD",
@@ -1250,7 +1253,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       })
 
     {:ok, admin} =
-      SymphonyElixir.Storage.upsert_project(%{
+      Storage.upsert_project(%{
         slug: "admin",
         linear_project_slug: "admin-linear",
         linear_team_key: "ADM",
@@ -1280,7 +1283,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       end
 
     Application.put_env(:symphony_elixir, :memory_tracker_issues, Map.values(issues_by_slug))
-    Application.put_env(:symphony_elixir, :project_fetcher, &SymphonyElixir.Storage.list_projects/0)
+    Application.put_env(:symphony_elixir, :project_fetcher, &Storage.list_projects/0)
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _project -> {:ok, []} end)
 
@@ -1289,7 +1292,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
       {:ok,
        [
-         SymphonyElixir.WorkRun.from_linear_issue(issue,
+         WorkRun.from_linear_issue(issue,
            project_id: project.id,
            project_slug: project.slug,
            base_branch: project.github_base_branch
@@ -1309,7 +1312,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
     orchestrator_name = Module.concat(__MODULE__, :MultiProjectSchedulingOrchestrator)
     {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
-    Ecto.Adapters.SQL.Sandbox.allow(SymphonyElixir.Repo, self(), pid)
+    Sandbox.allow(Repo, self(), pid)
 
     on_exit(fn ->
       if Process.alive?(pid) do
@@ -1325,7 +1328,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     state = :sys.get_state(pid)
     assert map_size(state.running) == 1
 
-    queued_runs = SymphonyElixir.Storage.list_queued_runs()
+    queued_runs = Storage.list_queued_runs()
     assert Enum.map(queued_runs, & &1.project_id) |> Enum.sort() == Enum.sort([admin.id, portal.id])
     assert Enum.map(queued_runs, & &1.dedupe_key) |> Enum.sort() == ["linear:issue-admin", "linear:issue-portal"]
 
@@ -1341,7 +1344,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     issue_id = "issue-input-required-durable"
     orchestrator_name = Module.concat(__MODULE__, :InputRequiredDurableBlockOrchestrator)
     {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
-    Ecto.Adapters.SQL.Sandbox.allow(SymphonyElixir.Repo, self(), pid)
+    Sandbox.allow(Repo, self(), pid)
 
     on_exit(fn ->
       if Process.alive?(pid) do
@@ -1379,11 +1382,11 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     Process.sleep(50)
 
     assert [
-             %SymphonyElixir.Storage.Blocker{
+             %Storage.Blocker{
                target_id: ^issue_id,
                reason: "codex turn requires operator input"
              }
-           ] = SymphonyElixir.Repo.all(SymphonyElixir.Storage.Blocker)
+           ] = Repo.all(Storage.Blocker)
   end
 
   test "orchestrator blocks normal worker exits after input required completion" do

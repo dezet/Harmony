@@ -17,23 +17,29 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
       |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        case list_workflow_runs.(owner, repo, head_sha: pr.head_sha) do
-          {:ok, workflow_runs} ->
-            candidates =
-              workflow_runs
-              |> Enum.filter(&failed_actions_run?/1)
-              |> Enum.reject(fn workflow_run ->
-                dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, workflow_run))
-              end)
-              |> Enum.map(&build_run(project, owner, repo, pr, &1))
-
-            {:cont, {:ok, runs ++ candidates}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
+        append_failed_ci_candidates(project, owner, repo, list_workflow_runs, dedupe_seen?, pr, runs)
       end)
     end
+  end
+
+  defp append_failed_ci_candidates(project, owner, repo, list_workflow_runs, dedupe_seen?, pr, runs) do
+    case list_workflow_runs.(owner, repo, head_sha: pr.head_sha) do
+      {:ok, workflow_runs} ->
+        candidates = failed_ci_candidates(project, owner, repo, pr, workflow_runs, dedupe_seen?)
+        {:cont, {:ok, runs ++ candidates}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
+  end
+
+  defp failed_ci_candidates(project, owner, repo, pr, workflow_runs, dedupe_seen?) do
+    workflow_runs
+    |> Enum.filter(&failed_actions_run?/1)
+    |> Enum.reject(fn workflow_run ->
+      dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, workflow_run))
+    end)
+    |> Enum.map(&build_run(project, owner, repo, pr, &1))
   end
 
   defp build_run(project, owner, repo, pr, workflow_run) do

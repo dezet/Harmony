@@ -1,6 +1,8 @@
 defmodule SymphonyElixir.ProjectConfigTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.ProjectConfig.{Loader, Sync}
+
   setup do
     root = Path.join(System.tmp_dir!(), "harmony-project-config-#{System.unique_integer([:positive])}")
     projects_dir = Path.join(root, "projects")
@@ -15,7 +17,7 @@ defmodule SymphonyElixir.ProjectConfigTest do
     project_file = Path.join(projects_dir, "portal.yaml")
     write_project_config!(project_file)
 
-    assert {:ok, [config]} = SymphonyElixir.ProjectConfig.Loader.load_dir(projects_dir)
+    assert {:ok, [config]} = Loader.load_dir(projects_dir)
     assert config.slug == "portal"
     assert config.github.owner == "dezet"
   end
@@ -27,7 +29,7 @@ defmodule SymphonyElixir.ProjectConfigTest do
 
     :ok = checkout_repo(%{})
 
-    assert {:ok, [project]} = SymphonyElixir.ProjectConfig.Sync.sync_dir(projects_dir)
+    assert {:ok, [project]} = Sync.sync_dir(projects_dir)
     assert project.slug == "portal"
     assert project.github_base_branch == "develop"
   end
@@ -48,7 +50,7 @@ defmodule SymphonyElixir.ProjectConfigTest do
 
     :ok = checkout_repo(%{})
 
-    assert {:ok, projects} = SymphonyElixir.ProjectConfig.Sync.sync_dir(projects_dir)
+    assert {:ok, projects} = Sync.sync_dir(projects_dir)
     assert Enum.map(projects, & &1.slug) == ["admin", "portal"]
     assert Enum.map(projects, & &1.linear_project_slug) == ["admin-linear", "portal-linear"]
   end

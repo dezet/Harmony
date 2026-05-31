@@ -1,7 +1,8 @@
 defmodule SymphonyElixir.RuntimePolicyTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.RuntimePolicy.RepoPolicy
+  alias SymphonyElixir.RuntimePolicy.{Blocker, Handoff, RepoPolicy}
+  alias SymphonyElixir.Storage
 
   test "rejects push to base branch" do
     assert {:error, :base_branch_push_forbidden} =
@@ -45,7 +46,7 @@ defmodule SymphonyElixir.RuntimePolicyTest do
     end
 
     assert :ok =
-             SymphonyElixir.RuntimePolicy.Handoff.move_to_human_review(
+             Handoff.move_to_human_review(
                %{linear_issue_id: "issue-1"},
                "Human Review",
                tracker_update: tracker
@@ -59,7 +60,7 @@ defmodule SymphonyElixir.RuntimePolicyTest do
     :ok = checkout_repo(%{})
 
     {:ok, project} =
-      SymphonyElixir.Storage.upsert_project(%{
+      Storage.upsert_project(%{
         slug: "portal",
         github_owner: "dezet",
         github_repo: "portal",
@@ -78,8 +79,8 @@ defmodule SymphonyElixir.RuntimePolicyTest do
       metadata: %{"identifier" => "COD-5"}
     }
 
-    assert {:ok, first} = SymphonyElixir.RuntimePolicy.Blocker.record(attrs)
-    assert {:ok, second} = SymphonyElixir.RuntimePolicy.Blocker.record(attrs)
+    assert {:ok, first} = Blocker.record(attrs)
+    assert {:ok, second} = Blocker.record(attrs)
     assert first.id == second.id
   end
 end

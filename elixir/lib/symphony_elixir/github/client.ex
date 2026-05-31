@@ -54,9 +54,9 @@ defmodule SymphonyElixir.Github.Client do
     token = github_token(opts)
     url = "#{@api_root}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
 
-    with {:ok, response} <- request_fun.(method: :post, url: url, json: %{body: body}, headers: headers(token)),
-         :ok <- expect_status(response, 201) do
-      :ok
+    case request_fun.(method: :post, url: url, json: %{body: body}, headers: headers(token)) do
+      {:ok, response} -> expect_status(response, 201)
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -71,10 +71,9 @@ defmodule SymphonyElixir.Github.Client do
     url = "#{@api_root}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews"
     payload = review_payload(body, event, comments)
 
-    with {:ok, response} <-
-           request_fun.(method: :post, url: url, json: payload, headers: headers(token)),
-         :ok <- expect_status(response, [200, 201]) do
-      :ok
+    case request_fun.(method: :post, url: url, json: payload, headers: headers(token)) do
+      {:ok, response} -> expect_status(response, [200, 201])
+      {:error, reason} -> {:error, reason}
     end
   end
 

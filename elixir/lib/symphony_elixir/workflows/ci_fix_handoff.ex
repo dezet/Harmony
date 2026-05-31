@@ -19,9 +19,12 @@ defmodule SymphonyElixir.Workflows.CiFixHandoff do
     human_review_state = Keyword.get(opts, :human_review_state, @default_human_review_state)
 
     with :ok <- github_comment.(run.github_owner, run.github_repo, run.github_pr_number, body, []),
-         :ok <- maybe_linear_comment(run, body, linear_comment),
-         :ok <- RuntimePolicy.Handoff.move_to_human_review(%{linear_issue_id: run.linear_issue_id}, human_review_state, tracker_update: linear_state) do
-      :ok
+         :ok <- maybe_linear_comment(run, body, linear_comment) do
+      RuntimePolicy.Handoff.move_to_human_review(
+        %{linear_issue_id: run.linear_issue_id},
+        human_review_state,
+        tracker_update: linear_state
+      )
     end
   end
 

@@ -8,8 +8,10 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     list_pull_requests = Keyword.get(opts, :list_pull_requests, &Github.Client.list_open_pull_requests/3)
+    owner = project_value(project, :github_owner)
+    repo = project_value(project, :github_repo)
 
-    with {:ok, prs} <- list_pull_requests.(project_value(project, :github_owner), project_value(project, :github_repo), []) do
+    with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       runs =
         Enum.map(prs, fn pr ->
           link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(project_value(project, :linear_team_key)))

@@ -1,8 +1,11 @@
 defmodule SymphonyElixir.ReviewPromptTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Workflows.ReviewPrompt
+  alias SymphonyElixir.WorkRun
+
   test "builds aggregate review prompt" do
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       type: "code_review",
       github_owner: "dezet",
       github_repo: "portal",
@@ -14,7 +17,7 @@ defmodule SymphonyElixir.ReviewPromptTest do
       }
     }
 
-    prompt = SymphonyElixir.Workflows.ReviewPrompt.build(run)
+    prompt = ReviewPrompt.build(run)
 
     assert prompt =~ "Perform a comprehensive code review"
     assert prompt =~ "Review correctness, tests, and maintainability."

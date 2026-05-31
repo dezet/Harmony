@@ -3,6 +3,7 @@ defmodule SymphonyElixir.WorkRunTest do
 
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.WorkRun
+  alias SymphonyElixir.WorkSources.LinearIssueSource
 
   test "builds implementation work run from linear issue" do
     issue = %Issue{
@@ -32,7 +33,7 @@ defmodule SymphonyElixir.WorkRunTest do
     fetcher = fn -> {:ok, [issue]} end
 
     assert {:ok, [run]} =
-             SymphonyElixir.WorkSources.LinearIssueSource.fetch_candidates(
+             LinearIssueSource.fetch_candidates(
                issue_fetcher: fetcher,
                project_slug: "portal",
                base_branch: "develop"

@@ -12,16 +12,23 @@ defmodule SymphonyElixir.Evidence.Collector do
     persist_artifact = Keyword.get(opts, :persist_artifact, &Storage.create_artifact/1)
 
     with {:ok, manifest} <- Manifest.read(workspace) do
-      manifest.artifacts
-      |> Enum.reduce_while({:ok, []}, fn artifact, {:ok, acc} ->
-        attrs = artifact_attrs(project_id, work_run_id, manifest, artifact)
-
-        case persist_artifact.(attrs) do
-          {:ok, record} -> {:cont, {:ok, acc ++ [record]}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+      persist_manifest_artifacts(manifest, project_id, work_run_id, persist_artifact)
     end
+  end
+
+  defp persist_manifest_artifacts(manifest, project_id, work_run_id, persist_artifact) do
+    Enum.reduce_while(manifest.artifacts, {:ok, []}, fn artifact, {:ok, acc} ->
+      case persist_manifest_artifact(manifest, project_id, work_run_id, persist_artifact, artifact) do
+        {:ok, record} -> {:cont, {:ok, acc ++ [record]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp persist_manifest_artifact(manifest, project_id, work_run_id, persist_artifact, artifact) do
+    project_id
+    |> artifact_attrs(work_run_id, manifest, artifact)
+    |> persist_artifact.()
   end
 
   defp artifact_attrs(project_id, work_run_id, manifest, artifact) do

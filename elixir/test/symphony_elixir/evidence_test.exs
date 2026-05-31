@@ -1,7 +1,10 @@
 defmodule SymphonyElixir.EvidenceTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.Evidence.Policy
+  alias SymphonyElixir.Evidence.{Capability, Collector, Manifest, Policy}
+  alias SymphonyElixir.RuntimePolicy.Handoff
+  alias SymphonyElixir.Storage.Artifact
+  alias SymphonyElixir.WorkRun
 
   test "requires browser evidence for frontend paths" do
     changed = ["assets/js/app.js", "lib/my_app_web/live/page_live.ex"]
@@ -36,7 +39,7 @@ defmodule SymphonyElixir.EvidenceTest do
         "artifacts": [{"kind": "screenshot", "path": ".harmony/artifacts/frontend-check.png", "description": "screen"}]
       }))
 
-      assert {:ok, manifest} = SymphonyElixir.Evidence.Manifest.read(workspace)
+      assert {:ok, manifest} = Manifest.read(workspace)
       assert manifest.frontend_changed == true
       assert [%{kind: "screenshot", path: path, description: "screen"}] = manifest.artifacts
       assert path == Path.join(workspace, ".harmony/artifacts/frontend-check.png")
@@ -49,14 +52,14 @@ defmodule SymphonyElixir.EvidenceTest do
     probe = fn "playwright-mcp" -> {:ok, "ok"} end
 
     assert {:ok, %{playwright_mcp: true}} =
-             SymphonyElixir.Evidence.Capability.check(probe_command: probe)
+             Capability.check(probe_command: probe)
   end
 
   test "reports missing browser tooling as unavailable" do
     probe = fn "playwright-mcp" -> {:error, :enoent} end
 
     assert {:error, {:browser_evidence_unavailable, [:playwright_mcp]}} =
-             SymphonyElixir.Evidence.Capability.check(probe_command: probe)
+             Capability.check(probe_command: probe)
   end
 
   test "collector persists manifest artifacts" do
@@ -70,7 +73,7 @@ defmodule SymphonyElixir.EvidenceTest do
 
     persist_artifact = fn attrs ->
       send(parent, {:artifact_attrs, attrs})
-      {:ok, struct(SymphonyElixir.Storage.Artifact, attrs)}
+      {:ok, struct(Artifact, attrs)}
     end
 
     try do
@@ -83,8 +86,8 @@ defmodule SymphonyElixir.EvidenceTest do
         ~s({"frontend_changed":true,"scenario":"Open changed screen","artifacts":[{"kind":"report","path":".harmony/artifacts/frontend-check.txt","description":"ok"}]})
       )
 
-      assert {:ok, [%SymphonyElixir.Storage.Artifact{kind: "report"}]} =
-               SymphonyElixir.Evidence.Collector.collect("project-1", nil, workspace, persist_artifact: persist_artifact)
+      assert {:ok, [%Artifact{kind: "report"}]} =
+               Collector.collect("project-1", nil, workspace, persist_artifact: persist_artifact)
 
       assert_received {:artifact_attrs,
                        %{
@@ -100,17 +103,17 @@ defmodule SymphonyElixir.EvidenceTest do
   end
 
   test "handoff blocks when browser evidence is required and missing" do
-    run = %SymphonyElixir.WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
+    run = %WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
 
     assert {:error, {:missing_required_evidence, ["browser"]}} =
-             SymphonyElixir.RuntimePolicy.Handoff.verify_required_evidence(run, [])
+             Handoff.verify_required_evidence(run, [])
   end
 
   test "handoff passes when browser evidence artifact exists" do
-    run = %SymphonyElixir.WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
+    run = %WorkRun{id: "run-1", required_evidence: ["browser"], payload: %{}}
     artifacts = [%{kind: "screenshot", path: "/tmp/screen.png"}]
 
-    assert :ok = SymphonyElixir.RuntimePolicy.Handoff.verify_required_evidence(run, artifacts)
+    assert :ok = Handoff.verify_required_evidence(run, artifacts)
   end
 
   test "move to human review does not update issue when required evidence is missing" do
@@ -122,7 +125,7 @@ defmodule SymphonyElixir.EvidenceTest do
     end
 
     assert {:error, {:missing_required_evidence, ["browser"]}} =
-             SymphonyElixir.RuntimePolicy.Handoff.move_to_human_review(
+             Handoff.move_to_human_review(
                %{linear_issue_id: "issue-1", required_evidence: ["browser"]},
                "Human Review",
                artifacts: [],

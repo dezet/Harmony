@@ -10,7 +10,7 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
   alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
-  alias SymphonyElixir.Workflows.{CiFixPrompt, ReviewHandoff, ReviewPrompt}
+  alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
   alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubReviewRequestSource, LinearIssueSource}
 
   @continuation_retry_delay_ms 1_000
@@ -272,23 +272,21 @@ defmodule SymphonyElixir.Orchestrator do
   defp finalize_code_review_run(state, issue_id, running_entry, session_id) do
     body = running_entry |> Map.get(:review_body, "") |> to_string() |> String.trim()
 
-    cond do
-      body == "" ->
-        error = "code review run completed without review body"
-        Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
-        block_issue_from_entry(state, issue_id, running_entry, error)
+    if body == "" do
+      error = "code review run completed without review body"
+      Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+      block_issue_from_entry(state, issue_id, running_entry, error)
+    else
+      case publish_code_review(Map.fetch!(running_entry, :work_run), body) do
+        :ok ->
+          Logger.info("Published code review for issue_id=#{issue_id} session_id=#{session_id}")
+          complete_issue(state, issue_id)
 
-      true ->
-        case publish_code_review(Map.fetch!(running_entry, :work_run), body) do
-          :ok ->
-            Logger.info("Published code review for issue_id=#{issue_id} session_id=#{session_id}")
-            complete_issue(state, issue_id)
-
-          {:error, reason} ->
-            error = "failed to publish code review: #{inspect(reason)}"
-            Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
-            block_issue_from_entry(state, issue_id, running_entry, error)
-        end
+        {:error, reason} ->
+          error = "failed to publish code review: #{inspect(reason)}"
+          Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+          block_issue_from_entry(state, issue_id, running_entry, error)
+      end
     end
   end
 
@@ -457,7 +455,11 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp github_review_work_source_fetcher do
-    Application.get_env(:symphony_elixir, :github_review_work_source_fetcher, &GithubReviewRequestSource.fetch_candidates/1)
+    Application.get_env(
+      :symphony_elixir,
+      :github_review_work_source_fetcher,
+      &GithubReviewRequestSource.fetch_candidates/1
+    )
   end
 
   defp persist_fetched_work_runs(work_runs) when is_list(work_runs) do
@@ -1017,24 +1019,25 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp do_record_durable_blocker(issue_id, running_entry, error) do
-    with {:ok, project_id} <- durable_blocker_project_id(running_entry) do
-      _ =
-        RuntimePolicy.Blocker.record(%{
-          project_id: project_id,
-          work_run_id: Map.get(running_entry, :storage_work_run_id),
-          target_type: "linear_issue",
-          target_id: issue_id,
-          reason: error,
-          metadata: %{
-            "identifier" => Map.get(running_entry, :identifier, issue_id),
-            "session_id" => running_entry_session_id(running_entry),
-            "worker_host" => Map.get(running_entry, :worker_host),
-            "workspace_path" => Map.get(running_entry, :workspace_path)
-          }
-        })
+    case durable_blocker_project_id(running_entry) do
+      {:ok, project_id} ->
+        _ =
+          RuntimePolicy.Blocker.record(%{
+            project_id: project_id,
+            work_run_id: Map.get(running_entry, :storage_work_run_id),
+            target_type: "linear_issue",
+            target_id: issue_id,
+            reason: error,
+            metadata: %{
+              "identifier" => Map.get(running_entry, :identifier, issue_id),
+              "session_id" => running_entry_session_id(running_entry),
+              "worker_host" => Map.get(running_entry, :worker_host),
+              "workspace_path" => Map.get(running_entry, :workspace_path)
+            }
+          })
 
-      :ok
-    else
+        :ok
+
       {:error, reason} ->
         Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{inspect(reason)}")
         :ok
@@ -1109,7 +1112,7 @@ defmodule SymphonyElixir.Orchestrator do
     key = work_run_key(run)
 
     cond do
-      key in [nil, ""] ->
+      key == "" ->
         state
 
       MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
@@ -1155,7 +1158,7 @@ defmodule SymphonyElixir.Orchestrator do
     key = work_run_key(run)
 
     cond do
-      key in [nil, ""] ->
+      key == "" ->
         state
 
       MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
@@ -1211,7 +1214,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp maybe_report_ci_fix_blocker(run) do
     if Application.get_env(:symphony_elixir, :ci_fix_handoff_enabled, true) do
-      SymphonyElixir.Workflows.CiFixHandoff.blocked(run)
+      CiFixHandoff.blocked(run)
     else
       :ok
     end

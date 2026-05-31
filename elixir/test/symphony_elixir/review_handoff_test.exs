@@ -1,6 +1,9 @@
 defmodule SymphonyElixir.ReviewHandoffTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Workflows.ReviewHandoff
+  alias SymphonyElixir.WorkRun
+
   test "posts formal comment review with processed marker" do
     parent = self()
 
@@ -9,7 +12,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
       :ok
     end
 
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
       github_owner: "dezet",
       github_repo: "portal",
@@ -17,7 +20,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
     }
 
     assert :ok =
-             SymphonyElixir.Workflows.ReviewHandoff.publish(run, "Review body", create_review: create_review)
+             ReviewHandoff.publish(run, "Review body", create_review: create_review)
 
     assert_received {:review, "dezet", "portal", 7, body, opts}
     assert body =~ "Review body"
@@ -38,7 +41,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
       {:ok, attrs}
     end
 
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
       github_owner: "dezet",
       github_repo: "portal",
@@ -47,7 +50,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
     }
 
     assert :ok =
-             SymphonyElixir.Workflows.ReviewHandoff.publish(run, "Review body",
+             ReviewHandoff.publish(run, "Review body",
                create_review: create_review,
                mark_dedupe_processed: mark_dedupe_processed
              )

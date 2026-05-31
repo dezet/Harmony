@@ -42,6 +42,8 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
     ])
     |> validate_required([:project_id, :github_owner, :github_repo, :github_pr_number, :metadata])
     |> assoc_constraint(:project)
-    |> unique_constraint(:github_pr_number, name: :pull_request_links_project_id_github_owner_github_repo_github_pr_number_index)
+    |> unique_constraint(:github_pr_number,
+      name: :pull_request_links_project_id_github_owner_github_repo_github_pr_number_index
+    )
   end
 end

@@ -1,4 +1,7 @@
 defmodule SymphonyElixir.TestSupport do
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SymphonyElixir.Repo
+
   @workflow_prompt "You are an agent for this repository."
 
   defmacro __using__(_opts) do
@@ -90,7 +93,7 @@ defmodule SymphonyElixir.TestSupport do
   def restore_env(key, value), do: System.put_env(key, value)
 
   def checkout_repo(_context) do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(SymphonyElixir.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   def stop_default_http_server do

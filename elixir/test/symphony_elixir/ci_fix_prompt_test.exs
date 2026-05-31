@@ -1,8 +1,11 @@
 defmodule SymphonyElixir.CiFixPromptTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Workflows.CiFixPrompt
+  alias SymphonyElixir.WorkRun
+
   test "builds prompt with PR and failing workflow context" do
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       type: "ci_fix",
       github_owner: "dezet",
       github_repo: "portal",
@@ -16,7 +19,7 @@ defmodule SymphonyElixir.CiFixPromptTest do
       }
     }
 
-    prompt = SymphonyElixir.Workflows.CiFixPrompt.build(run)
+    prompt = CiFixPrompt.build(run)
 
     assert prompt =~ "Fix the failed GitHub Actions run"
     assert prompt =~ "PR #7"

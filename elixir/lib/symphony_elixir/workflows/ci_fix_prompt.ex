@@ -7,8 +7,8 @@ defmodule SymphonyElixir.Workflows.CiFixPrompt do
 
   @spec build(WorkRun.t()) :: String.t()
   def build(%WorkRun{} = run) do
-    workflow_run = Map.get(run.payload, :workflow_run) || Map.get(run.payload, "workflow_run") || %{}
-    log_excerpt = Map.get(run.payload, :log_excerpt) || Map.get(run.payload, "log_excerpt") || "No log excerpt captured."
+    workflow_run = payload_value(run.payload, :workflow_run, %{})
+    log_excerpt = payload_value(run.payload, :log_excerpt, "No log excerpt captured.")
 
     """
     Fix the failed GitHub Actions run for #{run.github_owner}/#{run.github_repo} PR ##{run.github_pr_number}.
@@ -20,9 +20,9 @@ defmodule SymphonyElixir.Workflows.CiFixPrompt do
     - Do not push directly to #{run.github_base_ref}.
 
     Failing workflow:
-    - Name: #{Map.get(workflow_run, :name) || Map.get(workflow_run, "name") || "unknown"}
-    - Run ID: #{Map.get(workflow_run, :id) || Map.get(workflow_run, "id") || "unknown"}
-    - URL: #{Map.get(workflow_run, :url) || Map.get(workflow_run, "url") || "unknown"}
+    - Name: #{payload_value(workflow_run, :name, "unknown")}
+    - Run ID: #{payload_value(workflow_run, :id, "unknown")}
+    - URL: #{payload_value(workflow_run, :url, "unknown")}
 
     Log excerpt:
     #{log_excerpt}
@@ -32,4 +32,10 @@ defmodule SymphonyElixir.Workflows.CiFixPrompt do
     - Leave a concise handoff summary.
     """
   end
+
+  defp payload_value(%{} = payload, key, default) do
+    Map.get(payload, key) || Map.get(payload, to_string(key)) || default
+  end
+
+  defp payload_value(_payload, _key, default), do: default
 end

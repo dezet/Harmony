@@ -1,6 +1,9 @@
 defmodule SymphonyElixir.CiFixHandoffTest do
   use SymphonyElixir.TestSupport
 
+  alias SymphonyElixir.Workflows.CiFixHandoff
+  alias SymphonyElixir.WorkRun
+
   test "comments on PR and linked Linear issue when repair is blocked" do
     parent = self()
 
@@ -19,7 +22,7 @@ defmodule SymphonyElixir.CiFixHandoffTest do
       :ok
     end
 
-    run = %SymphonyElixir.WorkRun{
+    run = %WorkRun{
       github_owner: "dezet",
       github_repo: "portal",
       github_pr_number: 7,
@@ -29,7 +32,7 @@ defmodule SymphonyElixir.CiFixHandoffTest do
     }
 
     assert :ok =
-             SymphonyElixir.Workflows.CiFixHandoff.blocked(run,
+             CiFixHandoff.blocked(run,
                human_review_state: "Human Review",
                github_comment: github_comment,
                linear_comment: linear_comment,
