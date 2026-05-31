@@ -66,6 +66,40 @@ Dashboard/API should bind to:
 http://127.0.0.1:4001/
 ```
 
+## Proof-Of-Life Checklist
+
+A controlled proof-of-life run passes only when all criteria below are true:
+
+- Build succeeds as the `harmony` user:
+
+  ```bash
+  sudo runuser -u harmony -- bash -lc 'cd /var/lib/harmony/Harmony && PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH" make all MIX="mise exec -- mix"'
+  ```
+
+- Codex authentication succeeds as the `harmony` user:
+
+  ```bash
+  sudo runuser -u harmony -- bash -lc 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; export CODEX_HOME="$HOME/.codex"; codex login status'
+  ```
+
+- GitHub authentication succeeds as the `harmony` user:
+
+  ```bash
+  sudo runuser -u harmony -- bash -lc 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; gh auth status'
+  ```
+
+- Dashboard/API responds on `127.0.0.1:4001`:
+
+  ```bash
+  curl -fsS http://127.0.0.1:4001/ >/dev/null
+  ```
+
+- Linear polling sees the configured target project from `/etc/harmony/WORKFLOW.portal.local.md`.
+- A test Linear issue produces a GitHub PR against the configured base branch.
+- The PR remains open and unmerged for human review.
+- Harmony does not direct-push to the configured base branch.
+- The related Linear issue reaches `Human Review`, not `Done`.
+
 ## Systemd Rollout
 
 After stable manual runs:
