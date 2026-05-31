@@ -44,4 +44,18 @@ defmodule SymphonyElixir.EvidenceTest do
       File.rm_rf(workspace)
     end
   end
+
+  test "reports browser evidence capability from configured commands" do
+    probe = fn "playwright-mcp" -> {:ok, "ok"} end
+
+    assert {:ok, %{playwright_mcp: true}} =
+             SymphonyElixir.Evidence.Capability.check(probe_command: probe)
+  end
+
+  test "reports missing browser tooling as unavailable" do
+    probe = fn "playwright-mcp" -> {:error, :enoent} end
+
+    assert {:error, {:browser_evidence_unavailable, [:playwright_mcp]}} =
+             SymphonyElixir.Evidence.Capability.check(probe_command: probe)
+  end
 end
