@@ -52,9 +52,10 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     now_ms = System.monotonic_time(:millisecond)
     config = Config.settings!()
+    initial_poll_delay_ms = Keyword.get(opts, :initial_poll_delay_ms, 0)
 
     state = %State{
       poll_interval_ms: config.polling.interval_ms,
@@ -68,7 +69,7 @@ defmodule SymphonyElixir.Orchestrator do
     }
 
     run_terminal_workspace_cleanup()
-    state = schedule_tick(state, 0)
+    state = schedule_tick(state, initial_poll_delay_ms)
 
     {:ok, state}
   end
