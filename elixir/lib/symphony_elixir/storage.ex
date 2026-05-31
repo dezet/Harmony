@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Storage do
   import Ecto.Query
 
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{Blocker, Project, WorkEvent, WorkRun}
+  alias SymphonyElixir.Storage.{Blocker, Project, PullRequestLink, WorkEvent, WorkRun}
 
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
@@ -59,6 +59,28 @@ defmodule SymphonyElixir.Storage do
     |> Repo.insert(
       on_conflict: {:replace, [:reason, :metadata, :updated_at]},
       conflict_target: {:unsafe_fragment, "(project_id, target_type, target_id, status) WHERE status = 'open'"},
+      returning: true
+    )
+  end
+
+  @spec upsert_pull_request_link(map()) :: {:ok, PullRequestLink.t()} | {:error, Ecto.Changeset.t()}
+  def upsert_pull_request_link(attrs) when is_map(attrs) do
+    attrs = stringify_keys(attrs)
+
+    %PullRequestLink{}
+    |> PullRequestLink.changeset(attrs)
+    |> Repo.insert(
+      on_conflict:
+        {:replace,
+         [
+           :github_head_sha,
+           :linear_issue_id,
+           :linear_identifier,
+           :linear_url,
+           :metadata,
+           :updated_at
+         ]},
+      conflict_target: [:project_id, :github_owner, :github_repo, :github_pr_number],
       returning: true
     )
   end
