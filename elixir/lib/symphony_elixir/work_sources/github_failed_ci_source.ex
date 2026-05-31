@@ -54,7 +54,12 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",
-      payload: %{pull_request: pr, workflow_run: workflow_run, repo_policy: repo_policy}
+      payload: %{
+        project_id: project_value(project, :id),
+        pull_request: pr,
+        workflow_run: workflow_run,
+        repo_policy: repo_policy
+      }
     }
   end
 

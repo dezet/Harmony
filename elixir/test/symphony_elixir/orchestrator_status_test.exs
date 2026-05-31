@@ -1084,6 +1084,66 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
            } = state.blocked[issue_id]
   end
 
+  test "orchestrator dispatches ci fix work runs from configured source" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+    dedupe_key = "github-ci-fix:dezet/portal:7:abc123:123"
+
+    run = %SymphonyElixir.WorkRun{
+      project_slug: "portal",
+      type: "ci_fix",
+      status: "queued",
+      dedupe_key: dedupe_key,
+      github_owner: "dezet",
+      github_repo: "portal",
+      github_pr_number: 7,
+      github_head_sha: "abc123",
+      github_head_ref: "fix-cod-5",
+      github_base_ref: "develop",
+      payload: %{
+        repo_policy: "direct_push_allowed",
+        workflow_run: %{id: 123, name: "CI", url: "https://github.com/dezet/portal/actions/runs/123"},
+        log_excerpt: "cargo test failed"
+      }
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, opts ->
+      send(parent, {:agent_run, self(), issue, opts})
+
+      receive do
+        :stop -> :ok
+      after
+        5_000 -> :ok
+      end
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :CiFixDispatchOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:agent_run, runner_pid, issue, opts}, 1_000
+    assert issue.id == dedupe_key
+    assert issue.identifier == "CI-PR-7"
+    assert opts[:prompt] =~ "Fix the failed GitHub Actions run"
+    assert opts[:prompt] =~ "cargo test failed"
+
+    state = :sys.get_state(pid)
+    assert Map.has_key?(state.running, dedupe_key)
+    assert MapSet.member?(state.claimed, dedupe_key)
+
+    send(runner_pid, :stop)
+  end
+
   @tag :db
   test "orchestrator records durable blocker after app-server input required" do
     :ok = checkout_repo(%{})

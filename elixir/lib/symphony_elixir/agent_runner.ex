@@ -130,7 +130,12 @@ defmodule SymphonyElixir.AgentRunner do
     end
   end
 
-  defp build_turn_prompt(issue, opts, 1, _max_turns), do: PromptBuilder.build_prompt(issue, opts)
+  defp build_turn_prompt(issue, opts, 1, _max_turns) do
+    case Keyword.get(opts, :prompt) do
+      prompt when is_binary(prompt) -> prompt
+      _other -> PromptBuilder.build_prompt(issue, opts)
+    end
+  end
 
   defp build_turn_prompt(_issue, _opts, turn_number, max_turns) do
     """

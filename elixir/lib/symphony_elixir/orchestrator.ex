@@ -7,8 +7,10 @@ defmodule SymphonyElixir.Orchestrator do
   require Logger
   import Bitwise, only: [<<<: 2]
 
-  alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, Workspace}
+  alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
   alias SymphonyElixir.Linear.Issue
+  alias SymphonyElixir.Workflows.CiFixPrompt
+  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, LinearIssueSource}
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
@@ -250,9 +252,9 @@ defmodule SymphonyElixir.Orchestrator do
       |> reconcile_blocked_issues()
 
     with :ok <- Config.validate!(),
-         {:ok, issues} <- Tracker.fetch_candidate_issues(),
+         {:ok, work_runs} <- fetch_candidate_work_runs(),
          true <- available_slots(state) > 0 do
-      choose_issues(issues, state)
+      choose_work_runs(work_runs, state)
     else
       {:error, :missing_linear_api_token} ->
         Logger.error("Linear API token missing in WORKFLOW.md")
@@ -289,12 +291,48 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       {:error, reason} ->
-        Logger.error("Failed to fetch from Linear: #{inspect(reason)}")
+        Logger.error("Failed to fetch work candidates: #{inspect(reason)}")
         state
 
       false ->
         state
     end
+  end
+
+  defp fetch_candidate_work_runs do
+    case Application.get_env(:symphony_elixir, :work_source_fetchers) do
+      fetchers when is_list(fetchers) ->
+        fetch_from_injected_sources(fetchers)
+
+      _other ->
+        fetch_from_configured_sources()
+    end
+  end
+
+  defp fetch_from_injected_sources(fetchers) do
+    Enum.reduce_while(fetchers, {:ok, []}, fn fetcher, {:ok, acc} when is_function(fetcher, 0) ->
+      case fetcher.() do
+        {:ok, runs} when is_list(runs) -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp fetch_from_configured_sources do
+    with {:ok, linear_runs} <- LinearIssueSource.fetch_candidates(),
+         {:ok, github_runs} <- fetch_github_ci_runs() do
+      {:ok, linear_runs ++ github_runs}
+    end
+  end
+
+  defp fetch_github_ci_runs do
+    Application.get_env(:symphony_elixir, :github_ci_projects, [])
+    |> Enum.reduce_while({:ok, []}, fn project, {:ok, acc} ->
+      case GithubFailedCiSource.fetch_candidates(project) do
+        {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp reconcile_running_issues(%State{} = state) do
@@ -815,30 +853,161 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp choose_issues(issues, state) do
-    active_states = active_state_set()
-    terminal_states = terminal_state_set()
+  defp choose_work_runs(work_runs, state) when is_list(work_runs) do
+    work_runs
+    |> sort_work_runs_for_dispatch()
+    |> Enum.reduce(state, fn
+      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}}, state_acc ->
+        if should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) do
+          dispatch_issue(state_acc, issue)
+        else
+          state_acc
+        end
 
-    issues
-    |> sort_issues_for_dispatch()
-    |> Enum.reduce(state, fn issue, state_acc ->
-      if should_dispatch_issue?(issue, state_acc, active_states, terminal_states) do
-        dispatch_issue(state_acc, issue)
-      else
+      %WorkRun{type: "ci_fix"} = run, state_acc ->
+        maybe_dispatch_ci_fix_run(state_acc, run)
+
+      _other, state_acc ->
         state_acc
-      end
     end)
+  end
+
+  defp sort_work_runs_for_dispatch(work_runs) when is_list(work_runs) do
+    Enum.sort_by(work_runs, fn
+      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}} ->
+        {0, issue_dispatch_sort_key(issue)}
+
+      %WorkRun{type: type, dedupe_key: key} ->
+        {1, type || "", key || ""}
+
+      _other ->
+        {2, "", ""}
+    end)
+  end
+
+  defp maybe_dispatch_ci_fix_run(%State{} = state, %WorkRun{} = run) do
+    key = work_run_key(run)
+
+    cond do
+      key in [nil, ""] ->
+        state
+
+      MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
+        state
+
+      available_slots(state) <= 0 or not worker_slots_available?(state) ->
+        state
+
+      Map.get(run.payload, :repo_policy) != "direct_push_allowed" ->
+        block_ci_fix_run(state, run, key)
+
+      true ->
+        dispatch_ci_fix_run(state, run, key)
+    end
+  end
+
+  defp dispatch_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
+    recipient = self()
+    issue = ci_fix_issue(run, key)
+    prompt = CiFixPrompt.build(run)
+
+    case select_worker_host(state, nil) do
+      :no_worker_capacity ->
+        state
+
+      worker_host ->
+        mark_work_run_dedupe_processed(run)
+        spawn_issue_on_worker_host(state, issue, nil, recipient, worker_host, prompt: prompt, work_run: run)
+    end
+  end
+
+  defp block_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
+    reason = "failed ci repair is not safe to dispatch: #{Map.get(run.payload, :repo_policy) || "unknown"}"
+    run = %{run | payload: Map.put(run.payload, :blocker_reason, reason)}
+    _ = maybe_report_ci_fix_blocker(run)
+
+    blocked_entry = %{
+      issue_id: key,
+      identifier: "CI-PR-#{run.github_pr_number}",
+      project_slug: run.project_slug,
+      issue: ci_fix_issue(run, key),
+      error: reason,
+      blocked_at: DateTime.utc_now()
+    }
+
+    %{state | claimed: MapSet.put(state.claimed, key), blocked: Map.put(state.blocked, key, blocked_entry)}
+  end
+
+  defp maybe_report_ci_fix_blocker(run) do
+    if Application.get_env(:symphony_elixir, :ci_fix_handoff_enabled, true) do
+      SymphonyElixir.Workflows.CiFixHandoff.blocked(run)
+    else
+      :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to report failed-CI blocker: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to report failed-CI blocker: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp ci_fix_issue(%WorkRun{} = run, key) do
+    %Issue{
+      id: key,
+      identifier: "CI-PR-#{run.github_pr_number}",
+      title: "Fix failed CI for PR ##{run.github_pr_number}",
+      description: "Failed GitHub Actions repair for #{run.github_owner}/#{run.github_repo}",
+      state: "In Progress",
+      project_slug: run.project_slug,
+      url: run.linear_url
+    }
+  end
+
+  defp work_run_key(%WorkRun{dedupe_key: key}) when is_binary(key), do: key
+
+  defp work_run_key(%WorkRun{type: type, github_owner: owner, github_repo: repo, github_pr_number: number}) do
+    "#{type}:#{owner}/#{repo}:#{number}"
+  end
+
+  defp mark_work_run_dedupe_processed(%WorkRun{dedupe_key: key, payload: payload})
+       when is_binary(key) and is_map(payload) do
+    case Map.get(payload, :project_id) || Map.get(payload, "project_id") do
+      project_id when is_binary(project_id) ->
+        _ =
+          Storage.mark_dedupe_processed(%{
+            project_id: project_id,
+            key: key,
+            scope: "ci_fix",
+            metadata: %{"source" => "github_failed_ci"}
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to mark work-run dedupe key processed: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to mark work-run dedupe key processed: #{inspect({kind, reason})}")
+      :ok
   end
 
   defp sort_issues_for_dispatch(issues) when is_list(issues) do
-    Enum.sort_by(issues, fn
-      %Issue{} = issue ->
-        {priority_rank(issue.priority), issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
-
-      _ ->
-        {priority_rank(nil), issue_created_at_sort_key(nil), ""}
-    end)
+    Enum.sort_by(issues, &issue_dispatch_sort_key/1)
   end
+
+  defp issue_dispatch_sort_key(%Issue{} = issue) do
+    {priority_rank(issue.priority), issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
+  end
+
+  defp issue_dispatch_sort_key(_issue), do: {priority_rank(nil), issue_created_at_sort_key(nil), ""}
 
   defp priority_rank(priority) when is_integer(priority) and priority in 1..4, do: priority
   defp priority_rank(_priority), do: 5
@@ -990,9 +1159,9 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host) do
+  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, extra_opts \\ []) do
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
-           AgentRunner.run(issue, recipient, attempt: attempt, worker_host: worker_host)
+           agent_runner().(issue, recipient, Keyword.merge([attempt: attempt, worker_host: worker_host], extra_opts))
          end) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
@@ -1023,6 +1192,7 @@ defmodule SymphonyElixir.Orchestrator do
             codex_last_reported_total_tokens: 0,
             turn_count: 0,
             retry_attempt: normalize_retry_attempt(attempt),
+            work_run: Keyword.get(extra_opts, :work_run),
             started_at: DateTime.utc_now()
           })
 
@@ -1046,6 +1216,10 @@ defmodule SymphonyElixir.Orchestrator do
           worker_host: worker_host
         })
     end
+  end
+
+  defp agent_runner do
+    Application.get_env(:symphony_elixir, :agent_runner_fun, &AgentRunner.run/3)
   end
 
   defp revalidate_issue_for_dispatch(%Issue{id: issue_id}, issue_fetcher, terminal_states)
