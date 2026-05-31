@@ -67,10 +67,12 @@ defmodule SymphonyElixir.Github.Client do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = github_token(opts)
     event = Keyword.get(opts, :event, "COMMENT")
+    comments = Keyword.get(opts, :comments, [])
     url = "#{@api_root}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews"
+    payload = review_payload(body, event, comments)
 
     with {:ok, response} <-
-           request_fun.(method: :post, url: url, json: %{body: body, event: event}, headers: headers(token)),
+           request_fun.(method: :post, url: url, json: payload, headers: headers(token)),
          :ok <- expect_status(response, [200, 201]) do
       :ok
     end
@@ -109,6 +111,12 @@ defmodule SymphonyElixir.Github.Client do
   end
 
   defp github_token(opts), do: Keyword.get(opts, :token) || System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
+
+  defp review_payload(body, event, comments) when is_list(comments) and comments != [] do
+    %{body: body, event: event, comments: comments}
+  end
+
+  defp review_payload(body, event, _comments), do: %{body: body, event: event}
 
   defp headers(token) when is_binary(token) and token != "" do
     [{"authorization", "Bearer #{token}"}, {"accept", "application/vnd.github+json"}]
