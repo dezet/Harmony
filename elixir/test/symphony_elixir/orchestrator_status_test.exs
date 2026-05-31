@@ -1084,6 +1084,60 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
            } = state.blocked[issue_id]
   end
 
+  @tag :db
+  test "orchestrator records durable blocker after app-server input required" do
+    :ok = checkout_repo(%{})
+    Application.put_env(:symphony_elixir, :durable_blockers_enabled, true)
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_api_token: nil)
+
+    issue_id = "issue-input-required-durable"
+    orchestrator_name = Module.concat(__MODULE__, :InputRequiredDurableBlockOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    Ecto.Adapters.SQL.Sandbox.allow(SymphonyElixir.Repo, self(), pid)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    ref = make_ref()
+    started_at = DateTime.utc_now()
+    initial_state = :sys.get_state(pid)
+
+    running_entry = %{
+      pid: self(),
+      ref: ref,
+      identifier: "MT-INPUT-DB",
+      issue: %Issue{id: issue_id, identifier: "MT-INPUT-DB", state: "In Progress"},
+      session_id: "thread-input-db-turn-input-db",
+      last_codex_message: %{
+        event: :turn_input_required,
+        message: %{"method" => "mcpServer/elicitation/request"},
+        timestamp: started_at
+      },
+      last_codex_timestamp: started_at,
+      last_codex_event: :turn_input_required,
+      started_at: started_at
+    }
+
+    :sys.replace_state(pid, fn _ ->
+      initial_state
+      |> Map.put(:running, %{issue_id => running_entry})
+      |> Map.put(:claimed, MapSet.put(initial_state.claimed, issue_id))
+    end)
+
+    send(pid, {:DOWN, ref, :process, self(), {:shutdown, :input_required}})
+    Process.sleep(50)
+
+    assert [
+             %SymphonyElixir.Storage.Blocker{
+               target_id: ^issue_id,
+               reason: "codex turn requires operator input"
+             }
+           ] = SymphonyElixir.Repo.all(SymphonyElixir.Storage.Blocker)
+  end
+
   test "orchestrator blocks normal worker exits after input required completion" do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_api_token: nil)
 

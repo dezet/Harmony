@@ -7,7 +7,7 @@ defmodule SymphonyElixir.Orchestrator do
   require Logger
   import Bitwise, only: [<<<: 2]
 
-  alias SymphonyElixir.{AgentRunner, Config, StatusDashboard, Tracker, Workspace}
+  alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, Workspace}
   alias SymphonyElixir.Linear.Issue
 
   @continuation_retry_delay_ms 1_000
@@ -742,6 +742,8 @@ defmodule SymphonyElixir.Orchestrator do
       last_codex_timestamp: Map.get(running_entry, :last_codex_timestamp)
     }
 
+    record_durable_blocker(issue_id, running_entry, error)
+
     %{
       state
       | running: Map.delete(state.running, issue_id),
@@ -749,6 +751,68 @@ defmodule SymphonyElixir.Orchestrator do
         claimed: MapSet.put(state.claimed, issue_id),
         blocked: Map.put(state.blocked, issue_id, blocked_entry)
     }
+  end
+
+  defp record_durable_blocker(issue_id, running_entry, error) do
+    if Application.get_env(:symphony_elixir, :durable_blockers_enabled, true) do
+      do_record_durable_blocker(issue_id, running_entry, error)
+    else
+      :ok
+    end
+  end
+
+  defp do_record_durable_blocker(issue_id, running_entry, error) do
+    with {:ok, project_id} <- durable_blocker_project_id(running_entry) do
+      _ =
+        RuntimePolicy.Blocker.record(%{
+          project_id: project_id,
+          work_run_id: Map.get(running_entry, :storage_work_run_id),
+          target_type: "linear_issue",
+          target_id: issue_id,
+          reason: error,
+          metadata: %{
+            "identifier" => Map.get(running_entry, :identifier, issue_id),
+            "session_id" => running_entry_session_id(running_entry),
+            "worker_host" => Map.get(running_entry, :worker_host),
+            "workspace_path" => Map.get(running_entry, :workspace_path)
+          }
+        })
+
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{inspect(reason)}")
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp durable_blocker_project_id(%{storage_project_id: project_id}) when is_binary(project_id), do: {:ok, project_id}
+
+  defp durable_blocker_project_id(running_entry) when is_map(running_entry) do
+    slug = Map.get(running_entry, :project_slug) || "legacy"
+
+    case Storage.upsert_project(%{
+           slug: slug,
+           linear_project_slug: slug,
+           linear_team_key: nil,
+           linear_human_review_state: "Human Review",
+           github_owner: "legacy",
+           github_repo: slug,
+           github_base_branch: "main",
+           config_version: 1,
+           config: %{"source" => "orchestrator_legacy_blocker"}
+         }) do
+      {:ok, project} -> {:ok, project.id}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp choose_issues(issues, state) do
