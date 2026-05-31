@@ -1,0 +1,15 @@
+{
+  "durableCounts": {
+    "artifacts": 1,
+    "work_runs": 7,
+    "projects": 1,
+    "dedupe_keys": 1,
+    "blockers": 3,
+    "pull_request_links": 2,
+    "work_events": 3
+  },
+  "hasSandboxDiagnostics": true,
+  "containsHumanReview": true,
+  "containsDone": false,
+  "containsMerge": false
+}

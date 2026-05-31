@@ -85,14 +85,19 @@ Current correction:
   - [x] Verify sandbox diagnostics are visible.
   - [x] Verify UI does not suggest automerge, Linear `Done`, or automatic production rollout.
   - [x] Save `docs/evidence/roadmap-e2e/final-review-checks.md`.
-- [ ] Task 8: Video proof v2 correction
-  - [ ] Regenerate Milestone 1 video with visible Durable WorkRun and PR Observation proof from live runtime/API state.
-  - [ ] Regenerate Milestone 2 video with visible blocked dedupe, open blocker, work events, and restart-suppression counts.
-  - [ ] Regenerate Milestone 3 video with visually distinct success Human Review handoff and blocker paths.
-  - [ ] Regenerate Milestone 4 video with visible required browser evidence gate and durable Evidence artifact metadata.
-  - [ ] Regenerate or explicitly revalidate Milestone 5 video with visible failed-CI workflow/log context proof.
-  - [ ] Update milestone sidecar JSON files with `video_revision: 2` and v2 artifact paths.
-  - [ ] Mark v1 videos as superseded or replace them in place after v2 evidence is recorded.
+- [x] Task 8: Video proof v2 correction
+  - [x] Regenerate Milestone 1 video with visible Durable WorkRun and PR Observation proof from live runtime/API state.
+    - `docs/evidence/roadmap-e2e/milestone-01-workrun-pr-observation-v2.webm`
+  - [x] Regenerate Milestone 2 video with visible blocked dedupe, open blocker, work events, and restart-suppression counts.
+    - `docs/evidence/roadmap-e2e/milestone-02-dedupe-blockers-events-v2.webm`
+  - [x] Regenerate Milestone 3 video with visually distinct success Human Review handoff and blocker paths.
+    - `docs/evidence/roadmap-e2e/milestone-03-implementation-handoff-v2.webm`
+  - [x] Regenerate Milestone 4 video with visible required browser evidence gate and durable Evidence artifact metadata.
+    - `docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm`
+  - [x] Regenerate or explicitly revalidate Milestone 5 video with visible failed-CI workflow/log context proof.
+    - `docs/evidence/roadmap-e2e/milestone-05-failed-ci-context-v2.webm`
+  - [x] Update milestone sidecar JSON files with `video_revision: 2` and v2 artifact paths.
+  - [x] Mark v1 videos as superseded or replace them in place after v2 evidence is recorded.
 - [ ] Task 9: Final quality gate and review
   - [x] Run `git diff --check`.
   - [x] Run `mix format --check-formatted`.

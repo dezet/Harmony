@@ -1,0 +1,69 @@
+{
+  "milestone": "04-browser-evidence-runtime-gate",
+  "scenario": "milestone4",
+  "video_revision": 2,
+  "proof_style": "feature-specific-live-api-overlay",
+  "recorded_at": "2026-05-31T23:13:00Z",
+  "runtime_url": "http://127.0.0.1:4105",
+  "external_network": false,
+  "supersedes": {
+    "video_revision": 1,
+    "reason": "v1 video did not visibly connect required browser evidence, the blocker, and durable artifact metadata"
+  },
+  "video": {
+    "path": "docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm",
+    "duration_seconds": 42.52,
+    "size_bytes": 4459104
+  },
+  "work_run": {
+    "id": "fa5d63cc-4e7f-4685-831d-b9dd42403e86",
+    "type": "implementation",
+    "status": "queued",
+    "dedupe_key": "linear:roadmap-e2e-m4",
+    "linear_issue_id": "roadmap-e2e-m4",
+    "linear_identifier": "COD-401",
+    "required_evidence": [
+      "browser"
+    ]
+  },
+  "blocker": {
+    "id": "de51b205-96ab-4787-8ed8-d6e479da322f",
+    "reason": "missing_required_evidence:browser",
+    "status": "open",
+    "target_type": "linear_issue",
+    "target_id": "roadmap-e2e-m4",
+    "work_run_id": "fa5d63cc-4e7f-4685-831d-b9dd42403e86"
+  },
+  "artifact": {
+    "id": "9953e298-5fd6-488f-8f4b-a8816750334f",
+    "kind": "screenshot",
+    "path": "/tmp/harmony-roadmap-e2e-milestone4-deeeeb30-1825-4d6e-9cb8-9617813030fd/.harmony/artifacts/milestone4.png",
+    "work_run_id": "fa5d63cc-4e7f-4685-831d-b9dd42403e86",
+    "work_run_id_matches": true,
+    "metadata": {
+      "description": "Roadmap evidence screenshot",
+      "scenario": "Roadmap milestone4 browser evidence gate"
+    }
+  },
+  "negative_assertions": {
+    "path_traversal_artifacts_rejected_by_tests": true,
+    "desktop_evidence_section_rendered": true,
+    "mobile_evidence_view_rendered_without_overlay_text_truncation": true
+  },
+  "visible_assertions": [
+    "required_evidence = browser",
+    "blocker.reason = missing_required_evidence:browser",
+    "artifact.kind = screenshot",
+    "artifact.work_run_id == work_run.id = true",
+    "dashboard Evidence section renders artifact kind/path",
+    "desktop and mobile views are recorded"
+  ],
+  "artifacts": {
+    "video": "docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm",
+    "screenshots": [
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-04-v2-dashboard-evidence.png",
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-04-v2-dashboard-evidence-mobile.png",
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-04-v2-api-overlay.png"
+    ]
+  }
+}

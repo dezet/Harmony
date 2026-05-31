@@ -1,0 +1,68 @@
+{
+  "milestone": "05-failed-ci-logs-and-repair-context",
+  "scenario": "milestone5",
+  "video_revision": 2,
+  "proof_style": "feature-specific-live-api-overlay",
+  "recorded_at": "2026-05-31T23:14:00Z",
+  "runtime_url": "http://127.0.0.1:4106",
+  "external_network": false,
+  "supersedes": {
+    "video_revision": 1,
+    "reason": "v2 regenerated for consistency with the feature-specific live API overlay style"
+  },
+  "video": {
+    "path": "docs/evidence/roadmap-e2e/milestone-05-failed-ci-context-v2.webm",
+    "duration_seconds": 37.2,
+    "size_bytes": 4122980
+  },
+  "successful_log_context_run": {
+    "id": "685d9b3f-f1b0-4024-a37b-8fe16f1394a3",
+    "type": "ci_fix",
+    "status": "queued",
+    "dedupe_key": "github-ci-fix:dezet/roadmap-e2e:20:fedcba:9002",
+    "github_pr_number": 20,
+    "github_head_sha": "fedcba",
+    "github_head_ref": "cod-501-ci",
+    "github_base_ref": "develop",
+    "workflow_run": {
+      "id": 9002,
+      "name": "CI",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://example.test/actions/9002"
+    },
+    "log_excerpt": "mix test failed in roadmap milestone5"
+  },
+  "log_fetch_error_run": {
+    "id": "84580983-994f-45d9-8e46-18e1f492ad98",
+    "type": "ci_fix",
+    "status": "queued",
+    "dedupe_key": "github-ci-fix:dezet/roadmap-e2e:21:badlog:9003",
+    "github_pr_number": 21,
+    "workflow_run": {
+      "id": 9003,
+      "name": "CI",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://example.test/actions/9003"
+    },
+    "log_fetch_error": ":timeout"
+  },
+  "negative_assertions": {
+    "unknown_or_non_github_actions_checks_created_repair_work": false
+  },
+  "visible_assertions": [
+    "ci_fix work run exists for PR #20",
+    "payload.workflow_run includes id 9002, name CI, conclusion failure",
+    "payload.log_excerpt = mix test failed in roadmap milestone5",
+    "log fetch error path records :timeout for PR #21",
+    "unknown/non-GitHub-Actions repair created = false"
+  ],
+  "artifacts": {
+    "video": "docs/evidence/roadmap-e2e/milestone-05-failed-ci-context-v2.webm",
+    "screenshots": [
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-05-v2-dashboard-work-runs.png",
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-05-v2-api-overlay.png"
+    ]
+  }
+}
