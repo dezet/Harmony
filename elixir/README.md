@@ -93,11 +93,34 @@ Harmony now uses Postgres for durable runtime state. Configure it with:
 - `HARMONY_DATABASE_PORT` defaults to `5432`
 - `HARMONY_DATABASE_POOL_SIZE` defaults to `10`
 
-Create and migrate the database before running DB-backed workflows:
+For local development, start the bundled Postgres container from this `elixir/` directory:
 
 ```bash
-mix ecto.create
+docker compose up -d postgres
+```
+
+If you use Podman without a Compose provider, install `podman-compose` or run the same container
+directly:
+
+```bash
+podman run -d --name harmony-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=harmony_dev \
+  -p "${HARMONY_DATABASE_PORT:-5432}:5432" \
+  -v harmony_postgres_data:/var/lib/postgresql/data \
+  -v "$PWD/priv/docker/postgres/init:/docker-entrypoint-initdb.d:ro" \
+  docker.io/library/postgres:16-alpine
+```
+
+The container matches the default app credentials and creates both `harmony_dev` and `harmony_test`.
+If port `5432` is already in use, set `HARMONY_DATABASE_PORT` for both Compose and Mix commands.
+
+Migrate the databases before running DB-backed workflows or tests:
+
+```bash
 mix ecto.migrate
+MIX_ENV=test mix ecto.migrate
 ```
 
 Optional flags:
@@ -126,7 +149,12 @@ github:
 review:
   trigger: "@hreview"
   template_version: 1
+required_evidence:
+  - browser
 ```
+
+`required_evidence: ["browser"]` requires a browser evidence artifact before a Linear
+implementation handoff can move an issue to Human Review.
 
 Minimal example:
 
