@@ -1144,6 +1144,87 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     send(runner_pid, :stop)
   end
 
+  test "orchestrator publishes code review work once per dedupe key" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+    dedupe_key = "github-review:dezet/portal:7:99:abc123:1"
+
+    run = %SymphonyElixir.WorkRun{
+      project_slug: "portal",
+      type: "code_review",
+      status: "queued",
+      dedupe_key: dedupe_key,
+      github_owner: "dezet",
+      github_repo: "portal",
+      github_pr_number: 7,
+      github_head_sha: "abc123",
+      github_head_ref: "feature",
+      github_base_ref: "develop",
+      payload: %{
+        project_id: "project-1",
+        trigger_comment_id: 99,
+        template: "Review correctness and tests."
+      }
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, opts ->
+      send(parent, {:agent_run, self(), issue, opts})
+
+      receive do
+        :stop -> :ok
+      after
+        5_000 -> :ok
+      end
+    end)
+
+    Application.put_env(:symphony_elixir, :review_handoff_fun, fn review_run, body, opts ->
+      send(parent, {:review_published, review_run, body, opts})
+      :ok
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :ReviewDispatchOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:agent_run, runner_pid, issue, opts}, 1_000
+    assert issue.id == dedupe_key
+    assert issue.identifier == "REVIEW-PR-7"
+    assert opts[:prompt] =~ "Perform a comprehensive code review"
+    assert opts[:prompt] =~ "Review correctness and tests."
+
+    send(pid, {
+      :codex_worker_update,
+      issue.id,
+      %{
+        event: :notification,
+        timestamp: DateTime.utc_now(),
+        payload: %{
+          "method" => "codex/event/agent_message_delta",
+          "params" => %{"msg" => %{"payload" => %{"delta" => "Review finding body"}}}
+        }
+      }
+    })
+
+    send(runner_pid, :stop)
+    Process.sleep(100)
+    _state = :sys.get_state(pid)
+
+    assert_receive {:review_published, ^run, "Review finding body", []}, 1_000
+
+    send(pid, :run_poll_cycle)
+    refute_receive {:agent_run, _issue, _opts}, 100
+  end
+
   @tag :db
   test "orchestrator records durable blocker after app-server input required" do
     :ok = checkout_repo(%{})

@@ -9,11 +9,12 @@ defmodule SymphonyElixir.Orchestrator do
 
   alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
   alias SymphonyElixir.Linear.Issue
-  alias SymphonyElixir.Workflows.CiFixPrompt
-  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, LinearIssueSource}
+  alias SymphonyElixir.Workflows.{CiFixPrompt, ReviewHandoff, ReviewPrompt}
+  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubReviewRequestSource, LinearIssueSource}
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
+  @review_finalize_delay_ms 50
   # Slightly above the dashboard render interval so "checking now…" can render.
   @poll_transition_render_delay_ms 20
   @empty_codex_totals %{
@@ -193,6 +194,20 @@ defmodule SymphonyElixir.Orchestrator do
     result
   end
 
+  def handle_info({:finalize_code_review, issue_id}, %{running: running} = state) do
+    case Map.get(running, issue_id) do
+      %{work_run: %WorkRun{type: "code_review"}} = running_entry ->
+        state = %{state | running: Map.delete(running, issue_id)}
+        state = finalize_code_review_run(state, issue_id, running_entry, running_entry_session_id(running_entry))
+
+        notify_dashboard()
+        {:noreply, state}
+
+      _other ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:retry_issue, _issue_id}, state), do: {:noreply, state}
 
   def handle_info(msg, state) do
@@ -201,19 +216,28 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp handle_agent_down(:normal, state, issue_id, running_entry, session_id) do
-    if input_required_blocker?(running_entry) do
-      block_input_required_agent_down(state, issue_id, running_entry, session_id, :normal)
-    else
-      Logger.info("Agent task completed for issue_id=#{issue_id} session_id=#{session_id}; scheduling active-state continuation check")
+    cond do
+      input_required_blocker?(running_entry) ->
+        block_input_required_agent_down(state, issue_id, running_entry, session_id, :normal)
 
-      state
-      |> complete_issue(issue_id)
-      |> schedule_issue_retry(issue_id, 1, %{
-        identifier: running_entry.identifier,
-        delay_type: :continuation,
-        worker_host: Map.get(running_entry, :worker_host),
-        workspace_path: Map.get(running_entry, :workspace_path)
-      })
+      code_review_run?(running_entry) ->
+        complete_code_review_run(state, issue_id, running_entry, session_id)
+
+      synthetic_work_run?(running_entry) ->
+        Logger.info("Agent task completed for work_run issue_id=#{issue_id} session_id=#{session_id}; no Linear continuation scheduled")
+        complete_issue(state, issue_id)
+
+      true ->
+        Logger.info("Agent task completed for issue_id=#{issue_id} session_id=#{session_id}; scheduling active-state continuation check")
+
+        state
+        |> complete_issue(issue_id)
+        |> schedule_issue_retry(issue_id, 1, %{
+          identifier: running_entry.identifier,
+          delay_type: :continuation,
+          worker_host: Map.get(running_entry, :worker_host),
+          workspace_path: Map.get(running_entry, :workspace_path)
+        })
     end
   end
 
@@ -233,6 +257,50 @@ defmodule SymphonyElixir.Orchestrator do
     block_issue_from_entry(state, issue_id, running_entry, error)
   end
 
+  defp complete_code_review_run(state, issue_id, running_entry, session_id) do
+    if Map.get(running_entry, :review_finalizing) == true do
+      finalize_code_review_run(state, issue_id, running_entry, session_id)
+    else
+      running_entry = Map.put(running_entry, :review_finalizing, true)
+      Process.send_after(self(), {:finalize_code_review, issue_id}, @review_finalize_delay_ms)
+
+      %{state | running: Map.put(state.running, issue_id, running_entry)}
+    end
+  end
+
+  defp finalize_code_review_run(state, issue_id, running_entry, session_id) do
+    body = running_entry |> Map.get(:review_body, "") |> to_string() |> String.trim()
+
+    cond do
+      body == "" ->
+        error = "code review run completed without review body"
+        Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+        block_issue_from_entry(state, issue_id, running_entry, error)
+
+      true ->
+        case publish_code_review(Map.fetch!(running_entry, :work_run), body) do
+          :ok ->
+            Logger.info("Published code review for issue_id=#{issue_id} session_id=#{session_id}")
+            complete_issue(state, issue_id)
+
+          {:error, reason} ->
+            error = "failed to publish code review: #{inspect(reason)}"
+            Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+            block_issue_from_entry(state, issue_id, running_entry, error)
+        end
+    end
+  end
+
+  defp publish_code_review(%WorkRun{} = run, body) when is_binary(body) do
+    review_handoff().(run, body, [])
+  rescue
+    exception ->
+      {:error, Exception.message(exception)}
+  catch
+    kind, reason ->
+      {:error, {kind, reason}}
+  end
+
   defp retry_agent_down(state, issue_id, running_entry, session_id, reason) do
     Logger.warning("Agent task exited for issue_id=#{issue_id} session_id=#{session_id} reason=#{inspect(reason)}; scheduling retry")
 
@@ -245,6 +313,12 @@ defmodule SymphonyElixir.Orchestrator do
       workspace_path: Map.get(running_entry, :workspace_path)
     })
   end
+
+  defp code_review_run?(%{work_run: %WorkRun{type: "code_review"}}), do: true
+  defp code_review_run?(_running_entry), do: false
+
+  defp synthetic_work_run?(%{work_run: %WorkRun{type: type}}) when type != "implementation", do: true
+  defp synthetic_work_run?(_running_entry), do: false
 
   defp maybe_dispatch(%State{} = state) do
     state =
@@ -321,19 +395,35 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp fetch_from_configured_sources do
     with {:ok, linear_runs} <- LinearIssueSource.fetch_candidates(),
-         {:ok, github_runs} <- fetch_github_ci_runs() do
-      {:ok, linear_runs ++ github_runs}
+         {:ok, github_ci_runs} <- fetch_github_ci_runs(),
+         {:ok, github_review_runs} <- fetch_github_review_runs() do
+      {:ok, linear_runs ++ github_ci_runs ++ github_review_runs}
     end
   end
 
   defp fetch_github_ci_runs do
-    Application.get_env(:symphony_elixir, :github_ci_projects, [])
+    configured_github_projects(:github_ci_projects)
     |> Enum.reduce_while({:ok, []}, fn project, {:ok, acc} ->
       case GithubFailedCiSource.fetch_candidates(project) do
         {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp fetch_github_review_runs do
+    configured_github_projects(:github_review_projects)
+    |> Enum.reduce_while({:ok, []}, fn project, {:ok, acc} ->
+      case GithubReviewRequestSource.fetch_candidates(project) do
+        {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp configured_github_projects(specific_key) do
+    Application.get_env(:symphony_elixir, specific_key) ||
+      Application.get_env(:symphony_elixir, :github_projects, [])
   end
 
   defp reconcile_running_issues(%State{} = state) do
@@ -868,6 +958,9 @@ defmodule SymphonyElixir.Orchestrator do
       %WorkRun{type: "ci_fix"} = run, state_acc ->
         maybe_dispatch_ci_fix_run(state_acc, run)
 
+      %WorkRun{type: "code_review"} = run, state_acc ->
+        maybe_dispatch_code_review_run(state_acc, run)
+
       _other, state_acc ->
         state_acc
     end)
@@ -918,7 +1011,58 @@ defmodule SymphonyElixir.Orchestrator do
 
       worker_host ->
         mark_work_run_dedupe_processed(run)
-        spawn_issue_on_worker_host(state, issue, nil, recipient, worker_host, prompt: prompt, work_run: run)
+
+        spawn_issue_on_worker_host(
+          state,
+          issue,
+          nil,
+          recipient,
+          worker_host,
+          prompt: prompt,
+          work_run: run,
+          issue_state_fetcher: fn _ids -> {:ok, []} end
+        )
+    end
+  end
+
+  defp maybe_dispatch_code_review_run(%State{} = state, %WorkRun{} = run) do
+    key = work_run_key(run)
+
+    cond do
+      key in [nil, ""] ->
+        state
+
+      MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
+        state
+
+      available_slots(state) <= 0 or not worker_slots_available?(state) ->
+        state
+
+      true ->
+        dispatch_code_review_run(state, run, key)
+    end
+  end
+
+  defp dispatch_code_review_run(%State{} = state, %WorkRun{} = run, key) do
+    recipient = self()
+    issue = code_review_issue(run, key)
+    prompt = ReviewPrompt.build(run)
+
+    case select_worker_host(state, nil) do
+      :no_worker_capacity ->
+        state
+
+      worker_host ->
+        spawn_issue_on_worker_host(
+          state,
+          issue,
+          nil,
+          recipient,
+          worker_host,
+          prompt: prompt,
+          work_run: run,
+          issue_state_fetcher: fn _ids -> {:ok, []} end
+        )
     end
   end
 
@@ -962,6 +1106,20 @@ defmodule SymphonyElixir.Orchestrator do
       title: "Fix failed CI for PR ##{run.github_pr_number}",
       description: "Failed GitHub Actions repair for #{run.github_owner}/#{run.github_repo}",
       state: "In Progress",
+      project_id: payload_value(run.payload, :project_id),
+      project_slug: run.project_slug,
+      url: run.linear_url
+    }
+  end
+
+  defp code_review_issue(%WorkRun{} = run, key) do
+    %Issue{
+      id: key,
+      identifier: "REVIEW-PR-#{run.github_pr_number}",
+      title: "Review PR ##{run.github_pr_number}",
+      description: "Requested GitHub pull request review for #{run.github_owner}/#{run.github_repo}",
+      state: "In Progress",
+      project_id: payload_value(run.payload, :project_id),
       project_slug: run.project_slug,
       url: run.linear_url
     }
@@ -975,7 +1133,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp mark_work_run_dedupe_processed(%WorkRun{dedupe_key: key, payload: payload})
        when is_binary(key) and is_map(payload) do
-    case Map.get(payload, :project_id) || Map.get(payload, "project_id") do
+    case payload_value(payload, :project_id) do
       project_id when is_binary(project_id) ->
         _ =
           Storage.mark_dedupe_processed(%{
@@ -999,6 +1157,9 @@ defmodule SymphonyElixir.Orchestrator do
       Logger.warning("Failed to mark work-run dedupe key processed: #{inspect({kind, reason})}")
       :ok
   end
+
+  defp payload_value(%{} = payload, key), do: Map.get(payload, key) || Map.get(payload, to_string(key))
+  defp payload_value(_payload, _key), do: nil
 
   defp sort_issues_for_dispatch(issues) when is_list(issues) do
     Enum.sort_by(issues, &issue_dispatch_sort_key/1)
@@ -1184,6 +1345,7 @@ defmodule SymphonyElixir.Orchestrator do
             last_codex_message: nil,
             last_codex_timestamp: nil,
             last_codex_event: nil,
+            review_body: "",
             codex_app_server_pid: nil,
             codex_input_tokens: 0,
             codex_output_tokens: 0,
@@ -1221,6 +1383,10 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp agent_runner do
     Application.get_env(:symphony_elixir, :agent_runner_fun, &AgentRunner.run/3)
+  end
+
+  defp review_handoff do
+    Application.get_env(:symphony_elixir, :review_handoff_fun, &ReviewHandoff.publish/3)
   end
 
   defp revalidate_issue_for_dispatch(%Issue{id: issue_id}, issue_fetcher, terminal_states)
@@ -1708,6 +1874,7 @@ defmodule SymphonyElixir.Orchestrator do
     last_reported_output = Map.get(running_entry, :codex_last_reported_output_tokens, 0)
     last_reported_total = Map.get(running_entry, :codex_last_reported_total_tokens, 0)
     turn_count = Map.get(running_entry, :turn_count, 0)
+    review_body = append_review_body_delta(Map.get(running_entry, :review_body, ""), agent_message_delta(update))
 
     {
       Map.merge(running_entry, %{
@@ -1722,10 +1889,60 @@ defmodule SymphonyElixir.Orchestrator do
         codex_last_reported_input_tokens: max(last_reported_input, token_delta.input_reported),
         codex_last_reported_output_tokens: max(last_reported_output, token_delta.output_reported),
         codex_last_reported_total_tokens: max(last_reported_total, token_delta.total_reported),
+        review_body: review_body,
         turn_count: turn_count_for_update(turn_count, running_entry.session_id, update)
       }),
       token_delta
     }
+  end
+
+  defp append_review_body_delta(body, delta) when is_binary(body) and is_binary(delta), do: body <> delta
+  defp append_review_body_delta(body, _delta) when is_binary(body), do: body
+  defp append_review_body_delta(_body, delta) when is_binary(delta), do: delta
+  defp append_review_body_delta(_body, _delta), do: ""
+
+  defp agent_message_delta(%{payload: payload}) when is_map(payload) do
+    method = map_at_path(payload, ["method"]) || map_at_path(payload, [:method])
+
+    if method in ["codex/event/agent_message_delta", "codex/event/agent_message_content_delta"] do
+      string_at_paths(payload, agent_message_delta_paths())
+    end
+  end
+
+  defp agent_message_delta(_update), do: nil
+
+  defp string_at_paths(payload, paths) when is_map(payload) and is_list(paths) do
+    Enum.find_value(paths, fn path ->
+      case map_at_path(payload, path) do
+        value when is_binary(value) -> value
+        _other -> nil
+      end
+    end)
+  end
+
+  defp string_at_paths(_payload, _paths), do: nil
+
+  defp agent_message_delta_paths do
+    [
+      ["params", "delta"],
+      [:params, :delta],
+      ["params", "textDelta"],
+      [:params, :textDelta],
+      ["params", "text"],
+      [:params, :text],
+      ["params", "msg", "delta"],
+      [:params, :msg, :delta],
+      ["params", "msg", "textDelta"],
+      [:params, :msg, :textDelta],
+      ["params", "msg", "text"],
+      [:params, :msg, :text],
+      ["params", "msg", "payload", "delta"],
+      [:params, :msg, :payload, :delta],
+      ["params", "msg", "payload", "textDelta"],
+      [:params, :msg, :payload, :textDelta],
+      ["params", "msg", "payload", "text"],
+      [:params, :msg, :payload, :text]
+    ]
   end
 
   defp codex_app_server_pid_for_update(_existing, %{codex_app_server_pid: pid})
