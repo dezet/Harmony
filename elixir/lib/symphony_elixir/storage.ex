@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Storage do
   import Ecto.Query
 
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{Project, WorkEvent, WorkRun}
+  alias SymphonyElixir.Storage.{Blocker, Project, WorkEvent, WorkRun}
 
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
@@ -45,6 +45,22 @@ defmodule SymphonyElixir.Storage do
     %WorkEvent{}
     |> WorkEvent.changeset(stringify_keys(attrs))
     |> Repo.insert()
+  end
+
+  @spec upsert_open_blocker(map()) :: {:ok, Blocker.t()} | {:error, Ecto.Changeset.t()}
+  def upsert_open_blocker(attrs) when is_map(attrs) do
+    attrs =
+      attrs
+      |> stringify_keys()
+      |> Map.put("status", "open")
+
+    %Blocker{}
+    |> Blocker.changeset(attrs)
+    |> Repo.insert(
+      on_conflict: {:replace, [:reason, :metadata, :updated_at]},
+      conflict_target: {:unsafe_fragment, "(project_id, target_type, target_id, status) WHERE status = 'open'"},
+      returning: true
+    )
   end
 
   @spec get_project_by_slug(String.t()) :: Project.t() | nil

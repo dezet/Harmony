@@ -35,4 +35,33 @@ defmodule SymphonyElixir.RuntimePolicyTest do
                protected_branches: ["develop"]
              })
   end
+
+  @tag :db
+  test "records blocker and suppresses duplicate open blocker" do
+    :ok = checkout_repo(%{})
+
+    {:ok, project} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        github_owner: "dezet",
+        github_repo: "portal",
+        github_base_branch: "develop",
+        linear_project_slug: "portal-linear",
+        linear_human_review_state: "Human Review",
+        config_version: 1,
+        config: %{}
+      })
+
+    attrs = %{
+      project_id: project.id,
+      target_type: "linear_issue",
+      target_id: "issue-1",
+      reason: "missing acceptance criteria",
+      metadata: %{"identifier" => "COD-5"}
+    }
+
+    assert {:ok, first} = SymphonyElixir.RuntimePolicy.Blocker.record(attrs)
+    assert {:ok, second} = SymphonyElixir.RuntimePolicy.Blocker.record(attrs)
+    assert first.id == second.id
+  end
 end
