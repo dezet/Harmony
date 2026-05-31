@@ -1215,6 +1215,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       }
     })
 
+    _state = :sys.get_state(pid)
     send(runner_pid, :stop)
     Process.sleep(100)
     _state = :sys.get_state(pid)
