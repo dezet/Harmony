@@ -156,6 +156,11 @@ defmodule SymphonyElixir.Storage do
     Repo.get_by(Project, slug: slug)
   end
 
+  @spec get_project_by_github(String.t(), String.t()) :: Project.t() | nil
+  def get_project_by_github(owner, repo) when is_binary(owner) and is_binary(repo) do
+    Repo.get_by(Project, github_owner: owner, github_repo: repo)
+  end
+
   @spec get_project!(Ecto.UUID.t()) :: Project.t()
   def get_project!(id) when is_binary(id) do
     Repo.get!(Project, id)
