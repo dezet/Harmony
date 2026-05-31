@@ -3,13 +3,13 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   Polls open GitHub PRs and emits failed GitHub Actions repair work.
   """
 
-  alias SymphonyElixir.{Github, WorkRun}
+  alias SymphonyElixir.{Github, Storage, WorkRun}
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     list_pull_requests = Keyword.get(opts, :list_pull_requests, &Github.Client.list_open_pull_requests/3)
     list_workflow_runs = Keyword.get(opts, :list_workflow_runs, &Github.Client.list_workflow_runs/3)
-    dedupe_seen? = Keyword.get(opts, :dedupe_seen?, fn _project_id, _key -> false end)
+    dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
     owner = project_value(project, :github_owner)
     repo = project_value(project, :github_repo)

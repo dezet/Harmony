@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Storage do
   import Ecto.Query
 
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{Blocker, Project, PullRequestLink, WorkEvent, WorkRun}
+  alias SymphonyElixir.Storage.{Blocker, DedupeKey, Project, PullRequestLink, WorkEvent, WorkRun}
 
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
@@ -59,6 +59,28 @@ defmodule SymphonyElixir.Storage do
     |> Repo.insert(
       on_conflict: {:replace, [:reason, :metadata, :updated_at]},
       conflict_target: {:unsafe_fragment, "(project_id, target_type, target_id, status) WHERE status = 'open'"},
+      returning: true
+    )
+  end
+
+  @spec dedupe_seen?(binary(), String.t()) :: boolean()
+  def dedupe_seen?(project_id, key) when is_binary(project_id) and is_binary(key) do
+    Repo.exists?(from(d in DedupeKey, where: d.project_id == ^project_id and d.key == ^key))
+  end
+
+  @spec mark_dedupe_processed(map()) :: {:ok, DedupeKey.t()} | {:error, Ecto.Changeset.t()}
+  def mark_dedupe_processed(attrs) when is_map(attrs) do
+    attrs =
+      attrs
+      |> stringify_keys()
+      |> Map.put_new("status", "processed")
+      |> Map.put_new("metadata", %{})
+
+    %DedupeKey{}
+    |> DedupeKey.changeset(attrs)
+    |> Repo.insert(
+      on_conflict: :nothing,
+      conflict_target: [:project_id, :key],
       returning: true
     )
   end
