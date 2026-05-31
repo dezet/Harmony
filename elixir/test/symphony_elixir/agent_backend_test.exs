@@ -74,4 +74,25 @@ defmodule SymphonyElixir.AgentBackendTest do
       File.rm_rf(workspace_root)
     end
   end
+
+  test "claude code backend reports missing executable" do
+    find_executable = fn "claude" -> nil end
+
+    assert {:error, :claude_code_not_found} =
+             SymphonyElixir.AgentBackends.ClaudeCode.capability_check(find_executable: find_executable)
+  end
+
+  test "claude code backend reports available executable" do
+    find_executable = fn "claude" -> "/usr/local/bin/claude" end
+
+    assert :ok =
+             SymphonyElixir.AgentBackends.ClaudeCode.capability_check(find_executable: find_executable)
+  end
+
+  test "claude code backend does not execute work before invocation contract is implemented" do
+    issue = %Issue{id: "issue-claude", identifier: "COD-CLAUDE", title: "Claude spike"}
+
+    assert {:error, :claude_code_execution_not_implemented} =
+             SymphonyElixir.AgentBackends.ClaudeCode.run("/tmp/workspace", "prompt", issue, [])
+  end
 end
