@@ -165,6 +165,36 @@ defmodule SymphonyElixirWeb.DashboardLive do
         <section class="section-card">
           <div class="section-header">
             <div>
+              <h2 class="section-title">Evidence</h2>
+              <p class="section-copy">Browser and runtime artifacts captured for review handoff.</p>
+            </div>
+          </div>
+
+          <%= if Map.get(@payload, :artifacts, []) == [] do %>
+            <p class="empty-state">No evidence artifacts yet.</p>
+          <% else %>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 720px;">
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Path</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={artifact <- @payload.artifacts}>
+                    <td><span class="state-badge"><%= artifact.kind || "artifact" %></span></td>
+                    <td class="mono"><%= artifact.path || "n/a" %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
               <h2 class="section-title">Running sessions</h2>
               <p class="section-copy">Active issues, last known agent activity, and token usage.</p>
             </div>
