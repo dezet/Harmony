@@ -2,6 +2,16 @@ import Config
 
 config :phoenix, :json_library, Jason
 
+config :symphony_elixir, ecto_repos: [SymphonyElixir.Repo]
+
+config :symphony_elixir, SymphonyElixir.Repo,
+  database: System.get_env("HARMONY_DATABASE_NAME", "harmony_dev"),
+  username: System.get_env("HARMONY_DATABASE_USER", "postgres"),
+  password: System.get_env("HARMONY_DATABASE_PASSWORD", "postgres"),
+  hostname: System.get_env("HARMONY_DATABASE_HOST", "localhost"),
+  port: String.to_integer(System.get_env("HARMONY_DATABASE_PORT", "5432")),
+  pool_size: String.to_integer(System.get_env("HARMONY_DATABASE_POOL_SIZE", "10"))
+
 config :symphony_elixir, SymphonyElixirWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   url: [host: "localhost"],
