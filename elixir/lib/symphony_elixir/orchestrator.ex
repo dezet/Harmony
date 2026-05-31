@@ -11,7 +11,7 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
-  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubReviewRequestSource, LinearIssueSource}
+  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubPrSource, GithubReviewRequestSource, LinearIssueSource}
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
@@ -224,6 +224,9 @@ defmodule SymphonyElixir.Orchestrator do
       code_review_run?(running_entry) ->
         complete_code_review_run(state, issue_id, running_entry, session_id)
 
+      implementation_work_run?(running_entry) ->
+        complete_implementation_run(state, issue_id, running_entry, session_id)
+
       synthetic_work_run?(running_entry) ->
         Logger.info("Agent task completed for work_run issue_id=#{issue_id} session_id=#{session_id}; no Linear continuation scheduled")
         complete_issue(state, issue_id)
@@ -315,6 +318,25 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp code_review_run?(%{work_run: %WorkRun{type: "code_review"}}), do: true
   defp code_review_run?(_running_entry), do: false
+
+  defp implementation_work_run?(%{work_run: %WorkRun{type: "implementation", id: id}})
+       when is_binary(id) and id != "",
+       do: true
+
+  defp implementation_work_run?(_running_entry), do: false
+
+  defp complete_implementation_run(state, issue_id, running_entry, session_id) do
+    case implementation_handoff().(Map.fetch!(running_entry, :work_run), running_entry, []) do
+      :ok ->
+        Logger.info("Completed implementation handoff for issue_id=#{issue_id} session_id=#{session_id}")
+        complete_issue(state, issue_id)
+
+      {:error, reason} ->
+        error = "failed implementation handoff: #{inspect(reason)}"
+        Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+        block_issue_from_entry(state, issue_id, running_entry, error)
+    end
+  end
 
   defp synthetic_work_run?(%{work_run: %WorkRun{type: type}}) when type != "implementation", do: true
   defp synthetic_work_run?(_running_entry), do: false
@@ -423,10 +445,11 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp fetch_from_project_sources(projects) when is_list(projects) do
-    with {:ok, linear_runs} <- fetch_project_runs(projects, linear_work_source_fetcher()),
+    with {:ok, pr_observations} <- fetch_project_runs(projects, github_pr_work_source_fetcher()),
+         {:ok, linear_runs} <- fetch_project_runs(projects, linear_work_source_fetcher()),
          {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
          {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()) do
-      persist_fetched_work_runs(linear_runs ++ github_ci_runs ++ github_review_runs)
+      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs)
     end
   end
 
@@ -445,9 +468,15 @@ defmodule SymphonyElixir.Orchestrator do
       LinearIssueSource.fetch_candidates(
         project_id: project_value(project, :id),
         project_slug: project_value(project, :slug),
-        base_branch: project_value(project, :github_base_branch)
+        base_branch: project_value(project, :github_base_branch),
+        config_version: project_value(project, :config_version),
+        required_evidence: project_required_evidence(project)
       )
     end)
+  end
+
+  defp github_pr_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :github_pr_work_source_fetcher, &GithubPrSource.fetch_candidates/1)
   end
 
   defp github_ci_work_source_fetcher do
@@ -534,6 +563,21 @@ defmodule SymphonyElixir.Orchestrator do
   defp project_value(project, key) when is_map(project) do
     Map.get(project, key) || Map.get(project, to_string(key))
   end
+
+  defp project_required_evidence(project) do
+    config = project_value(project, :config) || %{}
+
+    config
+    |> map_get_any(:required_evidence)
+    |> case do
+      evidence when is_list(evidence) -> evidence
+      evidence when is_binary(evidence) -> [evidence]
+      _other -> []
+    end
+  end
+
+  defp map_get_any(%{} = map, key), do: Map.get(map, key) || Map.get(map, to_string(key))
+  defp map_get_any(_map, _key), do: nil
 
   defp json_safe(%DateTime{} = value), do: DateTime.to_iso8601(value)
   defp json_safe(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
@@ -1077,9 +1121,10 @@ defmodule SymphonyElixir.Orchestrator do
     work_runs
     |> sort_work_runs_for_dispatch()
     |> Enum.reduce(state, fn
-      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}}, state_acc ->
-        if should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) do
-          dispatch_issue(state_acc, issue)
+      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}} = run, state_acc ->
+        if should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) and
+             not durable_open_blocker_exists?(run, issue) do
+          dispatch_issue(state_acc, issue, nil, nil, run)
         else
           state_acc
         end
@@ -1198,6 +1243,8 @@ defmodule SymphonyElixir.Orchestrator do
   defp block_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
     reason = "failed ci repair is not safe to dispatch: #{Map.get(run.payload, :repo_policy) || "unknown"}"
     run = %{run | payload: Map.put(run.payload, :blocker_reason, reason)}
+    record_ci_fix_blocker(run, key, reason)
+    mark_work_run_dedupe_blocked(run, reason)
     _ = maybe_report_ci_fix_blocker(run)
 
     blocked_entry = %{
@@ -1214,7 +1261,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp maybe_report_ci_fix_blocker(run) do
     if Application.get_env(:symphony_elixir, :ci_fix_handoff_enabled, true) do
-      CiFixHandoff.blocked(run)
+      ci_fix_handoff().(run)
     else
       :ok
     end
@@ -1286,6 +1333,93 @@ defmodule SymphonyElixir.Orchestrator do
       Logger.warning("Failed to mark work-run dedupe key processed: #{inspect({kind, reason})}")
       :ok
   end
+
+  defp mark_work_run_dedupe_blocked(%WorkRun{dedupe_key: key, payload: payload}, reason)
+       when is_binary(key) and is_map(payload) do
+    case payload_value(payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        _ =
+          dedupe_blocked_fun().(%{
+            project_id: project_id,
+            key: key,
+            scope: "ci_fix",
+            status: "blocked",
+            metadata: %{"reason" => reason}
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to mark work-run dedupe key blocked: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to mark work-run dedupe key blocked: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp mark_work_run_dedupe_blocked(_run, _reason), do: :ok
+
+  defp record_ci_fix_blocker(%WorkRun{payload: payload} = run, key, reason) when is_map(payload) do
+    case payload_value(payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        _ =
+          runtime_blocker_record_fun().(%{
+            project_id: project_id,
+            work_run_id: run.id,
+            target_type: "github_pr",
+            target_id: key,
+            reason: reason,
+            metadata: %{
+              "github_pr_number" => run.github_pr_number,
+              "github_owner" => run.github_owner,
+              "github_repo" => run.github_repo
+            }
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to record failed-CI blocker: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to record failed-CI blocker: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp durable_open_blocker_exists?(%WorkRun{payload: payload}, %Issue{id: issue_id})
+       when is_map(payload) and is_binary(issue_id) do
+    if Application.get_env(:symphony_elixir, :durable_blockers_enabled, true) do
+      case payload_value(payload, :project_id) do
+        project_id when is_binary(project_id) ->
+          Storage.open_blocker_exists?(project_id, "linear_issue", issue_id)
+
+        _missing ->
+          false
+      end
+    else
+      false
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to check durable blocker for issue_id=#{issue_id}: #{Exception.message(exception)}")
+      false
+  catch
+    kind, reason ->
+      Logger.warning("Failed to check durable blocker for issue_id=#{issue_id}: #{inspect({kind, reason})}")
+      false
+  end
+
+  defp durable_open_blocker_exists?(_run, _issue), do: false
 
   defp payload_value(%{} = payload, key), do: Map.get(payload, key) || Map.get(payload, to_string(key))
   defp payload_value(_payload, _key), do: nil
@@ -1417,10 +1551,14 @@ defmodule SymphonyElixir.Orchestrator do
     |> MapSet.new()
   end
 
-  defp dispatch_issue(%State{} = state, issue, attempt \\ nil, preferred_worker_host \\ nil) do
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
+    dispatch_issue(state, issue, attempt, preferred_worker_host, nil)
+  end
+
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
     case revalidate_issue_for_dispatch(issue, &Tracker.fetch_issue_states_by_ids/1, terminal_state_set()) do
       {:ok, %Issue{} = refreshed_issue} ->
-        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host)
+        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host, work_run)
 
       {:skip, :missing} ->
         Logger.info("Skipping dispatch; issue no longer active or visible: #{issue_context(issue)}")
@@ -1437,7 +1575,7 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
+  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
     recipient = self()
 
     case select_worker_host(state, preferred_worker_host) do
@@ -1446,11 +1584,21 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       worker_host ->
-        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host)
+        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, implementation_extra_opts(work_run))
     end
   end
 
-  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, extra_opts \\ []) do
+  defp implementation_extra_opts(%WorkRun{} = run) do
+    [
+      work_run: run,
+      storage_work_run_id: run.id,
+      storage_project_id: payload_value(run.payload, :project_id)
+    ]
+  end
+
+  defp implementation_extra_opts(_work_run), do: []
+
+  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, extra_opts) do
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
            agent_runner().(issue, recipient, Keyword.merge([attempt: attempt, worker_host: worker_host], extra_opts))
          end) do
@@ -1485,6 +1633,8 @@ defmodule SymphonyElixir.Orchestrator do
             turn_count: 0,
             retry_attempt: normalize_retry_attempt(attempt),
             work_run: Keyword.get(extra_opts, :work_run),
+            storage_work_run_id: Keyword.get(extra_opts, :storage_work_run_id),
+            storage_project_id: Keyword.get(extra_opts, :storage_project_id),
             started_at: DateTime.utc_now()
           })
 
@@ -1512,6 +1662,24 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp agent_runner do
     Application.get_env(:symphony_elixir, :agent_runner_fun, &AgentRunner.run/3)
+  end
+
+  defp ci_fix_handoff do
+    Application.get_env(:symphony_elixir, :ci_fix_handoff_fun, &CiFixHandoff.blocked/1)
+  end
+
+  defp dedupe_blocked_fun do
+    Application.get_env(:symphony_elixir, :dedupe_blocked_fun, &Storage.mark_dedupe_blocked/1)
+  end
+
+  defp implementation_handoff do
+    Application.get_env(:symphony_elixir, :implementation_handoff_fun, fn run, _running_entry, opts ->
+      RuntimePolicy.ImplementationHandoff.publish(run, opts)
+    end)
+  end
+
+  defp runtime_blocker_record_fun do
+    Application.get_env(:symphony_elixir, :runtime_blocker_record_fun, &RuntimePolicy.Blocker.record/1)
   end
 
   defp review_handoff do

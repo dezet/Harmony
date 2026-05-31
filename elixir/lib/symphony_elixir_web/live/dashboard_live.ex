@@ -203,12 +203,51 @@ defmodule SymphonyElixirWeb.DashboardLive do
         <section class="section-card">
           <div class="section-header">
             <div>
+              <h2 class="section-title">Work runs</h2>
+              <p class="section-copy">Durable queued, blocked, and completed runtime work persisted by project polling.</p>
+            </div>
+          </div>
+
+          <%= if durable_work_runs(@payload) == [] do %>
+            <p class="empty-state">No durable work runs yet.</p>
+          <% else %>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 920px;">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Target</th>
+                    <th>Dedupe key</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={run <- durable_work_runs(@payload)}>
+                    <td><span class="state-badge"><%= run.type || "work" %></span></td>
+                    <td><span class={state_badge_class(run.status || "queued")}><%= run.status || "queued" %></span></td>
+                    <td>
+                      <div class="issue-stack">
+                        <span class="issue-id"><%= run.linear_identifier || pr_label(run) || "n/a" %></span>
+                        <span class="muted"><%= work_run_target_detail(run) %></span>
+                      </div>
+                    </td>
+                    <td class="mono"><%= run.dedupe_key || "n/a" %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
               <h2 class="section-title">Evidence</h2>
               <p class="section-copy">Browser and runtime artifacts captured for review handoff.</p>
             </div>
           </div>
 
-          <%= if Map.get(@payload, :artifacts, []) == [] do %>
+          <%= if evidence_artifacts(@payload) == [] do %>
             <p class="empty-state">No evidence artifacts yet.</p>
           <% else %>
             <div class="table-wrap">
@@ -220,7 +259,7 @@ defmodule SymphonyElixirWeb.DashboardLive do
                   </tr>
                 </thead>
                 <tbody>
-                  <tr :for={artifact <- @payload.artifacts}>
+                  <tr :for={artifact <- evidence_artifacts(@payload)}>
                     <td><span class="state-badge"><%= artifact.kind || "artifact" %></span></td>
                     <td class="mono"><%= artifact.path || "n/a" %></td>
                   </tr>
@@ -454,6 +493,39 @@ defmodule SymphonyElixirWeb.DashboardLive do
   defp snapshot_timeout_ms do
     Endpoint.config(:snapshot_timeout_ms) || 15_000
   end
+
+  defp evidence_artifacts(payload) do
+    runtime_artifacts = Map.get(payload, :artifacts, [])
+
+    durable_artifacts =
+      payload
+      |> Map.get(:durable, %{})
+      |> Map.get(:artifacts, [])
+
+    runtime_artifacts ++ durable_artifacts
+  end
+
+  defp durable_work_runs(payload) do
+    payload
+    |> Map.get(:durable, %{})
+    |> Map.get(:work_runs, [])
+  end
+
+  defp work_run_target_detail(run) do
+    cond do
+      is_binary(run.linear_issue_id) -> run.linear_issue_id
+      is_binary(run.github_owner) and is_binary(run.github_repo) and is_integer(run.github_pr_number) -> pr_label(run)
+      is_binary(run.github_owner) and is_binary(run.github_repo) -> "#{run.github_owner}/#{run.github_repo}"
+      true -> run.id || "n/a"
+    end
+  end
+
+  defp pr_label(%{github_owner: owner, github_repo: repo, github_pr_number: number})
+       when is_binary(owner) and is_binary(repo) and is_integer(number) do
+    "#{owner}/#{repo}##{number}"
+  end
+
+  defp pr_label(_run), do: nil
 
   defp completed_runtime_seconds(payload) do
     payload.codex_totals.seconds_running || 0

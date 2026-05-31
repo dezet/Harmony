@@ -46,7 +46,14 @@ defmodule SymphonyElixir.GithubWorkSourceTest do
     assert candidate.github_pr_number == 7
     assert candidate.linear_identifier == "COD-5"
 
-    assert_received {:persist_link, %{github_pr_number: 7, linear_identifier: "COD-5"}}
+    assert_received {:persist_link,
+                     %{
+                       github_pr_number: 7,
+                       github_head_sha: "abc123",
+                       github_head_ref: "fix-cod-5",
+                       github_base_ref: "develop",
+                       linear_identifier: "COD-5"
+                     }}
   end
 
   @tag :db

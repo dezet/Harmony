@@ -29,6 +29,8 @@ defmodule SymphonyElixir.WorkRun do
 
   @spec from_linear_issue(Issue.t(), keyword()) :: t()
   def from_linear_issue(%Issue{} = issue, opts) when is_list(opts) do
+    required_evidence = opts |> Keyword.get(:required_evidence, []) |> List.wrap()
+
     payload =
       %{issue: issue}
       |> maybe_put_payload(:project_id, Keyword.get(opts, :project_id))
@@ -43,7 +45,11 @@ defmodule SymphonyElixir.WorkRun do
       linear_identifier: issue.identifier,
       linear_url: issue.url,
       agent_backend: "codex",
-      payload: payload
+      payload:
+        payload
+        |> maybe_put_payload(:config_version, Keyword.get(opts, :config_version))
+        |> maybe_put_payload(:required_evidence, required_evidence),
+      required_evidence: required_evidence
     }
   end
 

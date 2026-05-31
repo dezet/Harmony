@@ -48,6 +48,28 @@ defmodule SymphonyElixir.EvidenceTest do
     end
   end
 
+  test "rejects evidence artifact paths outside the workspace" do
+    workspace =
+      Path.join(
+        System.tmp_dir!(),
+        "harmony-evidence-path-#{Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)}"
+      )
+
+    try do
+      File.mkdir_p!(Path.join(workspace, ".harmony"))
+
+      File.write!(
+        Path.join(workspace, ".harmony/evidence.json"),
+        ~s({"artifacts":[{"kind":"screenshot","path":"../outside.png"}]})
+      )
+
+      assert {:error, {:evidence_artifact_path_escapes_workspace, "../outside.png"}} =
+               Manifest.read(workspace)
+    after
+      File.rm_rf(workspace)
+    end
+  end
+
   test "reports browser evidence capability from configured commands" do
     probe = fn "playwright-mcp" -> {:ok, "ok"} end
 

@@ -66,4 +66,39 @@ defmodule SymphonyElixir.ReviewHandoffTest do
                        metadata: %{"github_pr_number" => 7}
                      }}
   end
+
+  test "emits work event after successful github review publish" do
+    parent = self()
+
+    create_review = fn _owner, _repo, _pr_number, _body, _opts -> :ok end
+
+    append_event = fn attrs ->
+      send(parent, {:work_event, attrs})
+      {:ok, attrs}
+    end
+
+    run = %WorkRun{
+      id: "work-run-1",
+      dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
+      github_owner: "dezet",
+      github_repo: "portal",
+      github_pr_number: 7,
+      payload: %{project_id: "project-1"}
+    }
+
+    assert :ok =
+             ReviewHandoff.publish(run, "Review body",
+               create_review: create_review,
+               append_event: append_event,
+               mark_dedupe_processed: fn _attrs -> {:ok, %{}} end
+             )
+
+    assert_received {:work_event,
+                     %{
+                       project_id: "project-1",
+                       work_run_id: "work-run-1",
+                       type: "github_review_created",
+                       payload: %{"github_pr_number" => 7}
+                     }}
+  end
 end

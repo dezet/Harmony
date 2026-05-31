@@ -3,7 +3,9 @@ defmodule SymphonyElixirWeb.Presenter do
   Shared projections for the observability API and dashboard.
   """
 
-  alias SymphonyElixir.{Config, Orchestrator, StatusDashboard}
+  alias SymphonyElixir.{Config, Orchestrator, StatusDashboard, Storage}
+
+  @durable_limit 50
 
   @spec state_payload(GenServer.name(), timeout()) :: map()
   def state_payload(orchestrator, snapshot_timeout_ms) do
@@ -27,6 +29,7 @@ defmodule SymphonyElixirWeb.Presenter do
           rate_limits: snapshot.rate_limits
         }
         |> maybe_put_projects(snapshot)
+        |> maybe_put_durable()
 
       :timeout ->
         %{generated_at: generated_at, error: %{code: "snapshot_timeout", message: "Snapshot timed out"}}
@@ -135,6 +138,29 @@ defmodule SymphonyElixirWeb.Presenter do
     if blank_project?(project), do: payload, else: Map.put(payload, :project, project)
   end
 
+  defp maybe_put_durable(payload) do
+    case durable_payload() do
+      nil -> payload
+      durable -> Map.put(payload, :durable, durable)
+    end
+  end
+
+  defp durable_payload do
+    durable = %{
+      projects: Enum.map(Storage.list_projects(), &durable_project_payload/1),
+      work_runs: Enum.map(Storage.list_recent_work_runs(@durable_limit), &durable_work_run_payload/1),
+      pull_request_links: Enum.map(Storage.list_pull_request_links(@durable_limit), &durable_pull_request_link_payload/1),
+      blockers: Enum.map(Storage.list_recent_blockers(@durable_limit), &durable_blocker_payload/1),
+      dedupe_keys: Enum.map(Storage.list_recent_dedupe_keys(@durable_limit), &durable_dedupe_payload/1),
+      work_events: Enum.map(Storage.list_recent_events(@durable_limit), &durable_event_payload/1),
+      artifacts: Enum.map(Storage.list_recent_artifacts(@durable_limit), &durable_artifact_payload/1)
+    }
+
+    if Enum.all?(Map.values(durable), &(&1 == [])), do: nil, else: durable
+  rescue
+    DBConnection.OwnershipError -> nil
+  end
+
   defp blank_project?(nil), do: true
   defp blank_project?(%{id: nil, name: nil, slug: nil}), do: true
   defp blank_project?(_project), do: false
@@ -206,6 +232,108 @@ defmodule SymphonyElixirWeb.Presenter do
     %{
       kind: Map.get(artifact, :kind) || Map.get(artifact, "kind"),
       path: Map.get(artifact, :path) || Map.get(artifact, "path")
+    }
+  end
+
+  defp durable_project_payload(project) do
+    %{
+      id: project.id,
+      slug: project.slug,
+      linear: %{
+        project_slug: project.linear_project_slug,
+        team_key: project.linear_team_key,
+        human_review_state: project.linear_human_review_state
+      },
+      github: %{
+        owner: project.github_owner,
+        repo: project.github_repo,
+        base_branch: project.github_base_branch
+      },
+      config_version: project.config_version
+    }
+  end
+
+  defp durable_work_run_payload(run) do
+    %{
+      id: run.id,
+      project_id: run.project_id,
+      type: run.type,
+      status: run.status,
+      dedupe_key: run.dedupe_key,
+      github_owner: run.github_owner,
+      github_repo: run.github_repo,
+      github_pr_number: run.github_pr_number,
+      github_head_sha: run.github_head_sha,
+      github_head_ref: run.github_head_ref,
+      github_base_ref: run.github_base_ref,
+      linear_issue_id: run.linear_issue_id,
+      linear_identifier: run.linear_identifier,
+      linear_url: run.linear_url,
+      agent_backend: run.agent_backend,
+      payload: run.payload
+    }
+  end
+
+  defp durable_pull_request_link_payload(link) do
+    %{
+      id: link.id,
+      project_id: link.project_id,
+      github_owner: link.github_owner,
+      github_repo: link.github_repo,
+      github_pr_number: link.github_pr_number,
+      github_head_sha: link.github_head_sha,
+      github_head_ref: link.github_head_ref,
+      github_base_ref: link.github_base_ref,
+      linear_issue_id: link.linear_issue_id,
+      linear_identifier: link.linear_identifier,
+      linear_url: link.linear_url,
+      metadata: link.metadata
+    }
+  end
+
+  defp durable_blocker_payload(blocker) do
+    %{
+      id: blocker.id,
+      project_id: blocker.project_id,
+      work_run_id: blocker.work_run_id,
+      target_type: blocker.target_type,
+      target_id: blocker.target_id,
+      reason: blocker.reason,
+      status: blocker.status,
+      metadata: blocker.metadata
+    }
+  end
+
+  defp durable_dedupe_payload(dedupe) do
+    %{
+      id: dedupe.id,
+      project_id: dedupe.project_id,
+      key: dedupe.key,
+      scope: dedupe.scope,
+      status: dedupe.status,
+      metadata: dedupe.metadata
+    }
+  end
+
+  defp durable_event_payload(event) do
+    %{
+      id: event.id,
+      project_id: event.project_id,
+      work_run_id: event.work_run_id,
+      type: event.type,
+      payload: event.payload,
+      inserted_at: iso8601(event.inserted_at)
+    }
+  end
+
+  defp durable_artifact_payload(artifact) do
+    %{
+      id: artifact.id,
+      project_id: artifact.project_id,
+      work_run_id: artifact.work_run_id,
+      kind: artifact.kind,
+      path: artifact.path,
+      metadata: artifact.metadata
     }
   end
 

@@ -17,6 +17,8 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
     field(:github_repo, :string)
     field(:github_pr_number, :integer)
     field(:github_head_sha, :string)
+    field(:github_head_ref, :string)
+    field(:github_base_ref, :string)
     field(:linear_issue_id, :string)
     field(:linear_identifier, :string)
     field(:linear_url, :string)
@@ -35,6 +37,8 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
       :github_repo,
       :github_pr_number,
       :github_head_sha,
+      :github_head_ref,
+      :github_base_ref,
       :linear_issue_id,
       :linear_identifier,
       :linear_url,

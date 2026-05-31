@@ -15,8 +15,11 @@ defmodule SymphonyElixir.WorkSources.LinearIssueSource do
       runs =
         Enum.map(issues, fn issue ->
           WorkRun.from_linear_issue(issue,
+            project_id: Keyword.get(opts, :project_id),
             project_slug: Keyword.get(opts, :project_slug),
-            base_branch: Keyword.get(opts, :base_branch)
+            base_branch: Keyword.get(opts, :base_branch),
+            config_version: Keyword.get(opts, :config_version),
+            required_evidence: Keyword.get(opts, :required_evidence, [])
           )
         end)
 

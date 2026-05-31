@@ -5,10 +5,13 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
 
   alias SymphonyElixir.{Github, RuntimePolicy, Storage, WorkRun}
 
+  @max_log_excerpt_bytes 12_000
+
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     list_pull_requests = Keyword.get(opts, :list_pull_requests, &Github.Client.list_open_pull_requests/3)
     list_workflow_runs = Keyword.get(opts, :list_workflow_runs, &Github.Client.list_workflow_runs/3)
+    get_workflow_run_logs = Keyword.get(opts, :get_workflow_run_logs, &Github.Client.get_workflow_run_logs/4)
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
     owner = project_value(project, :github_owner)
@@ -17,15 +20,24 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
       |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        append_failed_ci_candidates(project, owner, repo, list_workflow_runs, dedupe_seen?, pr, runs)
+        append_failed_ci_candidates(
+          project,
+          owner,
+          repo,
+          list_workflow_runs,
+          get_workflow_run_logs,
+          dedupe_seen?,
+          pr,
+          runs
+        )
       end)
     end
   end
 
-  defp append_failed_ci_candidates(project, owner, repo, list_workflow_runs, dedupe_seen?, pr, runs) do
+  defp append_failed_ci_candidates(project, owner, repo, list_workflow_runs, get_workflow_run_logs, dedupe_seen?, pr, runs) do
     case list_workflow_runs.(owner, repo, head_sha: pr.head_sha) do
       {:ok, workflow_runs} ->
-        candidates = failed_ci_candidates(project, owner, repo, pr, workflow_runs, dedupe_seen?)
+        candidates = failed_ci_candidates(project, owner, repo, pr, workflow_runs, get_workflow_run_logs, dedupe_seen?)
         {:cont, {:ok, runs ++ candidates}}
 
       {:error, reason} ->
@@ -33,18 +45,19 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
     end
   end
 
-  defp failed_ci_candidates(project, owner, repo, pr, workflow_runs, dedupe_seen?) do
+  defp failed_ci_candidates(project, owner, repo, pr, workflow_runs, get_workflow_run_logs, dedupe_seen?) do
     workflow_runs
     |> Enum.filter(&failed_actions_run?/1)
     |> Enum.reject(fn workflow_run ->
       dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, workflow_run))
     end)
-    |> Enum.map(&build_run(project, owner, repo, pr, &1))
+    |> Enum.map(&build_run(project, owner, repo, pr, &1, get_workflow_run_logs))
   end
 
-  defp build_run(project, owner, repo, pr, workflow_run) do
+  defp build_run(project, owner, repo, pr, workflow_run, get_workflow_run_logs) do
     link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(project_value(project, :linear_team_key)))
     repo_policy = repo_policy(project, pr)
+    log_payload = workflow_run_log_payload(owner, repo, workflow_run, get_workflow_run_logs)
 
     %WorkRun{
       project_slug: project_value(project, :slug),
@@ -60,13 +73,34 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",
-      payload: %{
-        project_id: project_value(project, :id),
-        pull_request: pr,
-        workflow_run: workflow_run,
-        repo_policy: repo_policy
-      }
+      payload:
+        %{
+          project_id: project_value(project, :id),
+          pull_request: pr,
+          workflow_run: workflow_run,
+          repo_policy: repo_policy
+        }
+        |> Map.merge(log_payload)
     }
+  end
+
+  defp workflow_run_log_payload(owner, repo, workflow_run, get_workflow_run_logs) do
+    case get_workflow_run_logs.(owner, repo, workflow_run.id, []) do
+      {:ok, logs} when is_binary(logs) ->
+        %{log_excerpt: excerpt(logs)}
+
+      {:error, reason} ->
+        %{log_fetch_error: inspect(reason)}
+
+      other ->
+        %{log_fetch_error: inspect({:unexpected_log_result, other})}
+    end
+  end
+
+  defp excerpt(logs) when byte_size(logs) <= @max_log_excerpt_bytes, do: logs
+
+  defp excerpt(logs) do
+    binary_part(logs, 0, @max_log_excerpt_bytes) <> "\n[truncated]"
   end
 
   defp repo_policy(project, pr) do

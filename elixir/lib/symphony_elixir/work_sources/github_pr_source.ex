@@ -32,6 +32,8 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
       github_repo: project_value(project, :github_repo),
       github_pr_number: pr.number,
       github_head_sha: pr.head_sha,
+      github_head_ref: pr.head_ref,
+      github_base_ref: pr.base_ref,
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       metadata: %{"title" => pr.title}

@@ -1229,6 +1229,222 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     refute_receive {:agent_run, _issue, _opts}, 100
   end
 
+  test "orchestrator dispatches implementation with persisted work run ids" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+
+    issue = %Issue{
+      id: "issue-1",
+      identifier: "COD-5",
+      title: "Persisted implementation",
+      state: "In Progress",
+      project_id: "project-1",
+      project_slug: "portal"
+    }
+
+    run =
+      WorkRun.from_linear_issue(issue,
+        project_id: "storage-project-1",
+        project_slug: "portal",
+        base_branch: "develop"
+      )
+      |> Map.put(:id, "storage-work-run-1")
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+    Application.put_env(:symphony_elixir, :memory_tracker_issues, [issue])
+    Application.put_env(:symphony_elixir, :implementation_handoff_fun, fn _run, _running_entry, _opts -> :ok end)
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, opts ->
+      send(parent, {:agent_run, self(), issue, opts})
+
+      receive do
+        :stop -> :ok
+      after
+        5_000 -> :ok
+      end
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :PersistedImplementationDispatchOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:agent_run, runner_pid, ^issue, opts}, 1_000
+    assert opts[:storage_work_run_id] == "storage-work-run-1"
+    assert opts[:storage_project_id] == "storage-project-1"
+
+    state = :sys.get_state(pid)
+    assert state.running["issue-1"].storage_work_run_id == "storage-work-run-1"
+    assert state.running["issue-1"].storage_project_id == "storage-project-1"
+
+    send(runner_pid, :stop)
+  end
+
+  test "project polling invokes github PR observation source" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+    project = %{id: "project-1", slug: "portal", github_owner: "dezet", github_repo: "portal", github_base_branch: "develop"}
+
+    Application.put_env(:symphony_elixir, :project_fetcher, fn -> [project] end)
+    Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn ^project -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn ^project -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn ^project -> {:ok, []} end)
+
+    Application.put_env(:symphony_elixir, :github_pr_work_source_fetcher, fn ^project ->
+      send(parent, :github_pr_source_polled)
+      {:ok, []}
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :GithubPrObservationOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive :github_pr_source_polled, 1_000
+  end
+
+  test "implementation completion hands off through runtime policy instead of retrying" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+
+    issue = %Issue{
+      id: "issue-1",
+      identifier: "COD-5",
+      title: "Persisted implementation",
+      state: "In Progress",
+      project_id: "project-1",
+      project_slug: "portal"
+    }
+
+    run =
+      WorkRun.from_linear_issue(issue,
+        project_id: "storage-project-1",
+        project_slug: "portal",
+        base_branch: "develop"
+      )
+      |> Map.put(:id, "storage-work-run-1")
+
+    Application.put_env(:symphony_elixir, :memory_tracker_issues, [issue])
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, _opts ->
+      send(parent, {:agent_run, self(), issue})
+
+      receive do
+        :stop -> :ok
+      after
+        5_000 -> :ok
+      end
+    end)
+
+    Application.put_env(:symphony_elixir, :implementation_handoff_fun, fn handoff_run, _running_entry, _opts ->
+      send(parent, {:implementation_handoff, handoff_run})
+      :ok
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :ImplementationHandoffOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:agent_run, runner_pid, ^issue}, 1_000
+    state_before_stop = :sys.get_state(pid)
+    assert state_before_stop.running["issue-1"].work_run == run
+
+    send(runner_pid, :stop)
+
+    assert_receive {:implementation_handoff, ^run}, 1_000
+
+    state = :sys.get_state(pid)
+    assert MapSet.member?(state.completed, "issue-1")
+    refute Map.has_key?(state.retry_attempts, "issue-1")
+  end
+
+  test "unsafe failed-ci run records durable blocker and blocked dedupe before handoff" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    parent = self()
+    dedupe_key = "github-ci-fix:dezet/portal:7:abc123:123"
+
+    run = %WorkRun{
+      id: "work-run-1",
+      project_slug: "portal",
+      type: "ci_fix",
+      status: "queued",
+      dedupe_key: dedupe_key,
+      github_owner: "dezet",
+      github_repo: "portal",
+      github_pr_number: 7,
+      github_head_sha: "abc123",
+      github_head_ref: "fix-cod-5",
+      github_base_ref: "develop",
+      payload: %{
+        project_id: "project-1",
+        repo_policy: "repair_branch_required",
+        workflow_run: %{id: 123, name: "CI"}
+      }
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn _issue, _recipient, _opts ->
+      send(parent, :unexpected_agent_dispatch)
+      :ok
+    end)
+
+    Application.put_env(:symphony_elixir, :runtime_blocker_record_fun, fn attrs ->
+      send(parent, {:durable_blocker, attrs})
+      {:ok, attrs}
+    end)
+
+    Application.put_env(:symphony_elixir, :dedupe_blocked_fun, fn attrs ->
+      send(parent, {:dedupe_blocked, attrs})
+      {:ok, attrs}
+    end)
+
+    Application.put_env(:symphony_elixir, :ci_fix_handoff_fun, fn handoff_run ->
+      send(parent, {:handoff, handoff_run})
+      :ok
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :UnsafeCiDurableBlockOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    send(pid, :run_poll_cycle)
+
+    assert_receive {:durable_blocker, %{project_id: "project-1", work_run_id: "work-run-1"}}, 1_000
+    assert_receive {:dedupe_blocked, %{project_id: "project-1", key: ^dedupe_key, status: "blocked"}}, 1_000
+    assert_receive {:handoff, %WorkRun{dedupe_key: ^dedupe_key}}, 1_000
+    refute_received :unexpected_agent_dispatch
+  end
+
   @tag :db
   test "orchestrator schedules work from multiple stored projects within concurrency limit" do
     :ok = checkout_repo(%{})
@@ -1284,6 +1500,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
     Application.put_env(:symphony_elixir, :memory_tracker_issues, Map.values(issues_by_slug))
     Application.put_env(:symphony_elixir, :project_fetcher, &Storage.list_projects/0)
+    Application.put_env(:symphony_elixir, :github_pr_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _project -> {:ok, []} end)
 
