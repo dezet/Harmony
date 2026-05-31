@@ -42,6 +42,24 @@ defmodule SymphonyElixir.Github.Client do
     end
   end
 
+  @spec create_issue_comment(String.t(), String.t(), pos_integer(), String.t()) :: :ok | {:error, term()}
+  def create_issue_comment(owner, repo, issue_number, body) do
+    create_issue_comment(owner, repo, issue_number, body, [])
+  end
+
+  @spec create_issue_comment(String.t(), String.t(), pos_integer(), String.t(), keyword()) :: :ok | {:error, term()}
+  def create_issue_comment(owner, repo, issue_number, body, opts)
+      when is_binary(owner) and is_binary(repo) and is_integer(issue_number) and is_binary(body) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{@api_root}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
+
+    with {:ok, response} <- request_fun.(method: :post, url: url, json: %{body: body}, headers: headers(token)),
+         :ok <- expect_status(response, 201) do
+      :ok
+    end
+  end
+
   @spec list_workflow_runs(String.t(), String.t(), keyword()) ::
           {:ok, [WorkflowRun.t()]} | {:error, term()}
   def list_workflow_runs(owner, repo, opts \\ [])
