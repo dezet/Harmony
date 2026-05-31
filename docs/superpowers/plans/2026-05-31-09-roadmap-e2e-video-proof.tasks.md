@@ -104,8 +104,11 @@ Current correction:
   - [x] Run `mix specs.check`.
   - [x] Run `mix test --seed 0`.
   - [x] Run `make all`.
-  - [ ] Rerun all final gates after Task 8 v2 evidence updates.
+  - [x] Rerun all final gates after Task 8 v2 evidence updates.
   - [ ] Request independent review.
   - [ ] Resolve or document all release-blocking findings.
 
   Note: independent review request was attempted, but the subagent failed with a revoked refresh-token error before returning findings.
+  Fresh post-v2 gates passed on 2026-05-31 after recording v2 evidence:
+  `git diff --check`, `mix format --check-formatted`, `mix specs.check`,
+  `mix test --seed 0`, and `make all`.
