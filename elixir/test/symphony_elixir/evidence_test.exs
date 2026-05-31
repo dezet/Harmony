@@ -58,4 +58,44 @@ defmodule SymphonyElixir.EvidenceTest do
     assert {:error, {:browser_evidence_unavailable, [:playwright_mcp]}} =
              SymphonyElixir.Evidence.Capability.check(probe_command: probe)
   end
+
+  test "collector persists manifest artifacts" do
+    workspace =
+      Path.join(
+        System.tmp_dir!(),
+        "harmony-evidence-store-#{Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)}"
+      )
+
+    parent = self()
+
+    persist_artifact = fn attrs ->
+      send(parent, {:artifact_attrs, attrs})
+      {:ok, struct(SymphonyElixir.Storage.Artifact, attrs)}
+    end
+
+    try do
+      File.mkdir_p!(Path.join(workspace, ".harmony/artifacts"))
+      artifact_path = Path.join(workspace, ".harmony/artifacts/frontend-check.txt")
+      File.write!(artifact_path, "ok")
+
+      File.write!(
+        Path.join(workspace, ".harmony/evidence.json"),
+        ~s({"frontend_changed":true,"scenario":"Open changed screen","artifacts":[{"kind":"report","path":".harmony/artifacts/frontend-check.txt","description":"ok"}]})
+      )
+
+      assert {:ok, [%SymphonyElixir.Storage.Artifact{kind: "report"}]} =
+               SymphonyElixir.Evidence.Collector.collect("project-1", nil, workspace, persist_artifact: persist_artifact)
+
+      assert_received {:artifact_attrs,
+                       %{
+                         project_id: "project-1",
+                         work_run_id: nil,
+                         kind: "report",
+                         path: ^artifact_path,
+                         metadata: %{"description" => "ok", "scenario" => "Open changed screen"}
+                       }}
+    after
+      File.rm_rf(workspace)
+    end
+  end
 end

@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Storage do
   import Ecto.Query
 
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{Blocker, DedupeKey, Project, PullRequestLink, WorkEvent, WorkRun}
+  alias SymphonyElixir.Storage.{Artifact, Blocker, DedupeKey, Project, PullRequestLink, WorkEvent, WorkRun}
 
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
@@ -44,6 +44,13 @@ defmodule SymphonyElixir.Storage do
   def append_event(attrs) when is_map(attrs) do
     %WorkEvent{}
     |> WorkEvent.changeset(stringify_keys(attrs))
+    |> Repo.insert()
+  end
+
+  @spec create_artifact(map()) :: {:ok, Artifact.t()} | {:error, Ecto.Changeset.t()}
+  def create_artifact(attrs) when is_map(attrs) do
+    %Artifact{}
+    |> Artifact.changeset(stringify_keys(attrs))
     |> Repo.insert()
   end
 
