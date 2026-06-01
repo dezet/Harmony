@@ -14,11 +14,11 @@ Post mortem / handoff:
 
 - `docs/superpowers/plans/2026-05-31-09-roadmap-e2e-video-proof.postmortem.md`
 
-Current correction:
+Evidence correction status:
 
 - User review found that the first four milestone videos look too similar and do not clearly prove what is being tested.
-- Existing v1 videos and sidecars remain useful working artifacts, but they are not final release evidence.
-- Next session must regenerate v2 videos with feature-specific proof visible in the recording itself.
+- Existing v1 videos were superseded by v2 videos with feature-specific live API overlays.
+- Final release evidence is the tracked `*-v2.webm` set plus matching JSON sidecars in `docs/evidence/roadmap-e2e/`.
 
 - [x] Task 0: Local runtime gate
   - [x] Verify `podman-compose` provider is available.
@@ -33,7 +33,7 @@ Current correction:
   - [x] Ensure scenarios use fake Linear/GitHub sources only.
   - [x] Print runtime URL, project slug, work run ids, dedupe keys, and expected assertions.
   - [x] Add automated harness tests.
-- [ ] Task 2: Milestone 1 proof - Durable WorkRun and PR observation
+- [x] Task 2: Milestone 1 proof - Durable WorkRun and PR observation
   - [x] Run `milestone1` scenario.
   - [x] Verify Linear implementation `WorkRun` has `payload.project_id`.
   - [x] Verify PR observation persists or updates `pull_request_links`.
@@ -98,7 +98,7 @@ Current correction:
     - `docs/evidence/roadmap-e2e/milestone-05-failed-ci-context-v2.webm`
   - [x] Update milestone sidecar JSON files with `video_revision: 2` and v2 artifact paths.
   - [x] Mark v1 videos as superseded or replace them in place after v2 evidence is recorded.
-- [ ] Task 9: Final quality gate and review
+- [ ] Task 9: Final quality gate and independent review
   - [x] Run `git diff --check`.
   - [x] Run `mix format --check-formatted`.
   - [x] Run `mix specs.check`.
@@ -112,3 +112,5 @@ Current correction:
   Fresh post-v2 gates passed on 2026-05-31 after recording v2 evidence:
   `git diff --check`, `mix format --check-formatted`, `mix specs.check`,
   `mix test --seed 0`, and `make all`.
+  Current docs status as of 2026-06-01: code/evidence gates are recorded, but
+  independent review is still open.

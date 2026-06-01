@@ -14,13 +14,41 @@ Active goal:
 Verify the repaired Harmony roadmap with deterministic local runtime flows, browser/API proof, and recorded Playwright/Chrome DevTools evidence for every release-blocking milestone.
 ```
 
+## Post-V2 Status As Of 2026-06-01
+
+The v1 evidence failure described below has been corrected. The final tracked
+release evidence is the v2 video set and matching JSON sidecars under
+`docs/evidence/roadmap-e2e/`.
+
+- `docs/evidence/roadmap-e2e/milestone-01-workrun-pr-observation-v2.webm`
+- `docs/evidence/roadmap-e2e/milestone-02-dedupe-blockers-events-v2.webm`
+- `docs/evidence/roadmap-e2e/milestone-03-implementation-handoff-v2.webm`
+- `docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm`
+- `docs/evidence/roadmap-e2e/milestone-05-failed-ci-context-v2.webm`
+
+The matching sidecars record `video_revision: 2` and
+`proof_style: "feature-specific-live-api-overlay"`. The final browser review
+summary is `docs/evidence/roadmap-e2e/final-review-checks.md`.
+
+Fresh post-v2 gates were recorded in the task tracker on 2026-05-31:
+
+- `git diff --check`
+- `mix format --check-formatted`
+- `mix specs.check`
+- `mix test --seed 0`
+- `make all`
+
+Remaining open item: independent review did not complete because the subagent
+failed with a revoked refresh-token error. No repo-recorded post-v2 systemd host
+rollout proof was found for operations hardening.
+
 ## User Observation
 
 The first four recorded videos look too similar. They mostly show the same dashboard, projects page, and API state pages. It is not clear from the video itself which milestone is being tested, what feature is under proof, or which runtime values confirm the milestone.
 
 This is a valid release-evidence failure. The JSON sidecars and API assertions contain useful data, but the video artifacts do not independently demonstrate the milestone-specific behavior in a way a reviewer can inspect.
 
-Current conclusion:
+Historical conclusion before the v2 correction:
 
 - Treat existing milestone videos as v1 working artifacts, not final release evidence.
 - Do not use the first four v1 videos as proof that the roadmap is verified.
@@ -66,32 +94,13 @@ Known environment state:
 
 ## Verification State
 
-Previously observed successful checks during this work:
+Historical pre-v2 verification is superseded by the post-v2 gate recorded in
+`docs/superpowers/plans/2026-05-31-09-roadmap-e2e-video-proof.tasks.md`.
 
-- `git diff --check`
-- `mix format --check-formatted`
-- `mix specs.check`
-- `mix test --seed 0`
-- targeted roadmap harness tests
-- `make all` passed before the final runtime-guard fix
+Do not treat independent review as complete:
 
-Do not treat final verification as complete yet:
-
-- After the runtime-guard fix, `make all` was started again but the session was interrupted before a final result was captured.
 - The independent review request failed because the subagent auth token could not be refreshed.
-- The v1 video evidence is now known to be too weak for milestones 1-4.
-
-Before final completion, rerun the full quality gate after v2 evidence is generated:
-
-```sh
-git diff --check
-mix format --check-formatted
-mix specs.check
-mix test --seed 0
-make all
-```
-
-Then retry independent review if the Codex/subagent login issue has been fixed.
+- Release-blocking findings, if any, still require a successful independent review or explicit documentation.
 
 ## Required V2 Video Evidence
 
