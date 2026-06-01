@@ -70,6 +70,10 @@ mise exec -- mix build
 mise exec -- ./bin/symphony ./WORKFLOW.md
 ```
 
+For the dedicated `harmony` system user proof-of-life runtime, use the controlled operations
+runbook in [`docs/harmony-operations.md`](../docs/harmony-operations.md). The service should be
+started manually and enabled only after stable proof-of-life runs.
+
 ## Configuration
 
 Pass a custom workflow file path to `./bin/symphony` when starting the service:
@@ -80,6 +84,45 @@ Pass a custom workflow file path to `./bin/symphony` when starting the service:
 
 If no path is passed, Symphony defaults to `./WORKFLOW.md`.
 
+Harmony now uses Postgres for durable runtime state. Configure it with:
+
+- `HARMONY_DATABASE_NAME` defaults to `harmony_dev` and `harmony_test` under `MIX_ENV=test`
+- `HARMONY_DATABASE_USER` defaults to `postgres`
+- `HARMONY_DATABASE_PASSWORD` defaults to `postgres`
+- `HARMONY_DATABASE_HOST` defaults to `localhost`
+- `HARMONY_DATABASE_PORT` defaults to `5432`
+- `HARMONY_DATABASE_POOL_SIZE` defaults to `10`
+
+For local development, start the bundled Postgres container from this `elixir/` directory:
+
+```bash
+docker compose up -d postgres
+```
+
+If you use Podman without a Compose provider, install `podman-compose` or run the same container
+directly:
+
+```bash
+podman run -d --name harmony-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=harmony_dev \
+  -p "${HARMONY_DATABASE_PORT:-5432}:5432" \
+  -v harmony_postgres_data:/var/lib/postgresql/data \
+  -v "$PWD/priv/docker/postgres/init:/docker-entrypoint-initdb.d:ro" \
+  docker.io/library/postgres:16-alpine
+```
+
+The container matches the default app credentials and creates both `harmony_dev` and `harmony_test`.
+If port `5432` is already in use, set `HARMONY_DATABASE_PORT` for both Compose and Mix commands.
+
+Migrate the databases before running DB-backed workflows or tests:
+
+```bash
+mix ecto.migrate
+MIX_ENV=test mix ecto.migrate
+```
+
 Optional flags:
 
 - `--logs-root` tells Symphony to write logs under a different directory (default: `./log`)
@@ -87,6 +130,31 @@ Optional flags:
 
 The `WORKFLOW.md` file uses YAML front matter for configuration, plus a Markdown body used as the
 Codex session prompt.
+
+Project-specific production settings live in `projects/<slug>.yaml` and are synchronized into
+Postgres on application startup. `WORKFLOW.md` remains the global runtime contract and prompt.
+
+Minimal project config:
+
+```yaml
+slug: portal
+linear:
+  project_slug: portal-6d90492ea04f
+  team_key: COD
+  human_review_state: Human Review
+github:
+  owner: dezet
+  repo: portal
+  base_branch: develop
+review:
+  trigger: "@hreview"
+  template_version: 1
+required_evidence:
+  - browser
+```
+
+`required_evidence: ["browser"]` requires a browser evidence artifact before a Linear
+implementation handoff can move an issue to Human Review.
 
 Minimal example:
 

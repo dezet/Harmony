@@ -1,0 +1,172 @@
+- main [ref=e3] [box=0,0,1280,2344]:
+  - generic [ref=e4] [box=16,32,1248,2256]:
+    - generic [ref=e6] [box=49,65,1182,110]:
+      - generic [ref=e7] [box=49,65,1093,110]:
+        - paragraph [ref=e8] [box=49,65,1093,18]: Symphony Observability
+        - heading "Operations Dashboard" [level=1] [ref=e9] [box=49,89,1093,50]
+        - paragraph [ref=e10] [box=49,151,736,24]: Current state, retry pressure, token usage, and orchestration health for the active Symphony runtime.
+      - generic [ref=e12] [box=1162,65,69,33]: Live
+    - generic [ref=e14] [box=16,224,1248,137]:
+      - article [ref=e15] [box=16,224,239,137]:
+        - paragraph [ref=e16] [box=34,241,203,20]: Running
+        - paragraph [ref=e17] [box=34,266,203,27]: "0"
+        - paragraph [ref=e18] [box=34,300,203,42]: Active issue sessions in the current runtime.
+      - article [ref=e19] [box=268,224,239,137]:
+        - paragraph [ref=e20] [box=286,241,203,20]: Retrying
+        - paragraph [ref=e21] [box=286,266,203,27]: "0"
+        - paragraph [ref=e22] [box=286,300,203,42]: Issues waiting for the next retry window.
+      - article [ref=e23] [box=521,224,239,137]:
+        - paragraph [ref=e24] [box=538,241,203,20]: Blocked
+        - paragraph [ref=e25] [box=538,266,203,27]: "0"
+        - paragraph [ref=e26] [box=538,300,203,42]: Issues paused for operator input or approval.
+      - article [ref=e27] [box=773,224,239,137]:
+        - paragraph [ref=e28] [box=791,241,203,20]: Total tokens
+        - paragraph [ref=e29] [box=791,266,203,27]: "0"
+        - paragraph [ref=e30] [box=791,300,203,21]: In 0 / Out 0
+      - article [ref=e31] [box=1025,224,239,137]:
+        - paragraph [ref=e32] [box=1043,241,203,20]: Runtime
+        - paragraph [ref=e33] [box=1043,266,203,27]: 0m 0s
+        - paragraph [ref=e34] [box=1043,300,203,42]: Total Codex runtime across completed and active sessions.
+    - generic [ref=e35] [box=16,377,1248,250]:
+      - generic [ref=e37] [box=35,397,473,49]:
+        - heading "Runtime diagnostics" [level=2] [ref=e38] [box=35,397,473,21]
+        - paragraph [ref=e39] [box=35,423,473,23]: Sandbox posture and host capability detected by the Harmony runtime.
+      - table [ref=e41] [box=35,461,1209,90]:
+        - rowgroup [ref=e42] [box=35,461,1209,31]:
+          - row "Posture Bubblewrap AppArmor userns Thread sandbox Turn sandbox" [ref=e43] [box=35,461,1209,31]:
+            - columnheader "Posture" [ref=e44] [box=35,461,380,31]
+            - columnheader "Bubblewrap" [ref=e45] [box=415,461,173,31]
+            - columnheader "AppArmor userns" [ref=e46] [box=589,461,240,31]
+            - columnheader "Thread sandbox" [ref=e47] [box=829,461,223,31]
+            - columnheader "Turn sandbox" [ref=e48] [box=1052,461,193,31]
+        - rowgroup [ref=e49] [box=35,493,1209,59]:
+          - row "workspace_sandbox_requested yes 1 workspace-write workspaceWrite" [ref=e50] [box=35,493,1209,59]:
+            - cell "workspace_sandbox_requested" [ref=e51] [box=35,493,380,59]:
+              - generic [ref=e52] [box=35,508,218,30]: workspace_sandbox_requested
+            - cell "yes" [ref=e53] [box=415,493,173,59]
+            - cell "1" [ref=e54] [box=589,493,240,59]
+            - cell "workspace-write" [ref=e55] [box=829,493,223,59]
+            - cell "workspaceWrite" [ref=e56] [box=1052,493,193,59]
+      - list [ref=e57] [box=35,568,1209,24]:
+        - listitem [ref=e58] [box=75,568,1169,24]: unprivileged user namespaces are restricted by AppArmor
+    - generic [ref=e59] [box=16,643,1248,128]:
+      - generic [ref=e61] [box=35,662,368,49]:
+        - heading "Projects" [level=2] [ref=e62] [box=35,662,368,21]
+        - paragraph [ref=e63] [box=35,689,368,23]: Linear project grouping for the active Harmony runtime.
+      - paragraph [ref=e64] [box=35,727,1209,24]: No project activity yet.
+    - generic [ref=e65] [box=16,787,1248,159]:
+      - generic [ref=e67] [box=35,806,347,49]:
+        - heading "Rate limits" [level=2] [ref=e68] [box=35,806,347,21]
+        - paragraph [ref=e69] [box=35,832,347,23]: Latest upstream rate-limit snapshot, when available.
+      - generic [ref=e70] [box=35,871,1209,56]: n/a
+    - generic [ref=e71] [box=16,962,1248,686]:
+      - generic [ref=e73] [box=35,981,551,49]:
+        - heading "Work runs" [level=2] [ref=e74] [box=35,981,551,21]
+        - paragraph [ref=e75] [box=35,1008,551,23]: Durable queued, blocked, and completed runtime work persisted by project polling.
+      - table [ref=e77] [box=35,1046,1209,582]:
+        - rowgroup [ref=e78] [box=35,1046,1209,31]:
+          - row "Type Status Target Dedupe key" [ref=e79] [box=35,1046,1209,31]:
+            - columnheader "Type" [ref=e80] [box=35,1046,188,31]
+            - columnheader "Status" [ref=e81] [box=224,1046,119,31]
+            - columnheader "Target" [ref=e82] [box=343,1046,272,31]
+            - columnheader "Dedupe key" [ref=e83] [box=615,1046,630,31]
+        - rowgroup [ref=e84] [box=35,1077,1209,551]:
+          - row "ci_fix queued COD-502 dezet/roadmap-e2e#21 github-ci-fix:dezet/roadmap-e2e:21:badlog:9003" [ref=e85] [box=35,1077,1209,79]:
+            - cell "ci_fix" [ref=e86] [box=35,1077,188,79]:
+              - generic [ref=e87] [box=35,1092,56,30]: ci_fix
+            - cell "queued" [ref=e88] [box=224,1077,119,79]:
+              - generic [ref=e89] [box=224,1092,69,30]: queued
+            - cell "COD-502 dezet/roadmap-e2e#21" [ref=e90] [box=343,1077,272,79]:
+              - generic [ref=e91] [box=343,1092,264,49]:
+                - generic [ref=e92] [box=343,1092,264,23]: COD-502
+                - generic [ref=e93] [box=343,1119,264,23]: dezet/roadmap-e2e#21
+            - cell "github-ci-fix:dezet/roadmap-e2e:21:badlog:9003" [ref=e94] [box=615,1077,630,79]
+          - row "ci_fix queued COD-501 dezet/roadmap-e2e#20 github-ci-fix:dezet/roadmap-e2e:20:fedcba:9002" [ref=e95] [box=35,1156,1209,79]:
+            - cell "ci_fix" [ref=e96] [box=35,1156,188,79]:
+              - generic [ref=e97] [box=35,1171,56,30]: ci_fix
+            - cell "queued" [ref=e98] [box=224,1156,119,79]:
+              - generic [ref=e99] [box=224,1171,69,30]: queued
+            - cell "COD-501 dezet/roadmap-e2e#20" [ref=e100] [box=343,1156,272,79]:
+              - generic [ref=e101] [box=343,1171,264,49]:
+                - generic [ref=e102] [box=343,1171,264,23]: COD-501
+                - generic [ref=e103] [box=343,1197,264,23]: dezet/roadmap-e2e#20
+            - cell "github-ci-fix:dezet/roadmap-e2e:20:fedcba:9002" [ref=e104] [box=615,1156,630,79]
+          - row "implementation queued COD-401 roadmap-e2e-m4 linear:roadmap-e2e-m4" [ref=e105] [box=35,1235,1209,79]:
+            - cell "implementation" [ref=e106] [box=35,1235,188,79]:
+              - generic [ref=e107] [box=35,1250,118,30]: implementation
+            - cell "queued" [ref=e108] [box=224,1235,119,79]:
+              - generic [ref=e109] [box=224,1250,69,30]: queued
+            - cell "COD-401 roadmap-e2e-m4" [ref=e110] [box=343,1235,272,79]:
+              - generic [ref=e111] [box=343,1250,264,49]:
+                - generic [ref=e112] [box=343,1250,264,23]: COD-401
+                - generic [ref=e113] [box=343,1276,264,23]: roadmap-e2e-m4
+            - cell "linear:roadmap-e2e-m4" [ref=e114] [box=615,1235,630,79]
+          - row "implementation queued COD-302 roadmap-e2e-m3-blocker linear:roadmap-e2e-m3-blocker" [ref=e115] [box=35,1314,1209,79]:
+            - cell "implementation" [ref=e116] [box=35,1314,188,79]:
+              - generic [ref=e117] [box=35,1328,118,30]: implementation
+            - cell "queued" [ref=e118] [box=224,1314,119,79]:
+              - generic [ref=e119] [box=224,1328,69,30]: queued
+            - cell "COD-302 roadmap-e2e-m3-blocker" [ref=e120] [box=343,1314,272,79]:
+              - generic [ref=e121] [box=343,1328,264,49]:
+                - generic [ref=e122] [box=343,1328,264,23]: COD-302
+                - generic [ref=e123] [box=343,1355,264,23]: roadmap-e2e-m3-blocker
+            - cell "linear:roadmap-e2e-m3-blocker" [ref=e124] [box=615,1314,630,79]
+          - row "implementation queued COD-301 roadmap-e2e-m3-success linear:roadmap-e2e-m3-success" [ref=e125] [box=35,1392,1209,79]:
+            - cell "implementation" [ref=e126] [box=35,1392,188,79]:
+              - generic [ref=e127] [box=35,1407,118,30]: implementation
+            - cell "queued" [ref=e128] [box=224,1392,119,79]:
+              - generic [ref=e129] [box=224,1407,69,30]: queued
+            - cell "COD-301 roadmap-e2e-m3-success" [ref=e130] [box=343,1392,272,79]:
+              - generic [ref=e131] [box=343,1407,264,49]:
+                - generic [ref=e132] [box=343,1407,264,23]: COD-301
+                - generic [ref=e133] [box=343,1434,264,23]: roadmap-e2e-m3-success
+            - cell "linear:roadmap-e2e-m3-success" [ref=e134] [box=615,1392,630,79]
+          - row "ci_fix blocked COD-201 roadmap-e2e-m2 github-ci-fix:dezet/roadmap-e2e:18:def456:9001" [ref=e135] [box=35,1471,1209,79]:
+            - cell "ci_fix" [ref=e136] [box=35,1471,188,79]:
+              - generic [ref=e137] [box=35,1486,56,30]: ci_fix
+            - cell "blocked" [ref=e138] [box=224,1471,119,79]:
+              - generic [ref=e139] [box=224,1486,72,30]: blocked
+            - cell "COD-201 roadmap-e2e-m2" [ref=e140] [box=343,1471,272,79]:
+              - generic [ref=e141] [box=343,1486,264,49]:
+                - generic [ref=e142] [box=343,1486,264,23]: COD-201
+                - generic [ref=e143] [box=343,1512,264,23]: roadmap-e2e-m2
+            - cell "github-ci-fix:dezet/roadmap-e2e:18:def456:9001" [ref=e144] [box=615,1471,630,79]
+          - row "implementation queued COD-101 roadmap-e2e-issue linear:roadmap-e2e-issue" [ref=e145] [box=35,1550,1209,78]:
+            - cell "implementation" [ref=e146] [box=35,1550,188,78]:
+              - generic [ref=e147] [box=35,1565,118,30]: implementation
+            - cell "queued" [ref=e148] [box=224,1550,119,78]:
+              - generic [ref=e149] [box=224,1565,69,30]: queued
+            - cell "COD-101 roadmap-e2e-issue" [ref=e150] [box=343,1550,272,78]:
+              - generic [ref=e151] [box=343,1565,264,49]:
+                - generic [ref=e152] [box=343,1565,264,23]: COD-101
+                - generic [ref=e153] [box=343,1591,264,23]: roadmap-e2e-issue
+            - cell "linear:roadmap-e2e-issue" [ref=e154] [box=615,1550,630,78]
+    - generic [ref=e155] [box=16,1663,1248,194]:
+      - generic [ref=e157] [box=35,1683,386,49]:
+        - heading "Evidence" [level=2] [ref=e158] [box=35,1683,386,21]
+        - paragraph [ref=e159] [box=35,1709,386,23]: Browser and runtime artifacts captured for review handoff.
+      - table [ref=e161] [box=35,1748,1209,90]:
+        - rowgroup [ref=e162] [box=35,1748,1209,31]:
+          - row "Kind Path" [ref=e163] [box=35,1748,1209,31]:
+            - columnheader "Kind" [ref=e164] [box=35,1748,114,31]
+            - columnheader "Path" [ref=e165] [box=149,1748,1096,31]
+        - rowgroup [ref=e166] [box=35,1779,1209,59]:
+          - row "screenshot /tmp/harmony-roadmap-e2e-milestone4-deeeeb30-1825-4d6e-9cb8-9617813030fd/.harmony/artifacts/milestone4.png" [ref=e167] [box=35,1779,1209,59]:
+            - cell "screenshot" [ref=e168] [box=35,1779,114,59]:
+              - generic [ref=e169] [box=35,1794,92,30]: screenshot
+            - cell "/tmp/harmony-roadmap-e2e-milestone4-deeeeb30-1825-4d6e-9cb8-9617813030fd/.harmony/artifacts/milestone4.png" [ref=e170] [box=149,1779,1096,59]
+    - generic [ref=e171] [box=16,1873,1248,128]:
+      - generic [ref=e173] [box=35,1893,382,49]:
+        - heading "Running sessions" [level=2] [ref=e174] [box=35,1893,382,21]
+        - paragraph [ref=e175] [box=35,1919,382,23]: Active issues, last known agent activity, and token usage.
+      - paragraph [ref=e176] [box=35,1957,1209,24]: No active sessions.
+    - generic [ref=e177] [box=16,2017,1248,128]:
+      - generic [ref=e179] [box=35,2036,457,49]:
+        - heading "Blocked sessions" [level=2] [ref=e180] [box=35,2036,457,21]
+        - paragraph [ref=e181] [box=35,2063,457,23]: Issues paused because Codex requested operator input or approval.
+      - paragraph [ref=e182] [box=35,2101,1209,24]: No blocked sessions.
+    - generic [ref=e183] [box=16,2161,1248,128]:
+      - generic [ref=e185] [box=35,2180,266,49]:
+        - heading "Retry queue" [level=2] [ref=e186] [box=35,2180,266,21]
+        - paragraph [ref=e187] [box=35,2206,266,23]: Issues waiting for the next retry window.
+      - paragraph [ref=e188] [box=35,2245,1209,24]: No issues are currently backing off.

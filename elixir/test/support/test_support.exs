@@ -1,4 +1,7 @@
 defmodule SymphonyElixir.TestSupport do
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SymphonyElixir.Repo
+
   @workflow_prompt "You are an agent for this repository."
 
   defmacro __using__(_opts) do
@@ -22,13 +25,19 @@ defmodule SymphonyElixir.TestSupport do
       alias SymphonyElixir.Workspace
 
       import SymphonyElixir.TestSupport,
-        only: [write_workflow_file!: 1, write_workflow_file!: 2, restore_env: 2, stop_default_http_server: 0]
+        only: [
+          write_workflow_file!: 1,
+          write_workflow_file!: 2,
+          restore_env: 2,
+          stop_default_http_server: 0,
+          checkout_repo: 1
+        ]
 
       setup do
         workflow_root =
           Path.join(
             System.tmp_dir!(),
-            "symphony-elixir-workflow-#{System.unique_integer([:positive])}"
+            "symphony-elixir-workflow-#{Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)}"
           )
 
         File.mkdir_p!(workflow_root)
@@ -43,8 +52,27 @@ defmodule SymphonyElixir.TestSupport do
           Application.delete_env(:symphony_elixir, :server_port_override)
           Application.delete_env(:symphony_elixir, :memory_tracker_issues)
           Application.delete_env(:symphony_elixir, :memory_tracker_recipient)
+          Application.delete_env(:symphony_elixir, :durable_blockers_enabled)
+          Application.delete_env(:symphony_elixir, :work_source_fetchers)
+          Application.delete_env(:symphony_elixir, :github_projects)
+          Application.delete_env(:symphony_elixir, :github_ci_projects)
+          Application.delete_env(:symphony_elixir, :github_review_projects)
+          Application.delete_env(:symphony_elixir, :project_fetcher)
+          Application.delete_env(:symphony_elixir, :linear_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :github_ci_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :github_pr_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :github_review_work_source_fetcher)
+          Application.delete_env(:symphony_elixir, :agent_runner_fun)
+          Application.delete_env(:symphony_elixir, :ci_fix_handoff_fun)
+          Application.delete_env(:symphony_elixir, :dedupe_blocked_fun)
+          Application.delete_env(:symphony_elixir, :implementation_handoff_fun)
+          Application.delete_env(:symphony_elixir, :runtime_blocker_record_fun)
+          Application.delete_env(:symphony_elixir, :review_handoff_fun)
           File.rm_rf(workflow_root)
         end)
+
+        Application.put_env(:symphony_elixir, :durable_blockers_enabled, false)
+        Application.put_env(:symphony_elixir, :project_fetcher, fn -> [] end)
 
         :ok
       end
@@ -68,6 +96,10 @@ defmodule SymphonyElixir.TestSupport do
 
   def restore_env(key, nil), do: System.delete_env(key)
   def restore_env(key, value), do: System.put_env(key, value)
+
+  def checkout_repo(_context) do
+    :ok = Sandbox.checkout(Repo)
+  end
 
   def stop_default_http_server do
     case Enum.find(Supervisor.which_children(SymphonyElixir.Supervisor), fn
@@ -103,6 +135,7 @@ defmodule SymphonyElixir.TestSupport do
           workspace_root: Path.join(System.tmp_dir!(), "symphony_workspaces"),
           worker_ssh_hosts: [],
           worker_max_concurrent_agents_per_host: nil,
+          agent_backend: "codex",
           max_concurrent_agents: 10,
           max_turns: 20,
           max_retry_backoff_ms: 300_000,
@@ -141,6 +174,7 @@ defmodule SymphonyElixir.TestSupport do
     workspace_root = Keyword.get(config, :workspace_root)
     worker_ssh_hosts = Keyword.get(config, :worker_ssh_hosts)
     worker_max_concurrent_agents_per_host = Keyword.get(config, :worker_max_concurrent_agents_per_host)
+    agent_backend = Keyword.get(config, :agent_backend)
     max_concurrent_agents = Keyword.get(config, :max_concurrent_agents)
     max_turns = Keyword.get(config, :max_turns)
     max_retry_backoff_ms = Keyword.get(config, :max_retry_backoff_ms)
@@ -182,6 +216,7 @@ defmodule SymphonyElixir.TestSupport do
         "  root: #{yaml_value(workspace_root)}",
         worker_yaml(worker_ssh_hosts, worker_max_concurrent_agents_per_host),
         "agent:",
+        "  backend: #{yaml_value(agent_backend)}",
         "  max_concurrent_agents: #{yaml_value(max_concurrent_agents)}",
         "  max_turns: #{yaml_value(max_turns)}",
         "  max_retry_backoff_ms: #{yaml_value(max_retry_backoff_ms)}",

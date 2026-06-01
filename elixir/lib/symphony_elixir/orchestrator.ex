@@ -7,11 +7,15 @@ defmodule SymphonyElixir.Orchestrator do
   require Logger
   import Bitwise, only: [<<<: 2]
 
-  alias SymphonyElixir.{AgentRunner, Config, StatusDashboard, Tracker, Workspace}
+  alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
+  alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
+  alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
+  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubPrSource, GithubReviewRequestSource, LinearIssueSource}
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
+  @review_finalize_delay_ms 50
   # Slightly above the dashboard render interval so "checking now…" can render.
   @poll_transition_render_delay_ms 20
   @empty_codex_totals %{
@@ -50,9 +54,10 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     now_ms = System.monotonic_time(:millisecond)
     config = Config.settings!()
+    initial_poll_delay_ms = Keyword.get(opts, :initial_poll_delay_ms, 0)
 
     state = %State{
       poll_interval_ms: config.polling.interval_ms,
@@ -66,7 +71,7 @@ defmodule SymphonyElixir.Orchestrator do
     }
 
     run_terminal_workspace_cleanup()
-    state = schedule_tick(state, 0)
+    state = schedule_tick(state, initial_poll_delay_ms)
 
     {:ok, state}
   end
@@ -190,6 +195,20 @@ defmodule SymphonyElixir.Orchestrator do
     result
   end
 
+  def handle_info({:finalize_code_review, issue_id}, %{running: running} = state) do
+    case Map.get(running, issue_id) do
+      %{work_run: %WorkRun{type: "code_review"}} = running_entry ->
+        state = %{state | running: Map.delete(running, issue_id)}
+        state = finalize_code_review_run(state, issue_id, running_entry, running_entry_session_id(running_entry))
+
+        notify_dashboard()
+        {:noreply, state}
+
+      _other ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:retry_issue, _issue_id}, state), do: {:noreply, state}
 
   def handle_info(msg, state) do
@@ -198,19 +217,31 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp handle_agent_down(:normal, state, issue_id, running_entry, session_id) do
-    if input_required_blocker?(running_entry) do
-      block_input_required_agent_down(state, issue_id, running_entry, session_id, :normal)
-    else
-      Logger.info("Agent task completed for issue_id=#{issue_id} session_id=#{session_id}; scheduling active-state continuation check")
+    cond do
+      input_required_blocker?(running_entry) ->
+        block_input_required_agent_down(state, issue_id, running_entry, session_id, :normal)
 
-      state
-      |> complete_issue(issue_id)
-      |> schedule_issue_retry(issue_id, 1, %{
-        identifier: running_entry.identifier,
-        delay_type: :continuation,
-        worker_host: Map.get(running_entry, :worker_host),
-        workspace_path: Map.get(running_entry, :workspace_path)
-      })
+      code_review_run?(running_entry) ->
+        complete_code_review_run(state, issue_id, running_entry, session_id)
+
+      implementation_work_run?(running_entry) ->
+        complete_implementation_run(state, issue_id, running_entry, session_id)
+
+      synthetic_work_run?(running_entry) ->
+        Logger.info("Agent task completed for work_run issue_id=#{issue_id} session_id=#{session_id}; no Linear continuation scheduled")
+        complete_issue(state, issue_id)
+
+      true ->
+        Logger.info("Agent task completed for issue_id=#{issue_id} session_id=#{session_id}; scheduling active-state continuation check")
+
+        state
+        |> complete_issue(issue_id)
+        |> schedule_issue_retry(issue_id, 1, %{
+          identifier: running_entry.identifier,
+          delay_type: :continuation,
+          worker_host: Map.get(running_entry, :worker_host),
+          workspace_path: Map.get(running_entry, :workspace_path)
+        })
     end
   end
 
@@ -230,6 +261,48 @@ defmodule SymphonyElixir.Orchestrator do
     block_issue_from_entry(state, issue_id, running_entry, error)
   end
 
+  defp complete_code_review_run(state, issue_id, running_entry, session_id) do
+    if Map.get(running_entry, :review_finalizing) == true do
+      finalize_code_review_run(state, issue_id, running_entry, session_id)
+    else
+      running_entry = Map.put(running_entry, :review_finalizing, true)
+      Process.send_after(self(), {:finalize_code_review, issue_id}, @review_finalize_delay_ms)
+
+      %{state | running: Map.put(state.running, issue_id, running_entry)}
+    end
+  end
+
+  defp finalize_code_review_run(state, issue_id, running_entry, session_id) do
+    body = running_entry |> Map.get(:review_body, "") |> to_string() |> String.trim()
+
+    if body == "" do
+      error = "code review run completed without review body"
+      Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+      block_issue_from_entry(state, issue_id, running_entry, error)
+    else
+      case publish_code_review(Map.fetch!(running_entry, :work_run), body) do
+        :ok ->
+          Logger.info("Published code review for issue_id=#{issue_id} session_id=#{session_id}")
+          complete_issue(state, issue_id)
+
+        {:error, reason} ->
+          error = "failed to publish code review: #{inspect(reason)}"
+          Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+          block_issue_from_entry(state, issue_id, running_entry, error)
+      end
+    end
+  end
+
+  defp publish_code_review(%WorkRun{} = run, body) when is_binary(body) do
+    review_handoff().(run, body, [])
+  rescue
+    exception ->
+      {:error, Exception.message(exception)}
+  catch
+    kind, reason ->
+      {:error, {kind, reason}}
+  end
+
   defp retry_agent_down(state, issue_id, running_entry, session_id, reason) do
     Logger.warning("Agent task exited for issue_id=#{issue_id} session_id=#{session_id} reason=#{inspect(reason)}; scheduling retry")
 
@@ -243,6 +316,31 @@ defmodule SymphonyElixir.Orchestrator do
     })
   end
 
+  defp code_review_run?(%{work_run: %WorkRun{type: "code_review"}}), do: true
+  defp code_review_run?(_running_entry), do: false
+
+  defp implementation_work_run?(%{work_run: %WorkRun{type: "implementation", id: id}})
+       when is_binary(id) and id != "",
+       do: true
+
+  defp implementation_work_run?(_running_entry), do: false
+
+  defp complete_implementation_run(state, issue_id, running_entry, session_id) do
+    case implementation_handoff().(Map.fetch!(running_entry, :work_run), running_entry, []) do
+      :ok ->
+        Logger.info("Completed implementation handoff for issue_id=#{issue_id} session_id=#{session_id}")
+        complete_issue(state, issue_id)
+
+      {:error, reason} ->
+        error = "failed implementation handoff: #{inspect(reason)}"
+        Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
+        block_issue_from_entry(state, issue_id, running_entry, error)
+    end
+  end
+
+  defp synthetic_work_run?(%{work_run: %WorkRun{type: type}}) when type != "implementation", do: true
+  defp synthetic_work_run?(_running_entry), do: false
+
   defp maybe_dispatch(%State{} = state) do
     state =
       state
@@ -250,9 +348,9 @@ defmodule SymphonyElixir.Orchestrator do
       |> reconcile_blocked_issues()
 
     with :ok <- Config.validate!(),
-         {:ok, issues} <- Tracker.fetch_candidate_issues(),
+         {:ok, work_runs} <- fetch_candidate_work_runs(),
          true <- available_slots(state) > 0 do
-      choose_issues(issues, state)
+      choose_work_runs(work_runs, state)
     else
       {:error, :missing_linear_api_token} ->
         Logger.error("Linear API token missing in WORKFLOW.md")
@@ -289,13 +387,216 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       {:error, reason} ->
-        Logger.error("Failed to fetch from Linear: #{inspect(reason)}")
+        Logger.error("Failed to fetch work candidates: #{inspect(reason)}")
         state
 
       false ->
         state
     end
   end
+
+  defp fetch_candidate_work_runs do
+    case Application.get_env(:symphony_elixir, :work_source_fetchers) do
+      fetchers when is_list(fetchers) ->
+        fetch_from_injected_sources(fetchers)
+
+      _other ->
+        fetch_from_configured_sources()
+    end
+  end
+
+  defp fetch_from_injected_sources(fetchers) do
+    Enum.reduce_while(fetchers, {:ok, []}, fn fetcher, {:ok, acc} when is_function(fetcher, 0) ->
+      case fetcher.() do
+        {:ok, runs} when is_list(runs) -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp fetch_from_configured_sources do
+    with {:ok, projects} <- fetch_configured_projects() do
+      case projects do
+        [] -> fetch_from_legacy_configured_sources()
+        projects -> fetch_from_project_sources(projects)
+      end
+    end
+  end
+
+  defp fetch_from_legacy_configured_sources do
+    with {:ok, linear_runs} <- LinearIssueSource.fetch_candidates(),
+         {:ok, github_ci_runs} <- fetch_github_ci_runs(),
+         {:ok, github_review_runs} <- fetch_github_review_runs() do
+      {:ok, linear_runs ++ github_ci_runs ++ github_review_runs}
+    end
+  end
+
+  defp fetch_configured_projects do
+    case project_fetcher().() do
+      {:ok, projects} when is_list(projects) -> {:ok, projects}
+      projects when is_list(projects) -> {:ok, projects}
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:invalid_project_fetcher_result, other}}
+    end
+  end
+
+  defp project_fetcher do
+    Application.get_env(:symphony_elixir, :project_fetcher, &Storage.list_projects/0)
+  end
+
+  defp fetch_from_project_sources(projects) when is_list(projects) do
+    with {:ok, pr_observations} <- fetch_project_runs(projects, github_pr_work_source_fetcher()),
+         {:ok, linear_runs} <- fetch_project_runs(projects, linear_work_source_fetcher()),
+         {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
+         {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()) do
+      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs)
+    end
+  end
+
+  defp fetch_project_runs(projects, fetcher) when is_list(projects) and is_function(fetcher, 1) do
+    Enum.reduce_while(projects, {:ok, []}, fn project, {:ok, acc} ->
+      case fetcher.(project) do
+        {:ok, runs} when is_list(runs) -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+        other -> {:halt, {:error, {:invalid_work_source_result, other}}}
+      end
+    end)
+  end
+
+  defp linear_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
+      LinearIssueSource.fetch_candidates(
+        project_id: project_value(project, :id),
+        project_slug: project_value(project, :slug),
+        base_branch: project_value(project, :github_base_branch),
+        config_version: project_value(project, :config_version),
+        required_evidence: project_required_evidence(project)
+      )
+    end)
+  end
+
+  defp github_pr_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :github_pr_work_source_fetcher, &GithubPrSource.fetch_candidates/1)
+  end
+
+  defp github_ci_work_source_fetcher do
+    Application.get_env(:symphony_elixir, :github_ci_work_source_fetcher, &GithubFailedCiSource.fetch_candidates/1)
+  end
+
+  defp github_review_work_source_fetcher do
+    Application.get_env(
+      :symphony_elixir,
+      :github_review_work_source_fetcher,
+      &GithubReviewRequestSource.fetch_candidates/1
+    )
+  end
+
+  defp persist_fetched_work_runs(work_runs) when is_list(work_runs) do
+    Enum.reduce_while(work_runs, {:ok, []}, fn work_run, {:ok, acc} ->
+      case persist_fetched_work_run(work_run) do
+        {:ok, run} -> {:cont, {:ok, acc ++ [run]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp persist_fetched_work_run(%WorkRun{} = run) do
+    case payload_value(run.payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        case Storage.upsert_work_run(work_run_storage_attrs(run, project_id)) do
+          {:ok, stored_run} -> {:ok, %{run | id: stored_run.id}}
+          {:error, reason} -> {:error, {:work_run_persist_failed, run.dedupe_key, reason}}
+        end
+
+      _missing_project_id ->
+        {:ok, run}
+    end
+  end
+
+  defp persist_fetched_work_run(run), do: {:ok, run}
+
+  defp work_run_storage_attrs(%WorkRun{} = run, project_id) do
+    %{
+      project_id: project_id,
+      type: run.type,
+      status: run.status || "queued",
+      dedupe_key: run.dedupe_key,
+      github_owner: run.github_owner,
+      github_repo: run.github_repo,
+      github_pr_number: run.github_pr_number,
+      github_head_sha: run.github_head_sha,
+      github_head_ref: run.github_head_ref,
+      github_base_ref: run.github_base_ref,
+      linear_issue_id: run.linear_issue_id,
+      linear_identifier: run.linear_identifier,
+      linear_url: run.linear_url,
+      agent_backend: run.agent_backend || "codex",
+      payload: json_safe(run.payload)
+    }
+  end
+
+  defp fetch_github_ci_runs do
+    configured_github_projects(:github_ci_projects)
+    |> Enum.reduce_while({:ok, []}, fn project, {:ok, acc} ->
+      case GithubFailedCiSource.fetch_candidates(project) do
+        {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp fetch_github_review_runs do
+    configured_github_projects(:github_review_projects)
+    |> Enum.reduce_while({:ok, []}, fn project, {:ok, acc} ->
+      case GithubReviewRequestSource.fetch_candidates(project) do
+        {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp configured_github_projects(specific_key) do
+    Application.get_env(:symphony_elixir, specific_key) ||
+      Application.get_env(:symphony_elixir, :github_projects, [])
+  end
+
+  defp project_value(project, key) when is_map(project) do
+    Map.get(project, key) || Map.get(project, to_string(key))
+  end
+
+  defp project_required_evidence(project) do
+    config = project_value(project, :config) || %{}
+
+    config
+    |> map_get_any(:required_evidence)
+    |> case do
+      evidence when is_list(evidence) -> evidence
+      evidence when is_binary(evidence) -> [evidence]
+      _other -> []
+    end
+  end
+
+  defp map_get_any(%{} = map, key), do: Map.get(map, key) || Map.get(map, to_string(key))
+  defp map_get_any(_map, _key), do: nil
+
+  defp json_safe(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp json_safe(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
+  defp json_safe(%Date{} = value), do: Date.to_iso8601(value)
+  defp json_safe(%Time{} = value), do: Time.to_iso8601(value)
+
+  defp json_safe(%_struct{} = value) do
+    value
+    |> Map.from_struct()
+    |> json_safe()
+  end
+
+  defp json_safe(%{} = value) do
+    Map.new(value, fn {key, nested} -> {to_string(key), json_safe(nested)} end)
+  end
+
+  defp json_safe(value) when is_list(value), do: Enum.map(value, &json_safe/1)
+  defp json_safe(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: value
+  defp json_safe(value), do: inspect(value)
 
   defp reconcile_running_issues(%State{} = state) do
     state = reconcile_stalled_running_issues(state)
@@ -742,6 +1043,8 @@ defmodule SymphonyElixir.Orchestrator do
       last_codex_timestamp: Map.get(running_entry, :last_codex_timestamp)
     }
 
+    record_durable_blocker(issue_id, running_entry, error)
+
     %{
       state
       | running: Map.delete(state.running, issue_id),
@@ -751,30 +1054,385 @@ defmodule SymphonyElixir.Orchestrator do
     }
   end
 
-  defp choose_issues(issues, state) do
-    active_states = active_state_set()
-    terminal_states = terminal_state_set()
+  defp record_durable_blocker(issue_id, running_entry, error) do
+    if Application.get_env(:symphony_elixir, :durable_blockers_enabled, true) do
+      do_record_durable_blocker(issue_id, running_entry, error)
+    else
+      :ok
+    end
+  end
 
-    issues
-    |> sort_issues_for_dispatch()
-    |> Enum.reduce(state, fn issue, state_acc ->
-      if should_dispatch_issue?(issue, state_acc, active_states, terminal_states) do
-        dispatch_issue(state_acc, issue)
-      else
+  defp do_record_durable_blocker(issue_id, running_entry, error) do
+    case durable_blocker_project_id(running_entry) do
+      {:ok, project_id} ->
+        _ =
+          RuntimePolicy.Blocker.record(%{
+            project_id: project_id,
+            work_run_id: Map.get(running_entry, :storage_work_run_id),
+            target_type: "linear_issue",
+            target_id: issue_id,
+            reason: error,
+            metadata: %{
+              "identifier" => Map.get(running_entry, :identifier, issue_id),
+              "session_id" => running_entry_session_id(running_entry),
+              "worker_host" => Map.get(running_entry, :worker_host),
+              "workspace_path" => Map.get(running_entry, :workspace_path)
+            }
+          })
+
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{inspect(reason)}")
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to record durable blocker for issue_id=#{issue_id}: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp durable_blocker_project_id(%{storage_project_id: project_id}) when is_binary(project_id), do: {:ok, project_id}
+
+  defp durable_blocker_project_id(running_entry) when is_map(running_entry) do
+    slug = Map.get(running_entry, :project_slug) || "legacy"
+
+    case Storage.upsert_project(%{
+           slug: slug,
+           linear_project_slug: slug,
+           linear_team_key: nil,
+           linear_human_review_state: "Human Review",
+           github_owner: "legacy",
+           github_repo: slug,
+           github_base_branch: "main",
+           config_version: 1,
+           config: %{"source" => "orchestrator_legacy_blocker"}
+         }) do
+      {:ok, project} -> {:ok, project.id}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp choose_work_runs(work_runs, state) when is_list(work_runs) do
+    work_runs
+    |> sort_work_runs_for_dispatch()
+    |> Enum.reduce(state, fn
+      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}} = run, state_acc ->
+        if should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) and
+             not durable_open_blocker_exists?(run, issue) do
+          dispatch_issue(state_acc, issue, nil, nil, run)
+        else
+          state_acc
+        end
+
+      %WorkRun{type: "ci_fix"} = run, state_acc ->
+        maybe_dispatch_ci_fix_run(state_acc, run)
+
+      %WorkRun{type: "code_review"} = run, state_acc ->
+        maybe_dispatch_code_review_run(state_acc, run)
+
+      _other, state_acc ->
         state_acc
-      end
     end)
   end
+
+  defp sort_work_runs_for_dispatch(work_runs) when is_list(work_runs) do
+    Enum.sort_by(work_runs, fn
+      %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}} ->
+        {0, issue_dispatch_sort_key(issue)}
+
+      %WorkRun{type: type, dedupe_key: key} ->
+        {1, type || "", key || ""}
+
+      _other ->
+        {2, "", ""}
+    end)
+  end
+
+  defp maybe_dispatch_ci_fix_run(%State{} = state, %WorkRun{} = run) do
+    key = work_run_key(run)
+
+    cond do
+      key == "" ->
+        state
+
+      MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
+        state
+
+      available_slots(state) <= 0 or not worker_slots_available?(state) ->
+        state
+
+      Map.get(run.payload, :repo_policy) != "direct_push_allowed" ->
+        block_ci_fix_run(state, run, key)
+
+      true ->
+        dispatch_ci_fix_run(state, run, key)
+    end
+  end
+
+  defp dispatch_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
+    recipient = self()
+    issue = ci_fix_issue(run, key)
+    prompt = CiFixPrompt.build(run)
+
+    case select_worker_host(state, nil) do
+      :no_worker_capacity ->
+        state
+
+      worker_host ->
+        mark_work_run_dedupe_processed(run)
+
+        spawn_issue_on_worker_host(
+          state,
+          issue,
+          nil,
+          recipient,
+          worker_host,
+          prompt: prompt,
+          work_run: run,
+          issue_state_fetcher: fn _ids -> {:ok, []} end
+        )
+    end
+  end
+
+  defp maybe_dispatch_code_review_run(%State{} = state, %WorkRun{} = run) do
+    key = work_run_key(run)
+
+    cond do
+      key == "" ->
+        state
+
+      MapSet.member?(state.claimed, key) or Map.has_key?(state.running, key) or Map.has_key?(state.blocked, key) ->
+        state
+
+      available_slots(state) <= 0 or not worker_slots_available?(state) ->
+        state
+
+      true ->
+        dispatch_code_review_run(state, run, key)
+    end
+  end
+
+  defp dispatch_code_review_run(%State{} = state, %WorkRun{} = run, key) do
+    recipient = self()
+    issue = code_review_issue(run, key)
+    prompt = ReviewPrompt.build(run)
+
+    case select_worker_host(state, nil) do
+      :no_worker_capacity ->
+        state
+
+      worker_host ->
+        spawn_issue_on_worker_host(
+          state,
+          issue,
+          nil,
+          recipient,
+          worker_host,
+          prompt: prompt,
+          work_run: run,
+          issue_state_fetcher: fn _ids -> {:ok, []} end
+        )
+    end
+  end
+
+  defp block_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
+    reason = "failed ci repair is not safe to dispatch: #{Map.get(run.payload, :repo_policy) || "unknown"}"
+    run = %{run | payload: Map.put(run.payload, :blocker_reason, reason)}
+    record_ci_fix_blocker(run, key, reason)
+    mark_work_run_dedupe_blocked(run, reason)
+    _ = maybe_report_ci_fix_blocker(run)
+
+    blocked_entry = %{
+      issue_id: key,
+      identifier: "CI-PR-#{run.github_pr_number}",
+      project_slug: run.project_slug,
+      issue: ci_fix_issue(run, key),
+      error: reason,
+      blocked_at: DateTime.utc_now()
+    }
+
+    %{state | claimed: MapSet.put(state.claimed, key), blocked: Map.put(state.blocked, key, blocked_entry)}
+  end
+
+  defp maybe_report_ci_fix_blocker(run) do
+    if Application.get_env(:symphony_elixir, :ci_fix_handoff_enabled, true) do
+      ci_fix_handoff().(run)
+    else
+      :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to report failed-CI blocker: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to report failed-CI blocker: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp ci_fix_issue(%WorkRun{} = run, key) do
+    %Issue{
+      id: key,
+      identifier: "CI-PR-#{run.github_pr_number}",
+      title: "Fix failed CI for PR ##{run.github_pr_number}",
+      description: "Failed GitHub Actions repair for #{run.github_owner}/#{run.github_repo}",
+      state: "In Progress",
+      project_id: payload_value(run.payload, :project_id),
+      project_slug: run.project_slug,
+      url: run.linear_url
+    }
+  end
+
+  defp code_review_issue(%WorkRun{} = run, key) do
+    %Issue{
+      id: key,
+      identifier: "REVIEW-PR-#{run.github_pr_number}",
+      title: "Review PR ##{run.github_pr_number}",
+      description: "Requested GitHub pull request review for #{run.github_owner}/#{run.github_repo}",
+      state: "In Progress",
+      project_id: payload_value(run.payload, :project_id),
+      project_slug: run.project_slug,
+      url: run.linear_url
+    }
+  end
+
+  defp work_run_key(%WorkRun{dedupe_key: key}) when is_binary(key), do: key
+
+  defp work_run_key(%WorkRun{type: type, github_owner: owner, github_repo: repo, github_pr_number: number}) do
+    "#{type}:#{owner}/#{repo}:#{number}"
+  end
+
+  defp mark_work_run_dedupe_processed(%WorkRun{dedupe_key: key, payload: payload})
+       when is_binary(key) and is_map(payload) do
+    case payload_value(payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        _ =
+          Storage.mark_dedupe_processed(%{
+            project_id: project_id,
+            key: key,
+            scope: "ci_fix",
+            metadata: %{"source" => "github_failed_ci"}
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to mark work-run dedupe key processed: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to mark work-run dedupe key processed: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp mark_work_run_dedupe_blocked(%WorkRun{dedupe_key: key, payload: payload}, reason)
+       when is_binary(key) and is_map(payload) do
+    case payload_value(payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        _ =
+          dedupe_blocked_fun().(%{
+            project_id: project_id,
+            key: key,
+            scope: "ci_fix",
+            status: "blocked",
+            metadata: %{"reason" => reason}
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to mark work-run dedupe key blocked: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to mark work-run dedupe key blocked: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp mark_work_run_dedupe_blocked(_run, _reason), do: :ok
+
+  defp record_ci_fix_blocker(%WorkRun{payload: payload} = run, key, reason) when is_map(payload) do
+    case payload_value(payload, :project_id) do
+      project_id when is_binary(project_id) ->
+        _ =
+          runtime_blocker_record_fun().(%{
+            project_id: project_id,
+            work_run_id: run.id,
+            target_type: "github_pr",
+            target_id: key,
+            reason: reason,
+            metadata: %{
+              "github_pr_number" => run.github_pr_number,
+              "github_owner" => run.github_owner,
+              "github_repo" => run.github_repo
+            }
+          })
+
+        :ok
+
+      _missing ->
+        :ok
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to record failed-CI blocker: #{Exception.message(exception)}")
+      :ok
+  catch
+    kind, reason ->
+      Logger.warning("Failed to record failed-CI blocker: #{inspect({kind, reason})}")
+      :ok
+  end
+
+  defp durable_open_blocker_exists?(%WorkRun{payload: payload}, %Issue{id: issue_id})
+       when is_map(payload) and is_binary(issue_id) do
+    if Application.get_env(:symphony_elixir, :durable_blockers_enabled, true) do
+      case payload_value(payload, :project_id) do
+        project_id when is_binary(project_id) ->
+          Storage.open_blocker_exists?(project_id, "linear_issue", issue_id)
+
+        _missing ->
+          false
+      end
+    else
+      false
+    end
+  rescue
+    exception ->
+      Logger.warning("Failed to check durable blocker for issue_id=#{issue_id}: #{Exception.message(exception)}")
+      false
+  catch
+    kind, reason ->
+      Logger.warning("Failed to check durable blocker for issue_id=#{issue_id}: #{inspect({kind, reason})}")
+      false
+  end
+
+  defp durable_open_blocker_exists?(_run, _issue), do: false
+
+  defp payload_value(%{} = payload, key), do: Map.get(payload, key) || Map.get(payload, to_string(key))
+  defp payload_value(_payload, _key), do: nil
 
   defp sort_issues_for_dispatch(issues) when is_list(issues) do
-    Enum.sort_by(issues, fn
-      %Issue{} = issue ->
-        {priority_rank(issue.priority), issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
-
-      _ ->
-        {priority_rank(nil), issue_created_at_sort_key(nil), ""}
-    end)
+    Enum.sort_by(issues, &issue_dispatch_sort_key/1)
   end
+
+  defp issue_dispatch_sort_key(%Issue{} = issue) do
+    {priority_rank(issue.priority), issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
+  end
+
+  defp issue_dispatch_sort_key(_issue), do: {priority_rank(nil), issue_created_at_sort_key(nil), ""}
 
   defp priority_rank(priority) when is_integer(priority) and priority in 1..4, do: priority
   defp priority_rank(_priority), do: 5
@@ -893,10 +1551,14 @@ defmodule SymphonyElixir.Orchestrator do
     |> MapSet.new()
   end
 
-  defp dispatch_issue(%State{} = state, issue, attempt \\ nil, preferred_worker_host \\ nil) do
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
+    dispatch_issue(state, issue, attempt, preferred_worker_host, nil)
+  end
+
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
     case revalidate_issue_for_dispatch(issue, &Tracker.fetch_issue_states_by_ids/1, terminal_state_set()) do
       {:ok, %Issue{} = refreshed_issue} ->
-        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host)
+        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host, work_run)
 
       {:skip, :missing} ->
         Logger.info("Skipping dispatch; issue no longer active or visible: #{issue_context(issue)}")
@@ -913,7 +1575,7 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
+  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
     recipient = self()
 
     case select_worker_host(state, preferred_worker_host) do
@@ -922,13 +1584,23 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       worker_host ->
-        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host)
+        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, implementation_extra_opts(work_run))
     end
   end
 
-  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host) do
+  defp implementation_extra_opts(%WorkRun{} = run) do
+    [
+      work_run: run,
+      storage_work_run_id: run.id,
+      storage_project_id: payload_value(run.payload, :project_id)
+    ]
+  end
+
+  defp implementation_extra_opts(_work_run), do: []
+
+  defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, extra_opts) do
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
-           AgentRunner.run(issue, recipient, attempt: attempt, worker_host: worker_host)
+           agent_runner().(issue, recipient, Keyword.merge([attempt: attempt, worker_host: worker_host], extra_opts))
          end) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
@@ -950,6 +1622,7 @@ defmodule SymphonyElixir.Orchestrator do
             last_codex_message: nil,
             last_codex_timestamp: nil,
             last_codex_event: nil,
+            review_body: "",
             codex_app_server_pid: nil,
             codex_input_tokens: 0,
             codex_output_tokens: 0,
@@ -959,6 +1632,9 @@ defmodule SymphonyElixir.Orchestrator do
             codex_last_reported_total_tokens: 0,
             turn_count: 0,
             retry_attempt: normalize_retry_attempt(attempt),
+            work_run: Keyword.get(extra_opts, :work_run),
+            storage_work_run_id: Keyword.get(extra_opts, :storage_work_run_id),
+            storage_project_id: Keyword.get(extra_opts, :storage_project_id),
             started_at: DateTime.utc_now()
           })
 
@@ -982,6 +1658,32 @@ defmodule SymphonyElixir.Orchestrator do
           worker_host: worker_host
         })
     end
+  end
+
+  defp agent_runner do
+    Application.get_env(:symphony_elixir, :agent_runner_fun, &AgentRunner.run/3)
+  end
+
+  defp ci_fix_handoff do
+    Application.get_env(:symphony_elixir, :ci_fix_handoff_fun, &CiFixHandoff.blocked/1)
+  end
+
+  defp dedupe_blocked_fun do
+    Application.get_env(:symphony_elixir, :dedupe_blocked_fun, &Storage.mark_dedupe_blocked/1)
+  end
+
+  defp implementation_handoff do
+    Application.get_env(:symphony_elixir, :implementation_handoff_fun, fn run, _running_entry, opts ->
+      RuntimePolicy.ImplementationHandoff.publish(run, opts)
+    end)
+  end
+
+  defp runtime_blocker_record_fun do
+    Application.get_env(:symphony_elixir, :runtime_blocker_record_fun, &RuntimePolicy.Blocker.record/1)
+  end
+
+  defp review_handoff do
+    Application.get_env(:symphony_elixir, :review_handoff_fun, &ReviewHandoff.publish/3)
   end
 
   defp revalidate_issue_for_dispatch(%Issue{id: issue_id}, issue_fetcher, terminal_states)
@@ -1433,6 +2135,7 @@ defmodule SymphonyElixir.Orchestrator do
        blocked: blocked,
        codex_totals: state.codex_totals,
        rate_limits: Map.get(state, :codex_rate_limits),
+       runtime: runtime_snapshot(),
        polling: %{
          checking?: state.poll_check_in_progress == true,
          next_poll_in_ms: next_poll_in_ms(state.next_poll_due_at_ms, now_ms),
@@ -1456,6 +2159,18 @@ defmodule SymphonyElixir.Orchestrator do
      }, state}
   end
 
+  defp runtime_snapshot do
+    settings = Config.settings!()
+
+    %{
+      sandbox:
+        Sandbox.report(
+          thread_sandbox: settings.codex.thread_sandbox,
+          turn_sandbox_policy: Config.codex_turn_sandbox_policy()
+        )
+    }
+  end
+
   defp blocked_issue_state(%{issue: %Issue{state: state}}), do: state
   defp blocked_issue_state(_metadata), do: nil
 
@@ -1469,6 +2184,7 @@ defmodule SymphonyElixir.Orchestrator do
     last_reported_output = Map.get(running_entry, :codex_last_reported_output_tokens, 0)
     last_reported_total = Map.get(running_entry, :codex_last_reported_total_tokens, 0)
     turn_count = Map.get(running_entry, :turn_count, 0)
+    review_body = append_review_body_delta(Map.get(running_entry, :review_body, ""), agent_message_delta(update))
 
     {
       Map.merge(running_entry, %{
@@ -1483,10 +2199,60 @@ defmodule SymphonyElixir.Orchestrator do
         codex_last_reported_input_tokens: max(last_reported_input, token_delta.input_reported),
         codex_last_reported_output_tokens: max(last_reported_output, token_delta.output_reported),
         codex_last_reported_total_tokens: max(last_reported_total, token_delta.total_reported),
+        review_body: review_body,
         turn_count: turn_count_for_update(turn_count, running_entry.session_id, update)
       }),
       token_delta
     }
+  end
+
+  defp append_review_body_delta(body, delta) when is_binary(body) and is_binary(delta), do: body <> delta
+  defp append_review_body_delta(body, _delta) when is_binary(body), do: body
+  defp append_review_body_delta(_body, delta) when is_binary(delta), do: delta
+  defp append_review_body_delta(_body, _delta), do: ""
+
+  defp agent_message_delta(%{payload: payload}) when is_map(payload) do
+    method = map_at_path(payload, ["method"]) || map_at_path(payload, [:method])
+
+    if method in ["codex/event/agent_message_delta", "codex/event/agent_message_content_delta"] do
+      string_at_paths(payload, agent_message_delta_paths())
+    end
+  end
+
+  defp agent_message_delta(_update), do: nil
+
+  defp string_at_paths(payload, paths) when is_map(payload) and is_list(paths) do
+    Enum.find_value(paths, fn path ->
+      case map_at_path(payload, path) do
+        value when is_binary(value) -> value
+        _other -> nil
+      end
+    end)
+  end
+
+  defp string_at_paths(_payload, _paths), do: nil
+
+  defp agent_message_delta_paths do
+    [
+      ["params", "delta"],
+      [:params, :delta],
+      ["params", "textDelta"],
+      [:params, :textDelta],
+      ["params", "text"],
+      [:params, :text],
+      ["params", "msg", "delta"],
+      [:params, :msg, :delta],
+      ["params", "msg", "textDelta"],
+      [:params, :msg, :textDelta],
+      ["params", "msg", "text"],
+      [:params, :msg, :text],
+      ["params", "msg", "payload", "delta"],
+      [:params, :msg, :payload, :delta],
+      ["params", "msg", "payload", "textDelta"],
+      [:params, :msg, :payload, :textDelta],
+      ["params", "msg", "payload", "text"],
+      [:params, :msg, :payload, :text]
+    ]
   end
 
   defp codex_app_server_pid_for_update(_existing, %{codex_app_server_pid: pid})

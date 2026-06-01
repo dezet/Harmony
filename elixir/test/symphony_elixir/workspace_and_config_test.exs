@@ -824,7 +824,24 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
 
     assert Config.settings!().codex.command ==
              "codex --config 'model=\"gpt-5.5\"' app-server"
+  end
 
+  test "config returns workflow server port when no runtime override exists" do
+    Application.delete_env(:symphony_elixir, :server_port_override)
+
+    write_workflow_file!(Workflow.workflow_file_path(), server_port: 4001)
+
+    assert Config.server_port() == 4001
+  end
+
+  test "config runtime server port override wins over workflow server port" do
+    write_workflow_file!(Workflow.workflow_file_path(), server_port: 4001)
+    Application.put_env(:symphony_elixir, :server_port_override, 4002)
+
+    assert Config.server_port() == 4002
+  end
+
+  test "config accepts explicit codex runtime settings" do
     explicit_root =
       Path.join(
         System.tmp_dir!(),

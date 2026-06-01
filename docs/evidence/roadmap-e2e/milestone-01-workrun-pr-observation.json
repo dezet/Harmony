@@ -1,0 +1,60 @@
+{
+  "milestone": "01-durable-workrun-pr-observation",
+  "scenario": "milestone1",
+  "video_revision": 2,
+  "proof_style": "feature-specific-live-api-overlay",
+  "recorded_at": "2026-05-31T23:09:00Z",
+  "runtime_url": "http://127.0.0.1:4101",
+  "external_network": false,
+  "supersedes": {
+    "video_revision": 1,
+    "reason": "v1 video showed generic dashboard/API navigation without milestone-specific values visible in-frame"
+  },
+  "video": {
+    "path": "docs/evidence/roadmap-e2e/milestone-01-workrun-pr-observation-v2.webm",
+    "duration_seconds": 88.72,
+    "size_bytes": 5560585
+  },
+  "project": {
+    "id": "deeeeb30-1825-4d6e-9cb8-9617813030fd",
+    "slug": "roadmap-e2e",
+    "github_owner": "dezet",
+    "github_repo": "roadmap-e2e",
+    "base_branch": "develop",
+    "linear_team_key": "COD",
+    "human_review_state": "Human Review"
+  },
+  "work_run": {
+    "id": "25697769-e246-4c89-ac30-1bb166e03e57",
+    "type": "implementation",
+    "status": "queued",
+    "dedupe_key": "linear:roadmap-e2e-issue",
+    "linear_issue_id": "roadmap-e2e-issue",
+    "linear_identifier": "COD-101",
+    "payload_project_id": "deeeeb30-1825-4d6e-9cb8-9617813030fd",
+    "payload_project_id_matches_project_id": true,
+    "storage_work_run_id_used_by_dispatch_path": "25697769-e246-4c89-ac30-1bb166e03e57"
+  },
+  "pull_request_link": {
+    "id": "50ca9978-20ba-40da-9fcb-63ab272bec3e",
+    "github_pr_number": 17,
+    "github_head_ref": "cod-101-roadmap-e2e",
+    "github_base_ref": "develop",
+    "github_head_sha": "abc123",
+    "linear_identifier": "COD-101",
+    "project_id": "deeeeb30-1825-4d6e-9cb8-9617813030fd"
+  },
+  "visible_assertions": [
+    "project.slug = roadmap-e2e",
+    "work_run.payload.project_id == project.id = true",
+    "storage_work_run_id used = 25697769-e246-4c89-ac30-1bb166e03e57",
+    "pull_request_links[17] = cod-101-roadmap-e2e -> develop",
+    "linear_identifier = COD-101"
+  ],
+  "artifacts": {
+    "video": "docs/evidence/roadmap-e2e/milestone-01-workrun-pr-observation-v2.webm",
+    "screenshots": [
+      "docs/evidence/roadmap-e2e/roadmap-e2e-milestone-01-v2-api-overlay.png"
+    ]
+  }
+}

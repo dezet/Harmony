@@ -1,0 +1,24 @@
+[Unit]
+Description=Harmony controlled proof-of-life orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=harmony
+Group=harmony
+WorkingDirectory=/var/lib/harmony/Harmony/elixir
+EnvironmentFile=/etc/harmony/harmony.env
+Environment=HOME=/var/lib/harmony
+Environment=CODEX_HOME=/var/lib/harmony/.codex
+Environment=TMPDIR=/var/lib/harmony/tmp
+Environment=PATH=/var/lib/harmony/.local/bin:/var/lib/harmony/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+ExecStart=/var/lib/harmony/.local/bin/mise exec -- ./bin/symphony /etc/harmony/WORKFLOW.portal.local.md --logs-root /var/log/harmony --port 4001 --i-understand-that-this-will-be-running-without-the-usual-guardrails
+Restart=on-failure
+RestartSec=10
+SyslogIdentifier=harmony
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

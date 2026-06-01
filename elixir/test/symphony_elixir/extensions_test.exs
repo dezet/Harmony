@@ -343,6 +343,22 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert state_payload == %{
              "generated_at" => state_payload["generated_at"],
              "counts" => %{"running" => 1, "retrying" => 1, "blocked" => 1},
+             "runtime" => %{
+               "sandbox" => %{
+                 "apparmor_restrict_unprivileged_userns" => 1,
+                 "bubblewrap_available" => true,
+                 "posture" => "danger_full_access",
+                 "thread_sandbox" => "danger-full-access",
+                 "turn_sandbox_type" => "dangerFullAccess",
+                 "warnings" => ["Codex sandbox posture is danger full access"]
+               }
+             },
+             "artifacts" => [
+               %{
+                 "kind" => "screenshot",
+                 "path" => "/var/lib/harmony/artifacts/run-1/screen.png"
+               }
+             ],
              "running" => [
                %{
                  "issue_id" => "issue-http",
@@ -596,6 +612,10 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert html =~ "Offline"
     assert html =~ "Copy ID"
     assert html =~ "Codex update"
+    assert html =~ "Evidence"
+    assert html =~ "/var/lib/harmony/artifacts/run-1/screen.png"
+    assert html =~ "Runtime diagnostics"
+    assert html =~ "danger_full_access"
     refute html =~ "data-runtime-clock="
     refute html =~ "setInterval(refreshRuntimeClocks"
     refute html =~ "Refresh now"
@@ -787,6 +807,19 @@ defmodule SymphonyElixir.ExtensionsTest do
           last_codex_timestamp: DateTime.utc_now()
         }
       ],
+      artifacts: [
+        %{kind: "screenshot", path: "/var/lib/harmony/artifacts/run-1/screen.png"}
+      ],
+      runtime: %{
+        sandbox: %{
+          bubblewrap_available: true,
+          apparmor_restrict_unprivileged_userns: 1,
+          thread_sandbox: "danger-full-access",
+          turn_sandbox_type: "dangerFullAccess",
+          posture: "danger_full_access",
+          warnings: ["Codex sandbox posture is danger full access"]
+        }
+      },
       codex_totals: %{input_tokens: 4, output_tokens: 8, total_tokens: 12, seconds_running: 42.5},
       rate_limits: %{"primary" => %{"remaining" => 11}}
     }

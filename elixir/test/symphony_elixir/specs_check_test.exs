@@ -78,7 +78,7 @@ defmodule SymphonyElixir.SpecsCheckTest do
   end
 
   defp create_tmp_dir do
-    unique = :erlang.unique_integer([:positive, :monotonic])
+    unique = Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
     dir = Path.join(System.tmp_dir!(), "specs-check-test-#{unique}")
     File.rm_rf!(dir)
     File.mkdir_p!(dir)

@@ -115,6 +115,44 @@ defmodule SymphonyElixirWeb.DashboardLive do
         <section class="section-card">
           <div class="section-header">
             <div>
+              <h2 class="section-title">Runtime diagnostics</h2>
+              <p class="section-copy">Sandbox posture and host capability detected by the Harmony runtime.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" style="min-width: 760px;">
+              <thead>
+                <tr>
+                  <th>Posture</th>
+                  <th>Bubblewrap</th>
+                  <th>AppArmor userns</th>
+                  <th>Thread sandbox</th>
+                  <th>Turn sandbox</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="state-badge"><%= @payload.runtime.sandbox.posture || "unknown" %></span></td>
+                  <td><%= bool_label(@payload.runtime.sandbox.bubblewrap_available) %></td>
+                  <td class="numeric"><%= value_label(@payload.runtime.sandbox.apparmor_restrict_unprivileged_userns) %></td>
+                  <td><%= @payload.runtime.sandbox.thread_sandbox || "n/a" %></td>
+                  <td><%= @payload.runtime.sandbox.turn_sandbox_type || "n/a" %></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <%= if @payload.runtime.sandbox.warnings != [] do %>
+            <ul class="detail-list">
+              <li :for={warning <- @payload.runtime.sandbox.warnings}><%= warning %></li>
+            </ul>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
               <h2 class="section-title">Projects</h2>
               <p class="section-copy">Linear project grouping for the active Harmony runtime.</p>
             </div>
@@ -160,6 +198,75 @@ defmodule SymphonyElixirWeb.DashboardLive do
           </div>
 
           <pre class="code-panel"><%= pretty_value(@payload.rate_limits) %></pre>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Work runs</h2>
+              <p class="section-copy">Durable queued, blocked, and completed runtime work persisted by project polling.</p>
+            </div>
+          </div>
+
+          <%= if durable_work_runs(@payload) == [] do %>
+            <p class="empty-state">No durable work runs yet.</p>
+          <% else %>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 920px;">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Target</th>
+                    <th>Dedupe key</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={run <- durable_work_runs(@payload)}>
+                    <td><span class="state-badge"><%= run.type || "work" %></span></td>
+                    <td><span class={state_badge_class(run.status || "queued")}><%= run.status || "queued" %></span></td>
+                    <td>
+                      <div class="issue-stack">
+                        <span class="issue-id"><%= run.linear_identifier || pr_label(run) || "n/a" %></span>
+                        <span class="muted"><%= work_run_target_detail(run) %></span>
+                      </div>
+                    </td>
+                    <td class="mono"><%= run.dedupe_key || "n/a" %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </section>
+
+        <section class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Evidence</h2>
+              <p class="section-copy">Browser and runtime artifacts captured for review handoff.</p>
+            </div>
+          </div>
+
+          <%= if evidence_artifacts(@payload) == [] do %>
+            <p class="empty-state">No evidence artifacts yet.</p>
+          <% else %>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 720px;">
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Path</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={artifact <- evidence_artifacts(@payload)}>
+                    <td><span class="state-badge"><%= artifact.kind || "artifact" %></span></td>
+                    <td class="mono"><%= artifact.path || "n/a" %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
         </section>
 
         <section class="section-card">
@@ -387,6 +494,39 @@ defmodule SymphonyElixirWeb.DashboardLive do
     Endpoint.config(:snapshot_timeout_ms) || 15_000
   end
 
+  defp evidence_artifacts(payload) do
+    runtime_artifacts = Map.get(payload, :artifacts, [])
+
+    durable_artifacts =
+      payload
+      |> Map.get(:durable, %{})
+      |> Map.get(:artifacts, [])
+
+    runtime_artifacts ++ durable_artifacts
+  end
+
+  defp durable_work_runs(payload) do
+    payload
+    |> Map.get(:durable, %{})
+    |> Map.get(:work_runs, [])
+  end
+
+  defp work_run_target_detail(run) do
+    cond do
+      is_binary(run.linear_issue_id) -> run.linear_issue_id
+      is_binary(run.github_owner) and is_binary(run.github_repo) and is_integer(run.github_pr_number) -> pr_label(run)
+      is_binary(run.github_owner) and is_binary(run.github_repo) -> "#{run.github_owner}/#{run.github_repo}"
+      true -> run.id || "n/a"
+    end
+  end
+
+  defp pr_label(%{github_owner: owner, github_repo: repo, github_pr_number: number})
+       when is_binary(owner) and is_binary(repo) and is_integer(number) do
+    "#{owner}/#{repo}##{number}"
+  end
+
+  defp pr_label(_run), do: nil
+
   defp completed_runtime_seconds(payload) do
     payload.codex_totals.seconds_running || 0
   end
@@ -410,6 +550,13 @@ defmodule SymphonyElixirWeb.DashboardLive do
   end
 
   defp project_label(_entry), do: "n/a"
+
+  defp bool_label(true), do: "yes"
+  defp bool_label(false), do: "no"
+  defp bool_label(_value), do: "unknown"
+
+  defp value_label(nil), do: "n/a"
+  defp value_label(value), do: to_string(value)
 
   defp format_runtime_seconds(seconds) when is_number(seconds) do
     whole_seconds = max(trunc(seconds), 0)
