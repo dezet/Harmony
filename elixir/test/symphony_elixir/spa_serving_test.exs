@@ -2,6 +2,7 @@ defmodule SymphonyElixir.SpaServingTest do
   use SymphonyElixir.TestSupport
 
   import Phoenix.ConnTest
+  import Plug.Conn, only: [get_resp_header: 2]
 
   @endpoint SymphonyElixirWeb.Endpoint
 
