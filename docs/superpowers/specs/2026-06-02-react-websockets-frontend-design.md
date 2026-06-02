@@ -69,7 +69,8 @@ These were settled during brainstorming and are fixed inputs to the plan:
    Transport: Phoenix Channels (WS) + JSON API.
 3. **Spec scope:** full replacement of all LiveView screens in one spec; implementation phased.
 4. **Stack:** TypeScript + Vite + React Router + the official `phoenix` Channels client +
-   React Hook Form + Yup (forms/validation) + React Query (REST data) + shadcn/ui (Tailwind + Radix).
+   React Hook Form + Yup (forms/validation) + React Query (REST data) + shadcn/ui (default
+   `base-nova` style, built on Base UI + Tailwind v4).
 5. **Real-time pattern:** the Channel pushes the full `state_payload`; a thin client writes it into
    the React Query cache via `setQueryData`. REST `GET /api/v1/state` handles initial load and
    reconnect. (Chosen over "Channel as invalidation signal" and "separate realtime store".)
