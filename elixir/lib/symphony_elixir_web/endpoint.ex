@@ -11,21 +11,15 @@ defmodule SymphonyElixirWeb.Endpoint do
     signing_salt: "symphony-session"
   ]
 
-  socket("/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: false
-  )
-
   # Socket for the React client (observability dashboard channel).
   socket("/socket", SymphonyElixirWeb.UserSocket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
   )
 
-  # Serves the built React SPA (Vite output) under /app during Phases 0-2.
-  # Phase 3 cutover flips this to "/".
+  # Serves the built React SPA (Vite output) from the root path.
   plug(Plug.Static,
-    at: "/app",
+    at: "/",
     from: {:symphony_elixir, "priv/static/app"},
     gzip: false,
     only: ~w(assets index.html favicon.svg icons.svg)

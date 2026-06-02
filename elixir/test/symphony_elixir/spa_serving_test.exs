@@ -11,8 +11,8 @@ defmodule SymphonyElixir.SpaServingTest do
     :ok
   end
 
-  test "GET /app returns the SPA index.html" do
-    conn = get(build_conn(), "/app")
+  test "GET / returns the SPA index.html" do
+    conn = get(build_conn(), "/")
 
     assert conn.status == 200
     assert get_resp_header(conn, "content-type") |> List.first() =~ "text/html"
@@ -20,7 +20,7 @@ defmodule SymphonyElixir.SpaServingTest do
   end
 
   test "GET a client-side route returns index.html (SPA fallback)" do
-    conn = get(build_conn(), "/app/projects/new")
+    conn = get(build_conn(), "/projects/new")
 
     assert conn.status == 200
     assert conn.resp_body =~ "<div id=\"root\">"
