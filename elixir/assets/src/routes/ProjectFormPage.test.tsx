@@ -51,4 +51,35 @@ describe("ProjectFormPage (create)", () => {
 
     await waitFor(() => expect(screen.getByText("Projects list")).toBeInTheDocument());
   });
+
+  it("maps a server config error onto the JSON textarea field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "validation_failed",
+                message: "Validation failed",
+                fields: { config: ["must be a JSON object"] },
+              },
+            }),
+            { status: 422, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    renderForm();
+    await userEvent.type(screen.getByLabelText("Slug"), "portal");
+    await userEvent.type(screen.getByLabelText("GitHub owner"), "dezet");
+    await userEvent.type(screen.getByLabelText("GitHub repo"), "portal");
+    await userEvent.type(screen.getByLabelText("Base branch"), "main");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("must be a JSON object")).toBeInTheDocument();
+    expect(screen.getByLabelText("Config (JSON)")).toHaveAccessibleDescription(
+      "must be a JSON object",
+    );
+  });
 });

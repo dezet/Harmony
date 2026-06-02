@@ -25,6 +25,15 @@ const FIELDS = [
   { name: "linear_human_review_state", label: "Linear human review state" },
 ] as const;
 
+function serverFieldToFormField(field: string): keyof ProjectFormValues {
+  if (field === "config") return "config_json";
+  return field as keyof ProjectFormValues;
+}
+
+function errorId(field: string) {
+  return `${field}-error`;
+}
+
 export function ProjectFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -72,7 +81,7 @@ export function ProjectFormPage() {
     } catch (err) {
       if (err instanceof ApiError && err.fields) {
         for (const [field, messages] of Object.entries(err.fields)) {
-          setError(field as keyof ProjectFormValues, { message: messages.join(", ") });
+          setError(serverFieldToFormField(field), { message: messages.join(", ") });
         }
       } else if (err instanceof ApiError) {
         toast.error(err.message);
@@ -89,26 +98,46 @@ export function ProjectFormPage() {
       {FIELDS.map((f) => (
         <div key={f.name} className="space-y-1">
           <Label htmlFor={f.name}>{f.label}</Label>
-          <Input id={f.name} {...register(f.name)} />
+          <Input
+            id={f.name}
+            aria-describedby={errors[f.name] ? errorId(f.name) : undefined}
+            {...register(f.name)}
+          />
           {errors[f.name] ? (
-            <p className="text-sm text-destructive">{errors[f.name]?.message}</p>
+            <p id={errorId(f.name)} className="text-sm text-destructive">
+              {errors[f.name]?.message}
+            </p>
           ) : null}
         </div>
       ))}
 
       <div className="space-y-1">
         <Label htmlFor="config_version">Config version</Label>
-        <Input id="config_version" type="number" {...register("config_version")} />
+        <Input
+          id="config_version"
+          type="number"
+          aria-describedby={errors.config_version ? errorId("config_version") : undefined}
+          {...register("config_version")}
+        />
         {errors.config_version ? (
-          <p className="text-sm text-destructive">{errors.config_version.message}</p>
+          <p id={errorId("config_version")} className="text-sm text-destructive">
+            {errors.config_version.message}
+          </p>
         ) : null}
       </div>
 
       <div className="space-y-1">
         <Label htmlFor="config_json">Config (JSON)</Label>
-        <Textarea id="config_json" rows={8} {...register("config_json")} />
+        <Textarea
+          id="config_json"
+          rows={8}
+          aria-describedby={errors.config_json ? errorId("config_json") : undefined}
+          {...register("config_json")}
+        />
         {errors.config_json ? (
-          <p className="text-sm text-destructive">{errors.config_json.message}</p>
+          <p id={errorId("config_json")} className="text-sm text-destructive">
+            {errors.config_json.message}
+          </p>
         ) : null}
       </div>
 
