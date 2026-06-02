@@ -1,11 +1,12 @@
 defmodule SymphonyElixirWeb.ProjectController do
   @moduledoc """
-  JSON CRUD for projects (list / show / create / update). Mirrors the LiveView
-  project form. No delete by design.
+  JSON CRUD for projects (list / show / create / update) consumed by the React
+  SPA's project form. No delete by design.
   """
 
   use Phoenix.Controller, formats: [:json]
 
+  alias Plug.Conn
   alias SymphonyElixir.Storage
 
   action_fallback(SymphonyElixirWeb.FallbackController)
@@ -13,22 +14,26 @@ defmodule SymphonyElixirWeb.ProjectController do
   @permitted ~w(slug linear_project_slug linear_team_key linear_human_review_state
                 github_owner github_repo github_base_branch config_version config)
 
+  @spec index(Conn.t(), map()) :: Conn.t()
   def index(conn, _params) do
     json(conn, %{projects: Enum.map(Storage.list_projects(), &project_json/1)})
   end
 
+  @spec show(Conn.t(), map()) :: Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, project} <- fetch_project(id) do
       json(conn, %{project: project_json(project)})
     end
   end
 
+  @spec create(Conn.t(), map()) :: Conn.t()
   def create(conn, params) do
     with {:ok, project} <- Storage.upsert_project(project_attrs(params)) do
       conn |> put_status(:created) |> json(%{project: project_json(project)})
     end
   end
 
+  @spec update(Conn.t(), map()) :: Conn.t()
   def update(conn, %{"id" => id} = params) do
     with {:ok, _existing} <- fetch_project(id),
          {:ok, project} <- Storage.upsert_project(project_attrs(params)) do

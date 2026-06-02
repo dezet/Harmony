@@ -6,6 +6,7 @@ defmodule SymphonyElixirWeb.FallbackController do
 
   use Phoenix.Controller, formats: [:json]
 
+  @spec call(Plug.Conn.t(), {:error, Ecto.Changeset.t() | :not_found}) :: Plug.Conn.t()
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)
