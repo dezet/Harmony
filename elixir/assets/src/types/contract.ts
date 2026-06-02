@@ -93,21 +93,92 @@ export interface StateError {
   message: string;
 }
 
+export interface DurableProject {
+  id: string;
+  slug: string;
+  linear: {
+    project_slug: string | null;
+    team_key: string | null;
+    human_review_state: string | null;
+  };
+  github: {
+    owner: string;
+    repo: string;
+    base_branch: string;
+  };
+  config_version: number;
+}
+
 export interface DurableWorkRun {
   id: string;
+  project_id: string;
   type: string;
   status: string;
   dedupe_key: string | null;
   github_owner: string | null;
   github_repo: string | null;
   github_pr_number: number | null;
+  github_head_sha: string | null;
+  github_head_ref: string | null;
+  github_base_ref: string | null;
+  linear_issue_id: string | null;
   linear_identifier: string | null;
+  linear_url: string | null;
+  agent_backend: string | null;
+  payload: Record<string, unknown> | null;
+}
+
+export interface DurablePullRequestLink {
+  id: string;
+  project_id: string;
+  github_owner: string;
+  github_repo: string;
+  github_pr_number: number;
+  github_head_sha: string | null;
+  github_head_ref: string | null;
+  github_base_ref: string | null;
+  linear_issue_id: string | null;
+  linear_identifier: string | null;
+  linear_url: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface DurableBlocker {
+  id: string;
+  project_id: string | null;
+  work_run_id: string | null;
+  target_type: string;
+  target_id: string;
+  reason: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface DurableDedupeKey {
+  id: string;
+  project_id: string | null;
+  key: string;
+  scope: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface DurableWorkEvent {
+  id: string;
+  project_id: string | null;
+  work_run_id: string | null;
+  type: string;
+  payload: Record<string, unknown> | null;
+  inserted_at: string | null;
 }
 
 export interface DurableArtifact {
-  id?: string;
+  id: string;
+  project_id: string | null;
+  work_run_id: string | null;
   kind: string | null;
   path: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export interface ArtifactTableRow {
@@ -117,11 +188,13 @@ export interface ArtifactTableRow {
 }
 
 export interface Durable {
+  projects?: DurableProject[];
   work_runs?: DurableWorkRun[];
+  pull_request_links?: DurablePullRequestLink[];
+  blockers?: DurableBlocker[];
+  dedupe_keys?: DurableDedupeKey[];
+  work_events?: DurableWorkEvent[];
   artifacts?: DurableArtifact[];
-  // Other durable lists (projects, blockers, dedupe_keys, work_events,
-  // pull_request_links) exist in the payload but are not rendered yet.
-  [key: string]: unknown;
 }
 
 export interface StatePayload {

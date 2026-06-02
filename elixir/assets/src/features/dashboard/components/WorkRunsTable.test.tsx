@@ -5,13 +5,21 @@ import type { DurableWorkRun } from "@/types/contract";
 
 const run: DurableWorkRun = {
   id: "wr1",
+  project_id: "project-1",
   type: "implementation",
   status: "open",
   dedupe_key: "key-1",
   github_owner: "dezet",
   github_repo: "portal",
   github_pr_number: 42,
+  github_head_sha: "abc123",
+  github_head_ref: "cod-9",
+  github_base_ref: "develop",
+  linear_issue_id: "issue-9",
   linear_identifier: "COD-9",
+  linear_url: "https://linear.test/COD-9",
+  agent_backend: "codex",
+  payload: { project_id: "project-1" },
 };
 
 describe("WorkRunsTable", () => {
