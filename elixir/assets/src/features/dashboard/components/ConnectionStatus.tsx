@@ -1,10 +1,20 @@
-import { useIsFetching } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { DASHBOARD_KEY } from "@/lib/queryClient";
+import {
+  useDashboardConnection,
+  type DashboardConnectionStatus,
+} from "@/lib/dashboardConnection";
 
-// "Live" once we have data; "Connecting…" while the first fetch/join is in flight.
-export function ConnectionStatus({ hasData }: { hasData: boolean }) {
-  const fetching = useIsFetching({ queryKey: DASHBOARD_KEY });
-  if (hasData) return <Badge variant="secondary">Live</Badge>;
-  return <Badge variant="outline">{fetching ? "Connecting…" : "Offline"}</Badge>;
+const statusLabels: Record<DashboardConnectionStatus, string> = {
+  connecting: "Connecting…",
+  live: "Live",
+  reconnecting: "Reconnecting…",
+  offline: "Offline",
+};
+
+export function ConnectionStatus() {
+  const { status } = useDashboardConnection();
+  const variant =
+    status === "live" ? "secondary" : status === "offline" ? "destructive" : "outline";
+
+  return <Badge variant={variant}>{statusLabels[status]}</Badge>;
 }
