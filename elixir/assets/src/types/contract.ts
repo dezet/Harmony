@@ -93,6 +93,31 @@ export interface StateError {
   message: string;
 }
 
+export interface DurableWorkRun {
+  id: string;
+  type: string;
+  status: string;
+  dedupe_key: string | null;
+  github_owner: string | null;
+  github_repo: string | null;
+  github_pr_number: number | null;
+  linear_identifier: string | null;
+}
+
+export interface DurableArtifact {
+  id?: string;
+  kind: string | null;
+  path: string | null;
+}
+
+export interface Durable {
+  work_runs?: DurableWorkRun[];
+  artifacts?: DurableArtifact[];
+  // Other durable lists (projects, blockers, dedupe_keys, work_events,
+  // pull_request_links) exist in the payload but are not rendered yet.
+  [key: string]: unknown;
+}
+
 export interface StatePayload {
   generated_at: string;
   counts?: ProjectCounts;
@@ -104,7 +129,7 @@ export interface StatePayload {
   codex_totals?: CodexTotals;
   rate_limits?: unknown;
   projects?: Array<ProjectRef & { counts: ProjectCounts }>;
-  durable?: Record<string, unknown>;
+  durable?: Durable;
   error?: StateError;
 }
 

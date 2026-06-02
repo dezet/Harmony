@@ -5,6 +5,11 @@ import { RunningTable } from "@/features/dashboard/components/RunningTable";
 import { RetryTable } from "@/features/dashboard/components/RetryTable";
 import { BlockedTable } from "@/features/dashboard/components/BlockedTable";
 import { ConnectionStatus } from "@/features/dashboard/components/ConnectionStatus";
+import { RuntimeCard } from "@/features/dashboard/components/RuntimeCard";
+import { ProjectsSummaryTable } from "@/features/dashboard/components/ProjectsSummaryTable";
+import { WorkRunsTable } from "@/features/dashboard/components/WorkRunsTable";
+import { ArtifactsTable } from "@/features/dashboard/components/ArtifactsTable";
+import { RateLimits } from "@/features/dashboard/components/RateLimits";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -46,6 +51,41 @@ export function DashboardPage() {
             <h2 className="text-lg font-medium mb-2">Blocked sessions</h2>
             <BlockedTable rows={data.blocked ?? []} />
           </section>
+
+          {data.projects && data.projects.length > 0 ? (
+            <section>
+              <h2 className="text-lg font-medium mb-2">Projects</h2>
+              <ProjectsSummaryTable rows={data.projects} />
+            </section>
+          ) : null}
+
+          {data.runtime?.sandbox ? (
+            <section>
+              <h2 className="text-lg font-medium mb-2">Runtime</h2>
+              <RuntimeCard sandbox={data.runtime.sandbox} />
+            </section>
+          ) : null}
+
+          {data.durable?.work_runs ? (
+            <section>
+              <h2 className="text-lg font-medium mb-2">Work runs</h2>
+              <WorkRunsTable rows={data.durable.work_runs} />
+            </section>
+          ) : null}
+
+          {data.durable?.artifacts ? (
+            <section>
+              <h2 className="text-lg font-medium mb-2">Evidence artifacts</h2>
+              <ArtifactsTable rows={data.durable.artifacts} />
+            </section>
+          ) : null}
+
+          {data.rate_limits != null ? (
+            <section>
+              <h2 className="text-lg font-medium mb-2">Rate limits</h2>
+              <RateLimits value={data.rate_limits} />
+            </section>
+          ) : null}
         </>
       ) : (
         <p className="text-muted-foreground">No data.</p>
