@@ -4,7 +4,6 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
   import Ecto.Query
   import ExUnit.CaptureIO
   import Phoenix.ConnTest
-  import Phoenix.LiveViewTest
 
   alias Mix.Tasks.Harmony.RoadmapE2e
   alias SymphonyElixir.Repo
@@ -109,7 +108,7 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
            ] = durable.pull_request_links
   end
 
-  test "milestone1 smoke covers projects page, dashboard, and state api" do
+  test "milestone1 smoke serves the SPA and exposes durable state over the api" do
     assert {:ok, summary} = RoadmapE2E.run("milestone1", port: 4101)
     orchestrator_name = Module.concat(__MODULE__, :Milestone1SmokeOrchestrator)
 
@@ -121,16 +120,10 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    {:ok, _view, projects_html} = live(build_conn(), "/projects")
-
-    assert projects_html =~ "roadmap-e2e"
-    assert projects_html =~ "dezet/roadmap-e2e"
-    assert projects_html =~ "roadmap-e2e-linear"
-
-    dashboard_html = html_response(get(build_conn(), "/"), 200)
-
-    assert dashboard_html =~ "Symphony Observability"
-    assert dashboard_html =~ "Running"
+    # The SPA shell is served at / and on client-side routes; project and
+    # dashboard data are hydrated from the JSON API below (no SSR HTML).
+    assert get(build_conn(), "/").resp_body =~ "<div id=\"root\">"
+    assert get(build_conn(), "/projects").resp_body =~ "<div id=\"root\">"
 
     state_payload = json_response(get(build_conn(), "/api/v1/state"), 200)
 
@@ -305,7 +298,7 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
            } = stored_artifact(summary.project_id, work_run_id)
   end
 
-  test "dashboard evidence section shows durable milestone4 artifact metadata" do
+  test "state api exposes durable milestone4 artifact metadata" do
     assert {:ok, _summary} = RoadmapE2E.run("milestone4", port: 4105)
     orchestrator_name = Module.concat(__MODULE__, :Milestone4DashboardOrchestrator)
 
@@ -317,11 +310,13 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    html = html_response(get(build_conn(), "/"), 200)
+    state_payload = json_response(get(build_conn(), "/api/v1/state"), 200)
 
-    assert html =~ "Evidence"
-    assert html =~ "screenshot"
-    assert html =~ "milestone4.png"
+    assert Enum.any?(
+             state_payload["durable"]["artifacts"],
+             &(&1["kind"] == "screenshot" and &1["path"] =~ "milestone4.png" and
+                 &1["metadata"]["description"] == "Roadmap evidence screenshot")
+           )
   end
 
   test "milestone5 seeds failed CI repair context and log fetch error variant" do
@@ -343,7 +338,7 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
              stored_work_run(summary.project_id, "github-ci-fix:dezet/roadmap-e2e:21:badlog:9003")
   end
 
-  test "dashboard work runs section shows durable milestone5 ci fix context" do
+  test "state api exposes durable milestone5 ci fix context" do
     assert {:ok, _summary} = RoadmapE2E.run("milestone5", port: 4106)
     orchestrator_name = Module.concat(__MODULE__, :Milestone5DashboardOrchestrator)
 
@@ -355,12 +350,13 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    html = html_response(get(build_conn(), "/"), 200)
+    state_payload = json_response(get(build_conn(), "/api/v1/state"), 200)
 
-    assert html =~ "Work runs"
-    assert html =~ "ci_fix"
-    assert html =~ "COD-501"
-    assert html =~ "github-ci-fix:dezet/roadmap-e2e:20:fedcba:9002"
+    assert Enum.any?(
+             state_payload["durable"]["work_runs"],
+             &(&1["type"] == "ci_fix" and &1["linear_identifier"] == "COD-501" and
+                 &1["dedupe_key"] == "github-ci-fix:dezet/roadmap-e2e:20:fedcba:9002")
+           )
   end
 
   test "mix task supports --once and prints the scenario summary" do
