@@ -9,5 +9,5 @@ See `CLAUDE.md` in this directory for the full guide. Summary:
 - `src/components/ui/*` is shadcn-generated; do not hand-edit. Check shadcn before writing a custom
   component (`npx shadcn@latest add <name>`). Use the default theme.
 - Wire-contract types: `src/types/contract.ts`, mirroring `SymphonyElixirWeb.Presenter`.
-- Alias `@/*` → `src/*`. Tests: Vitest + RTL (`npm run test -- --run`). Build: `mix assets.build`
-  from `elixir/`.
+- Alias `@/*` → `src/*`. Tests: Vitest + RTL (`npm run test -- --run`). Browser E2E:
+  `make e2e` from `elixir/`. Build: `mix assets.build` from `elixir/`.

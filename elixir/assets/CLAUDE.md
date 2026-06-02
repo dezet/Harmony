@@ -39,12 +39,13 @@ plus `tsconfig.json` (for the shadcn CLI's resolver). If `npx shadcn add` ever w
 
 - **Dev:** start Phoenix (the OTP app boots the server), then `npm run dev` here. Vite proxies
   `/api` and `/socket` to Phoenix on `http://localhost:${HARMONY_PORT:-4000}`. Open
-  http://localhost:5173/app/. If Phoenix runs on another port, use `HARMONY_PORT=<port> npm run dev`.
+  http://localhost:5173/. If Phoenix runs on another port, use `HARMONY_PORT=<port> npm run dev`.
 - **Tests:** `npm run test -- --run`
 - **Typecheck:** `npm run typecheck`
 - **Build:** from `elixir/`, `mix assets.build` (or `npm run build` here).
+- **Browser E2E:** from `elixir/`, `make e2e` runs the deterministic React SPA Playwright harness.
 
 ## Routing note
 
-During Phases 0–2 the app is served under `/app` (`base: "/app/"` in `vite.config.ts`, and
-`BrowserRouter basename` derives from `import.meta.env.BASE_URL`). Phase 3 flips `base` to `/`.
+The Phase 3 cutover is complete: Vite builds with `base: "/"`, Phoenix serves `priv/static/app`
+from `/`, and React Router owns `/`, `/projects`, `/projects/new`, and `/projects/:id/edit`.

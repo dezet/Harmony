@@ -1,6 +1,6 @@
 defmodule SymphonyElixirWeb.SpaController do
   @moduledoc """
-  Serves the React SPA's index.html for client-side routes under /app.
+  Serves the React SPA's index.html for client-side routes at the root path.
   """
 
   use Phoenix.Controller, formats: [:html]
