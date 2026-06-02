@@ -16,6 +16,21 @@ defmodule SymphonyElixirWeb.Endpoint do
     longpoll: false
   )
 
+  # Socket for the React client (observability dashboard channel).
+  socket("/socket", SymphonyElixirWeb.UserSocket,
+    websocket: [connect_info: [session: @session_options]],
+    longpoll: false
+  )
+
+  # Serves the built React SPA (Vite output) under /app during Phases 0-2.
+  # Phase 3 cutover flips this to "/".
+  plug(Plug.Static,
+    at: "/app",
+    from: {:symphony_elixir, "priv/static/app"},
+    gzip: false,
+    only: ~w(assets index.html favicon.svg icons.svg)
+  )
+
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
 

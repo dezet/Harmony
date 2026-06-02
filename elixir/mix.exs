@@ -83,9 +83,11 @@ defmodule SymphonyElixir.MixProject do
 
   defp aliases do
     [
-      setup: ["deps.get"],
+      setup: ["deps.get", "assets.setup"],
       build: ["escript.build"],
-      lint: ["specs.check", "credo --strict"]
+      lint: ["specs.check", "credo --strict"],
+      "assets.setup": ["cmd --cd assets npm ci"],
+      "assets.build": ["cmd --cd assets npm run build"]
     ]
   end
 

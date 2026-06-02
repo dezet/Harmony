@@ -1,4 +1,4 @@
-.PHONY: help all setup deps build fmt fmt-check lint test coverage ci dialyzer e2e
+.PHONY: help all setup deps build assets fmt fmt-check lint test coverage ci dialyzer e2e
 
 MIX ?= mix
 
@@ -13,6 +13,9 @@ deps:
 
 build:
 	$(MIX) build
+
+assets:
+	$(MIX) assets.build
 
 fmt:
 	$(MIX) format
@@ -39,6 +42,7 @@ e2e:
 ci:
 	$(MAKE) setup
 	$(MAKE) build
+	$(MAKE) assets
 	$(MAKE) fmt-check
 	$(MAKE) lint
 	$(MAKE) coverage
