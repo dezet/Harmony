@@ -110,6 +110,12 @@ export interface DurableArtifact {
   path: string | null;
 }
 
+export interface ArtifactTableRow {
+  id?: string;
+  kind?: string | null;
+  path?: string | null;
+}
+
 export interface Durable {
   work_runs?: DurableWorkRun[];
   artifacts?: DurableArtifact[];

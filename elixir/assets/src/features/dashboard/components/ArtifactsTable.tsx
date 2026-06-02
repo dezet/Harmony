@@ -6,9 +6,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { DurableArtifact } from "@/types/contract";
+import type { ArtifactTableRow } from "@/types/contract";
 
-export function ArtifactsTable({ rows }: { rows: DurableArtifact[] }) {
+export function ArtifactsTable({ rows }: { rows: ArtifactTableRow[] }) {
   if (rows.length === 0) return <p className="text-muted-foreground">No artifacts.</p>;
 
   return (

@@ -16,6 +16,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 export function DashboardPage() {
   const { data, isLoading } = useDashboard();
   const nowMs = useNow();
+  const evidenceArtifacts = [...(data?.artifacts ?? []), ...(data?.durable?.artifacts ?? [])];
 
   return (
     <div className="space-y-6">
@@ -73,10 +74,10 @@ export function DashboardPage() {
             </section>
           ) : null}
 
-          {data.durable?.artifacts ? (
+          {evidenceArtifacts.length > 0 ? (
             <section>
               <h2 className="text-lg font-medium mb-2">Evidence artifacts</h2>
-              <ArtifactsTable rows={data.durable.artifacts} />
+              <ArtifactsTable rows={evidenceArtifacts} />
             </section>
           ) : null}
 

@@ -38,4 +38,37 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
+
+  it("renders runtime and durable evidence artifacts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              generated_at: "2026-06-02T00:00:00Z",
+              counts: { running: 0, retrying: 0, blocked: 0 },
+              running: [],
+              retrying: [],
+              blocked: [],
+              artifacts: [{ kind: "runtime_log", path: "/tmp/runtime.log" }],
+              durable: {
+                artifacts: [
+                  { id: "artifact-1", kind: "screenshot", path: "/tmp/screenshot.png" },
+                ],
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Evidence artifacts" })).toBeInTheDocument(),
+    );
+    expect(screen.getByText("/tmp/runtime.log")).toBeInTheDocument();
+    expect(screen.getByText("/tmp/screenshot.png")).toBeInTheDocument();
+  });
 });
