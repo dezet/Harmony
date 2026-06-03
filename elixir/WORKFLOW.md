@@ -5,6 +5,8 @@ tracker:
     - "symphony-0c79b11b75ea"
   active_states:
     - Todo
+    - Spec
+    - Plan
     - In Progress
     - Merging
     - Rework
@@ -46,6 +48,7 @@ Continuation context:
 - Resume from the current workspace state instead of restarting from scratch.
 - Do not repeat already-completed investigation or validation unless needed for new code changes.
 - Do not end the turn while the issue remains in an active state unless you are blocked by missing required permissions/secrets.
+- Exception: in `Spec` and `Plan` states, once the corresponding artifact is written, committed, and pushed, hand off and end the turn. Producing the artifact and advancing the state (`Spec` -> `Plan`, or `Plan` -> `Plan Approval`) is the completion signal for that state — do not re-do or re-plan an artifact that already exists.
   {% endif %}
 
 Issue context:
@@ -99,6 +102,8 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 ## Related skills
 
 - `linear`: interact with Linear.
+- `write-spec`: in the `Spec` state, derive and write the design/specification document for the ticket into `docs/superpowers/specs/` (superpowers brainstorming methodology, unattended variant).
+- `write-plan`: in the `Plan` state, turn the approved spec into a checkbox implementation plan under `docs/superpowers/plans/` (superpowers writing-plans methodology).
 - `commit`: produce clean, logical commits during implementation.
 - `push`: keep remote branch current and publish updates.
 - `pull`: keep branch updated with latest `origin/main` before handoff.
@@ -107,9 +112,12 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 ## Status map
 
 - `Backlog` -> out of scope for this workflow; do not modify.
-- `Todo` -> queued; immediately transition to `In Progress` before active work.
-  - Special case: if a PR is already attached, treat as feedback/rework loop (run full PR feedback sweep, address or explicitly push back, revalidate, return to `Human Review`).
-- `In Progress` -> implementation actively underway.
+- `Todo` -> queued; immediately transition to `Spec` before active work.
+  - Special case: if a PR is already attached, treat as feedback/rework loop (run full PR feedback sweep, address or explicitly push back, revalidate, return to `Human Review`). A PR-attached `Todo` skips the spec/plan phases and resumes the implementation/feedback flow directly.
+- `Spec` -> write the specification with the `write-spec` skill, commit it, then transition to `Plan`.
+- `Plan` -> write the implementation plan with the `write-plan` skill, commit it, then transition to `Plan Approval` and end the turn.
+- `Plan Approval` -> spec + plan are written and waiting on human approval. This is a passive gate (not an active state): do not work it. The human moves it to `In Progress` to approve, or back to `Spec`/`Plan` to request changes.
+- `In Progress` -> implementation actively underway, executing the approved plan.
 - `Human Review` -> PR is attached and validated; waiting on human approval.
 - `Merging` -> approved by human; execute the `land` skill flow (do not call `gh pr merge` directly).
 - `Rework` -> reviewer requested changes; planning + implementation required.
@@ -121,9 +129,12 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 2. Read the current state.
 3. Route to the matching flow:
    - `Backlog` -> do not modify issue content/state; stop and wait for human to move it to `Todo`.
-   - `Todo` -> immediately move to `In Progress`, then ensure bootstrap workpad comment exists (create if missing), then start execution flow.
-     - If PR is already attached, start by reviewing all open PR comments and deciding required changes vs explicit pushback responses.
-   - `In Progress` -> continue execution flow from current scratchpad comment.
+   - `Todo` -> immediately move to `Spec`, then ensure bootstrap workpad comment exists (create if missing), then start the specification flow (Step 1a).
+     - If PR is already attached, skip spec/plan: move to `In Progress` instead and start by reviewing all open PR comments and deciding required changes vs explicit pushback responses.
+   - `Spec` -> run the specification flow (Step 1a): write/refresh the spec with the `write-spec` skill, commit it, then move to `Plan`.
+   - `Plan` -> run the planning flow (Step 1b): write/refresh the implementation plan with the `write-plan` skill, commit it, then move to `Plan Approval` and end the turn.
+   - `Plan Approval` -> passive human gate; do nothing and wait/poll for the human to move it to `In Progress` (approved) or back to `Spec`/`Plan` (changes requested).
+   - `In Progress` -> continue execution flow from current scratchpad comment, executing the approved plan.
    - `Human Review` -> wait and poll for decision/review updates.
    - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
    - `Rework` -> run rework flow.
@@ -132,12 +143,12 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - If a branch PR exists and is `CLOSED` or `MERGED`, treat prior branch work as non-reusable for this run.
    - Create a fresh branch from `origin/main` and restart execution flow as a new attempt.
 5. For `Todo` tickets, do startup sequencing in this exact order:
-   - `update_issue(..., state: "In Progress")`
+   - `update_issue(..., state: "Spec")` (or `"In Progress"` when a PR is already attached, per the special case above)
    - find/create `## Codex Workpad` bootstrap comment
-   - only then begin analysis/planning/implementation work.
+   - only then begin the specification flow (Step 1a) — or, for a PR-attached ticket, the execution/feedback flow.
 6. Add a short comment if state and issue content are inconsistent, then proceed with the safest flow.
 
-## Step 1: Start/continue execution (Todo or In Progress)
+## Step 1: Start/continue execution (Todo, Spec, Plan, or In Progress)
 
 1.  Find or create a single persistent scratchpad comment for the issue:
     - Search existing comments for a marker header: `## Codex Workpad`.
@@ -145,7 +156,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
     - If found, reuse that comment; do not create a new workpad comment.
     - If not found, create one workpad comment and use it for all updates.
     - Persist the workpad comment ID and only write progress updates to that ID.
-2.  If arriving from `Todo`, do not delay on additional status transitions: the issue should already be `In Progress` before this step begins.
+2.  If arriving from `Todo`, do not delay on additional status transitions: the issue should already be `Spec` before this step begins (or `In Progress` for a PR-attached ticket). When the issue is in `Spec` or `Plan`, run the specification/planning flow (Step 1a / Step 1b) before any implementation work.
 3.  Immediately reconcile the workpad before new edits:
     - Check off items that are already done.
     - Expand/fix the plan so it is comprehensive for current scope.
@@ -196,13 +207,40 @@ Use this only when completion is blocked by missing required tools or missing au
   - exact human action needed to unblock.
 - Keep the brief concise and action-oriented; do not add extra top-level comments outside the workpad.
 
-## Step 2: Execution phase (Todo -> In Progress -> Human Review)
+## Step 1a: Specification phase (Spec)
+
+Run this when the issue is in `Spec`.
+
+1.  Ensure the workpad exists and is reconciled (Step 1). Record that you are in the specification phase.
+2.  Run the `pull` skill to sync with latest `origin/main` before writing, and record the sync result in the workpad `Notes` (same `pull skill evidence` format as kickoff).
+3.  Open and follow `.codex/skills/write-spec/SKILL.md` to derive and write the specification:
+    - Inputs are the ticket description, any ticket-authored `Validation`/`Test Plan`/`Testing` sections, and exploration of existing patterns in the repository.
+    - Output is a design document under `docs/superpowers/specs/` (the skill defines the exact filename and structure).
+    - If a committed spec for this ticket already exists (resume/retry), refine it in place instead of recreating it.
+4.  Run the spec self-review defined in the skill (placeholder scan, internal consistency, scope, ambiguity) and fix issues inline.
+5.  Commit the spec with the `commit` skill and publish with the `push` skill.
+6.  Link the committed spec path in the workpad (do not paste the full spec into the comment).
+7.  Transition the issue `Spec` -> `Plan`, then continue directly into Step 1b in the same turn (there is no human gate between `Spec` and `Plan`).
+
+## Step 1b: Planning phase (Plan)
+
+Run this when the issue is in `Plan` (the committed spec from Step 1a is the input).
+
+1.  Open and follow `.codex/skills/write-plan/SKILL.md` to turn the committed spec into an implementation plan:
+    - Output is a checkbox (`- [ ]`) plan under `docs/superpowers/plans/` (the skill defines the exact filename and structure).
+    - If a committed plan for this ticket already exists (resume/retry), refine it in place instead of recreating it.
+2.  Commit the plan with the `commit` skill and publish with the `push` skill.
+3.  Link the committed plan path in the workpad and note "Spec + Plan ready for human approval" with both artifact paths.
+4.  Transition the issue `Plan` -> `Plan Approval` and end the turn. Do not start implementation.
+    - `Plan Approval` is the human gate: the human moves the issue to `In Progress` to approve, or back to `Spec`/`Plan` to request changes. Ending the turn here is correct even though `Spec`/`Plan` are active states.
+
+## Step 2: Execution phase (In Progress -> Human Review)
 
 1.  Determine current repo state (`branch`, `git status`, `HEAD`) and verify the kickoff `pull` sync result is already recorded in the workpad before implementation continues.
-2.  If current issue state is `Todo`, move it to `In Progress`; otherwise leave the current state unchanged.
-3.  Load the existing workpad comment and treat it as the active execution checklist.
-    - Edit it liberally whenever reality changes (scope, risks, validation approach, discovered tasks).
-4.  Implement against the hierarchical TODOs and keep the comment current:
+2.  The issue should already be `In Progress` (the human approved the spec + plan from `Plan Approval`). If a PR-attached `Todo` reached this flow via the special case, move it to `In Progress`; otherwise leave the current state unchanged.
+3.  Load the approved implementation plan committed under `docs/superpowers/plans/` (linked in the workpad) and treat it as the source checklist. Execute it task-by-task following the `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` methodology referenced by the plan header. Mirror progress into the workpad checklist.
+    - Edit the workpad liberally whenever reality changes (scope, risks, validation approach, discovered tasks); if the plan itself needs to change materially, update the committed plan file too.
+4.  Implement against the plan's TODOs and keep the comment current:
     - Check off completed items.
     - Add newly discovered items in the appropriate section.
     - Keep parent/child structure intact as scope evolves.
@@ -252,15 +290,21 @@ Use this only when completion is blocked by missing required tools or missing au
 
 ## Step 4: Rework handling
 
+Two distinct rework paths exist:
+
+- **Artifact rework (pre-implementation):** when the human moves the issue from `Plan Approval` back to `Spec` or `Plan`, the spec or plan needs changes. Do not reset the whole approach: re-run the matching flow (Step 1a for `Spec`, Step 1b for `Plan`), refine the committed artifact in place to address the human's comments, then re-advance through the gate. No PR is involved yet.
+- **Implementation rework (`Rework` state, post-PR):** treat as a full approach reset, as below.
+
+For the `Rework` state:
+
 1. Treat `Rework` as a full approach reset, not incremental patching.
 2. Re-read the full issue body and all human comments; explicitly identify what will be done differently this attempt.
 3. Close the existing PR tied to the issue.
 4. Remove the existing `## Codex Workpad` comment from the issue.
 5. Create a fresh branch from `origin/main`.
 6. Start over from the normal kickoff flow:
-   - If current issue state is `Todo`, move it to `In Progress`; otherwise keep the current state.
+   - Move the issue to `Spec` and re-run the specification -> planning -> approval -> execution flow end-to-end (refresh the committed spec/plan to reflect the new approach).
    - Create a new bootstrap `## Codex Workpad` comment.
-   - Build a fresh plan/checklist and execute end-to-end.
 
 ## Completion bar before Human Review
 
