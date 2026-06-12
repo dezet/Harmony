@@ -29,7 +29,7 @@
 - Modify: `elixir/assets/src/routes/ProjectsPage.test.tsx`
 - Modify: `elixir/assets/src/routes/ProjectsPage.tsx`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add tests that mock `GET /api/v1/projects` returning `[]` and `500`, then assert the empty and error states.
 
@@ -74,7 +74,7 @@ it("shows an error state when projects cannot be loaded", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -85,7 +85,7 @@ npm test -- ProjectsPage.test.tsx --run
 
 Expected: the new tests fail because `ProjectsPage` renders an empty table for empty data and has no error branch.
 
-- [ ] **Step 3: Implement list states**
+- [x] **Step 3: Implement list states**
 
 Update `ProjectsPage` to read `error` and `isError` from `useProjects`, render an empty state when `(data ?? []).length === 0`, and render the API error message when available.
 
@@ -107,7 +107,7 @@ if (isError) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run:
 
@@ -124,7 +124,7 @@ Expected: all `ProjectsPage` tests pass.
 - Modify: `elixir/assets/src/routes/ProjectFormPage.test.tsx`
 - Modify: `elixir/assets/src/routes/ProjectFormPage.tsx`
 
-- [ ] **Step 1: Write failing edit tests**
+- [x] **Step 1: Write failing edit tests**
 
 Add an edit renderer and tests for hydration, failed load, and update payload.
 
@@ -183,7 +183,7 @@ it("hydrates the edit form from the loaded project", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -194,7 +194,7 @@ npm test -- ProjectFormPage.test.tsx --run
 
 Expected: failed-load and pending-state tests fail until explicit UI branches are implemented.
 
-- [ ] **Step 3: Implement edit states**
+- [x] **Step 3: Implement edit states**
 
 In `ProjectFormPage`, derive:
 
@@ -208,7 +208,7 @@ const isSaving = createMut.isPending || updateMut.isPending;
 Render a skeleton while `editing && isProjectLoading`; render an alert and back link while
 `editing && isProjectError`; disable save with `isSaving`.
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run:
 
@@ -226,7 +226,7 @@ Expected: all project form tests pass.
 - Verify: `elixir/assets/src/routes/ProjectFormPage.test.tsx`
 - Verify: `elixir/assets/src/types/contract.ts`
 
-- [ ] **Step 1: Run route tests**
+- [x] **Step 1: Run route tests**
 
 Run:
 
@@ -237,7 +237,7 @@ npm test -- ProjectsPage.test.tsx ProjectFormPage.test.tsx --run
 
 Expected: both route test files pass.
 
-- [ ] **Step 2: Run frontend typecheck**
+- [x] **Step 2: Run frontend typecheck**
 
 Run:
 
@@ -248,7 +248,7 @@ npm run typecheck
 
 Expected: TypeScript completes without errors.
 
-- [ ] **Step 3: Run backend project API tests**
+- [x] **Step 3: Run backend project API tests**
 
 Run:
 
