@@ -216,6 +216,76 @@ export interface ApiErrorBody {
   error: { code: string; message: string; fields?: Record<string, string[]> };
 }
 
+// ─── Project Summary endpoint (/api/v1/projects/:ref/summary) ───────────────
+
+export interface SummaryProject {
+  id: string;
+  slug: string;
+  github_owner: string;
+  github_repo: string;
+  github_base_branch: string;
+  linear_project_slug: string | null;
+  linear_team_key: string | null;
+  linear_human_review_state: string | null;
+  config_version: number;
+}
+
+export interface HumanReviewPR {
+  id: string;
+  github_owner: string;
+  github_repo: string;
+  github_pr_number: number;
+  github_head_sha: string | null;
+  github_head_ref: string | null;
+  github_base_ref: string | null;
+  linear_identifier: string | null;
+  linear_url: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ProjectSummary {
+  project: SummaryProject;
+  counts: ProjectCounts;
+  running: Omit<RunningEntry, "project">[];
+  retrying: Omit<RetryEntry, "project">[];
+  blocked: Omit<BlockedEntry, "project">[];
+  human_review_prs: HumanReviewPR[];
+}
+
+// ─── Work Runs endpoint (/api/v1/work_runs) ──────────────────────────────────
+
+export interface WorkRunListItem {
+  id: string;
+  project_id: string;
+  type: string;
+  status: string;
+  dedupe_key: string | null;
+  github_owner: string | null;
+  github_repo: string | null;
+  github_pr_number: number | null;
+  github_head_sha: string | null;
+  github_head_ref: string | null;
+  github_base_ref: string | null;
+  linear_issue_id: string | null;
+  linear_identifier: string | null;
+  linear_url: string | null;
+  agent_backend: string | null;
+  inserted_at: string;
+  updated_at: string;
+}
+
+export interface WorkRunsPage {
+  work_runs: WorkRunListItem[];
+  meta: {
+    next_cursor: string | null;
+    page_size: number;
+  };
+}
+
+export interface WorkRunFilters {
+  status?: string;
+}
+
 export interface Project {
   id: string;
   slug: string;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import fixture from "@/test/fixtures/state_payload.fixture.json";
-import type { StatePayload } from "@/types/contract";
+import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
+import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
+import type { ProjectSummary, StatePayload, WorkRunsPage } from "@/types/contract";
 
 function expectKeys(value: object | undefined, keys: string[]) {
   expect(Object.keys(value ?? {}).sort()).toEqual([...keys].sort());
@@ -113,5 +115,112 @@ describe("StatePayload contract fixture", () => {
     expect(payload.durable?.artifacts?.[0]?.metadata).toMatchObject({
       description: "Durable screenshot",
     });
+  });
+});
+
+describe("ProjectSummary contract fixture", () => {
+  it("type-checks and exposes all fields used by the summary endpoint", () => {
+    const summary: ProjectSummary = projectSummaryFixture;
+
+    expectKeys(summary.project, [
+      "id",
+      "slug",
+      "github_owner",
+      "github_repo",
+      "github_base_branch",
+      "linear_project_slug",
+      "linear_team_key",
+      "linear_human_review_state",
+      "config_version",
+    ]);
+    expectKeys(summary.counts, ["running", "retrying", "blocked"]);
+    expect(summary.running).toHaveLength(1);
+    expectKeys(summary.running[0], [
+      "issue_id",
+      "issue_identifier",
+      "state",
+      "worker_host",
+      "workspace_path",
+      "session_id",
+      "turn_count",
+      "last_event",
+      "last_message",
+      "started_at",
+      "last_event_at",
+      "tokens",
+    ]);
+    expect(summary.retrying).toHaveLength(1);
+    expectKeys(summary.retrying[0], [
+      "issue_id",
+      "issue_identifier",
+      "attempt",
+      "due_at",
+      "error",
+      "worker_host",
+      "workspace_path",
+    ]);
+    expect(summary.blocked).toHaveLength(1);
+    expectKeys(summary.blocked[0], [
+      "issue_id",
+      "issue_identifier",
+      "state",
+      "error",
+      "worker_host",
+      "workspace_path",
+      "session_id",
+      "blocked_at",
+      "last_event",
+      "last_message",
+      "last_event_at",
+    ]);
+    expect(summary.human_review_prs).toHaveLength(1);
+    expectKeys(summary.human_review_prs[0], [
+      "id",
+      "github_owner",
+      "github_repo",
+      "github_pr_number",
+      "github_head_sha",
+      "github_head_ref",
+      "github_base_ref",
+      "linear_identifier",
+      "linear_url",
+      "metadata",
+    ]);
+    expect(summary.project.slug).toBe("alpha");
+    expect(summary.counts.running).toBe(1);
+    expect(summary.running[0].issue_identifier).toBe("COD-10");
+    expect(summary.human_review_prs[0].github_pr_number).toBe(42);
+  });
+});
+
+describe("WorkRunsPage contract fixture", () => {
+  it("type-checks and exposes all fields used by the work_runs endpoint", () => {
+    const page: WorkRunsPage = workRunsPageFixture;
+
+    expect(page.work_runs).toHaveLength(2);
+    expectKeys(page.work_runs[0], [
+      "id",
+      "project_id",
+      "type",
+      "status",
+      "dedupe_key",
+      "github_owner",
+      "github_repo",
+      "github_pr_number",
+      "github_head_sha",
+      "github_head_ref",
+      "github_base_ref",
+      "linear_issue_id",
+      "linear_identifier",
+      "linear_url",
+      "agent_backend",
+      "inserted_at",
+      "updated_at",
+    ]);
+    expectKeys(page.meta, ["next_cursor", "page_size"]);
+    expect(page.work_runs[0].status).toBe("completed");
+    expect(page.work_runs[0].inserted_at).toBe("2026-06-13T10:00:02Z");
+    expect(page.meta.next_cursor).not.toBeNull();
+    expect(page.meta.page_size).toBe(25);
   });
 });

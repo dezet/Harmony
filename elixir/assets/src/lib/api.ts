@@ -1,4 +1,12 @@
-import type { ApiErrorBody, Project, ProjectInput, StatePayload } from "@/types/contract";
+import type {
+  ApiErrorBody,
+  Project,
+  ProjectInput,
+  ProjectSummary,
+  StatePayload,
+  WorkRunFilters,
+  WorkRunsPage,
+} from "@/types/contract";
 
 export class ApiError extends Error {
   code: string;
@@ -67,4 +75,19 @@ export function updateProject(id: string, input: ProjectInput): Promise<Project>
     method: "PUT",
     body: JSON.stringify(input),
   }).then((r) => r.project);
+}
+
+export function getProjectSummary(ref: string): Promise<ProjectSummary> {
+  return request<ProjectSummary>(`/projects/${encodeURIComponent(ref)}/summary`);
+}
+
+export function getWorkRuns(
+  slug: string,
+  filters: WorkRunFilters,
+  cursor?: string,
+): Promise<WorkRunsPage> {
+  const params = new URLSearchParams({ project: slug });
+  if (filters.status) params.set("status", filters.status);
+  if (cursor) params.set("cursor", cursor);
+  return request<WorkRunsPage>(`/work_runs?${params.toString()}`);
 }
