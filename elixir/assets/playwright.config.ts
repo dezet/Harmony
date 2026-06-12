@@ -18,7 +18,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `cd .. && mix assets.build && mix harmony.react_spa_e2e_server --port ${port}`,
+    command: `cd .. && ~/.local/bin/mise exec -- sh -c "mix assets.build && mix harmony.react_spa_e2e_server --port ${port}"`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: false,
     timeout: 60_000,

@@ -19,6 +19,7 @@ export function crumbsFor(pathname: string): Crumb[] {
     crumbs.push({ label: "Projects", to: "/projects" });
     if (second === "new") crumbs.push({ label: "New", to: "/projects/new" });
     else if (second && third === "edit") crumbs.push({ label: "Edit", to: pathname });
+    else if (second && !third) crumbs.push({ label: second, to: `/projects/${second}` });
     return crumbs;
   }
   return [...crumbs, { label: "Not found", to: pathname }];

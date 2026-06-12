@@ -46,10 +46,9 @@ describe("Sidebar", () => {
 
     await waitFor(() => expect(screen.getByText("alpha")).toBeInTheDocument());
     expect(screen.getByText("beta")).toBeInTheDocument();
-    // transitional Phase 1 target: the project's config page
     expect(screen.getByRole("link", { name: /alpha/ })).toHaveAttribute(
       "href",
-      "/projects/p1/edit",
+      "/projects/alpha",
     );
     expect(screen.getByRole("link", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Runtime" })).toBeInTheDocument();

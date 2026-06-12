@@ -65,9 +65,8 @@ export function Sidebar() {
               const active = p.counts.running + p.counts.retrying + p.counts.blocked;
               return (
                 <li key={p.id ?? p.slug ?? p.name ?? String(i)}>
-                  {/* Phase 1 transitional target; Phase 2 repoints to /projects/:slug */}
                   <Link
-                    to={p.id ? `/projects/${p.id}/edit` : "/projects"}
+                    to={p.slug ? `/projects/${p.slug}` : "/projects"}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent/50"
                   >
                     <span aria-hidden className={cn("size-2 rounded-full", healthDot[health])} />

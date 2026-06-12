@@ -48,6 +48,9 @@ plus `tsconfig.json` (for the shadcn CLI's resolver). If `npx shadcn add` ever w
 ## Routing note
 
 The Phase 3 cutover is complete: Vite builds with `base: "/"`, Phoenix serves `priv/static/app`
-from `/`, and React Router owns `/` (Overview), `/runtime`, `/projects`, `/projects/new`, and
-`/projects/:id/edit`. The shell is a project sidebar (`src/components/layout/Sidebar.tsx`) +
-breadcrumb header; page features live under `src/features/{overview,runtime,projects}/`.
+from `/`, and React Router owns `/` (Overview), `/runtime`, `/projects`, `/projects/new`,
+`/projects/:slug` (project workspace), and `/projects/:id/edit`. The shell is a project sidebar
+(`src/components/layout/Sidebar.tsx`) + breadcrumb header; page features live under
+`src/features/{overview,runtime,projects,project}/`. The project workspace (`/projects/:slug`) is
+implemented in `src/features/project/` and renders the Work tab with live data from
+`/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`.

@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
   use Mix.Task
 
   alias __MODULE__.SnapshotOrchestrator
-  alias SymphonyElixir.HttpServer
+  alias SymphonyElixir.{HttpServer, Storage}
 
   @moduledoc """
   Serves the React SPA against a deterministic browser E2E snapshot source.
@@ -36,6 +36,8 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     install_runtime_guards()
     Mix.Task.run("app.start")
 
+    seed_e2e_project()
+
     orchestrator = unique_orchestrator_name()
     {:ok, _pid} = SnapshotOrchestrator.start_link(name: orchestrator)
 
@@ -63,6 +65,27 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
       :ignore ->
         Mix.raise("failed to start React SPA E2E HTTP server: ignored")
     end
+  end
+
+  # Upserts the deterministic e2e project so that /api/v1/projects/:ref/summary
+  # and /api/v1/work_runs?project=react-spa-e2e respond with real data in the
+  # e2e harness (both controllers read from Postgres; the snapshot orchestrator
+  # provides the live-entry portion of the summary).
+  defp seed_e2e_project do
+    {:ok, _project} =
+      Storage.upsert_project(%{
+        slug: "react-spa-e2e",
+        github_owner: "harmony-e2e",
+        github_repo: "react-spa-e2e",
+        github_base_branch: "main",
+        linear_project_slug: "react-spa-e2e",
+        linear_team_key: "COD",
+        linear_human_review_state: "Human Review",
+        config_version: 1,
+        config: %{}
+      })
+
+    :ok
   end
 
   defp unique_orchestrator_name do

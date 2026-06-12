@@ -18,6 +18,14 @@ describe("crumbsFor", () => {
       "Projects",
       "Edit",
     ]);
+    expect(crumbsFor("/projects/alpha").map((c) => c.label)).toEqual([
+      "Overview",
+      "Projects",
+      "alpha",
+    ]);
+    expect(crumbsFor("/projects/alpha").find((c) => c.label === "alpha")?.to).toBe(
+      "/projects/alpha",
+    );
   });
 });
 
