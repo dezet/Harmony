@@ -4,8 +4,81 @@ defmodule SymphonyElixirWeb.Presenter do
   """
 
   alias SymphonyElixir.{Config, Orchestrator, StatusDashboard, Storage}
+  alias SymphonyElixir.Storage.WorkRun
 
   @durable_limit 50
+
+  @doc """
+  Builds the per-project summary payload from a pre-fetched snapshot and PR link list.
+
+  Pure function: the caller (controller) is responsible for fetching snapshot and links.
+  PR links are accepted as an argument rather than queried here, consistent with the
+  module's convention that entry payload helpers are pure and Storage is only called
+  from `durable_payload/0`.
+  """
+  @spec project_summary_payload(map(), map(), list()) :: map()
+  def project_summary_payload(project, snapshot, pull_request_links) do
+    running = filter_entries(snapshot.running, project)
+    retrying = filter_entries(snapshot.retrying, project)
+    blocked = filter_entries(Map.get(snapshot, :blocked, []), project)
+
+    %{
+      project: %{
+        id: project.id,
+        slug: project.slug,
+        github_owner: project.github_owner,
+        github_repo: project.github_repo,
+        github_base_branch: project.github_base_branch,
+        linear_project_slug: project.linear_project_slug,
+        linear_team_key: project.linear_team_key,
+        linear_human_review_state: project.linear_human_review_state,
+        config_version: project.config_version
+      },
+      counts: %{
+        running: length(running),
+        retrying: length(retrying),
+        blocked: length(blocked)
+      },
+      running: Enum.map(running, fn entry -> running_entry_payload(entry) |> Map.delete(:project) end),
+      retrying: Enum.map(retrying, fn entry -> retry_entry_payload(entry) |> Map.delete(:project) end),
+      blocked: Enum.map(blocked, fn entry -> blocked_entry_payload(entry) |> Map.delete(:project) end),
+      human_review_prs: Enum.map(pull_request_links, &pr_link_payload/1)
+    }
+  end
+
+  @doc """
+  Builds the paginated work-run list payload.
+
+  Expects `runs` to contain up to `page_size + 1` rows (overfetch pattern).
+  When more than `page_size` rows are present, slices to `page_size` and computes
+  `next_cursor` from the last visible row via `Storage.encode_work_run_cursor/1`.
+
+  Timestamps are rendered as ISO 8601 UTC strings. The `payload` column is omitted.
+  """
+  @spec work_run_list_payload([WorkRun.t()], pos_integer()) :: map()
+  def work_run_list_payload(runs, page_size) when is_integer(page_size) and page_size > 0 do
+    {visible, has_more} =
+      if length(runs) > page_size do
+        {Enum.take(runs, page_size), true}
+      else
+        {runs, false}
+      end
+
+    next_cursor =
+      if has_more do
+        Storage.encode_work_run_cursor(List.last(visible))
+      else
+        nil
+      end
+
+    %{
+      work_runs: Enum.map(visible, &work_run_list_item_payload/1),
+      meta: %{
+        next_cursor: next_cursor,
+        page_size: page_size
+      }
+    }
+  end
 
   @spec state_payload(GenServer.name(), timeout()) :: map()
   def state_payload(orchestrator, snapshot_timeout_ms) do
@@ -226,6 +299,53 @@ defmodule SymphonyElixirWeb.Presenter do
       last_event_at: iso8601(entry.last_codex_timestamp)
     }
     |> maybe_put_project(project_payload(entry))
+  end
+
+  defp filter_entries(entries, project) do
+    Enum.filter(entries, fn entry ->
+      entry_project_id = Map.get(entry, :project_id)
+      entry_project_slug = Map.get(entry, :project_slug)
+
+      (is_binary(entry_project_id) and entry_project_id == project.id) or
+        (is_binary(entry_project_slug) and entry_project_slug == project.slug)
+    end)
+  end
+
+  defp pr_link_payload(link) do
+    %{
+      id: link.id,
+      github_owner: link.github_owner,
+      github_repo: link.github_repo,
+      github_pr_number: link.github_pr_number,
+      github_head_sha: link.github_head_sha,
+      github_head_ref: link.github_head_ref,
+      github_base_ref: link.github_base_ref,
+      linear_identifier: link.linear_identifier,
+      linear_url: link.linear_url,
+      metadata: link.metadata
+    }
+  end
+
+  defp work_run_list_item_payload(run) do
+    %{
+      id: run.id,
+      project_id: run.project_id,
+      type: run.type,
+      status: run.status,
+      dedupe_key: run.dedupe_key,
+      github_owner: run.github_owner,
+      github_repo: run.github_repo,
+      github_pr_number: run.github_pr_number,
+      github_head_sha: run.github_head_sha,
+      github_head_ref: run.github_head_ref,
+      github_base_ref: run.github_base_ref,
+      linear_issue_id: run.linear_issue_id,
+      linear_identifier: run.linear_identifier,
+      linear_url: run.linear_url,
+      agent_backend: run.agent_backend,
+      inserted_at: iso8601(run.inserted_at),
+      updated_at: iso8601(run.updated_at)
+    }
   end
 
   defp artifact_payload(artifact) do
