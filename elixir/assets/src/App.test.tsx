@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -39,11 +39,13 @@ function renderAt(path: string) {
 }
 
 describe("AppRoutes", () => {
-  it("shows the sidebar nav and the dashboard at /", () => {
+  it("shows the sidebar nav and the overview at /", async () => {
     renderAt("/");
     expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /dashboard/i })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument(),
+    );
   });
 
   it("shows the projects page at /projects", () => {
