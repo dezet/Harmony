@@ -49,7 +49,15 @@ defmodule SymphonyElixirWeb.ProjectSummaryController do
   defp fetch_project(ref) do
     case Ecto.UUID.cast(ref) do
       {:ok, _uuid} ->
-        {:ok, Storage.get_project!(ref)}
+        try do
+          {:ok, Storage.get_project!(ref)}
+        rescue
+          Ecto.NoResultsError ->
+            case Storage.get_project_by_slug(ref) do
+              nil -> {:error, :not_found}
+              project -> {:ok, project}
+            end
+        end
 
       :error ->
         case Storage.get_project_by_slug(ref) do
@@ -57,8 +65,6 @@ defmodule SymphonyElixirWeb.ProjectSummaryController do
           project -> {:ok, project}
         end
     end
-  rescue
-    Ecto.NoResultsError -> {:error, :not_found}
   end
 
   defp orchestrator do

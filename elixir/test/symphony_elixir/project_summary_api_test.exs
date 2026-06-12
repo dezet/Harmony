@@ -111,6 +111,26 @@ defmodule SymphonyElixir.ProjectSummaryApiTest do
   # ===========================================================================
 
   @tag :db
+  test "resolves UUID-shaped slug by slug when no project has that id" do
+    :ok = checkout_repo(%{})
+
+    uuid_slug = "550e8400-e29b-41d4-a716-446655440000"
+
+    {:ok, project} =
+      SymphonyElixir.Storage.upsert_project(Map.put(@valid_project, :slug, uuid_slug))
+
+    # The project's actual id is different from uuid_slug, so a UUID-id lookup
+    # must miss and fall back to a slug lookup.
+    refute project.id == uuid_slug
+
+    conn = get(build_conn(), "/api/v1/projects/#{uuid_slug}/summary")
+    body = json_response(conn, 200)
+
+    assert body["project"]["id"] == project.id
+    assert body["project"]["slug"] == uuid_slug
+  end
+
+  @tag :db
   test "resolves by UUID and returns 200 with project block" do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
