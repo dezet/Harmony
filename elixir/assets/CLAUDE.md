@@ -44,6 +44,8 @@ plus `tsconfig.json` (for the shadcn CLI's resolver). If `npx shadcn add` ever w
 - **Typecheck:** `npm run typecheck`
 - **Build:** from `elixir/`, `mix assets.build` (or `npm run build` here).
 - **Browser E2E:** from `elixir/`, `make e2e` runs the deterministic React SPA Playwright harness.
+  Playwright's webServer spawns `mix` in a plain `sh`, so `mix` must be on PATH — with mise-managed
+  Elixir run it as `mise exec -- make e2e`.
 
 ## Routing note
 
