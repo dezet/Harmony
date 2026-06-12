@@ -5,6 +5,7 @@ import { RuntimePage } from "@/features/runtime/RuntimePage";
 import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
+import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 
 export function AppRoutes() {
   return (
@@ -14,6 +15,7 @@ export function AppRoutes() {
         <Route path="runtime" element={<RuntimePage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/new" element={<ProjectFormPage />} />
+        <Route path="projects/:slug" element={<ProjectWorkspacePage />} />
         <Route path="projects/:id/edit" element={<ProjectFormPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
