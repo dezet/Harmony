@@ -34,7 +34,7 @@ export function ActiveRuns({ rows }: { rows: RunningEntry[] }) {
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.issue_id}>
+                <TableRow key={row.session_id ?? row.issue_id}>
                   <TableCell className="font-mono">{row.issue_identifier}</TableCell>
                   <TableCell>{row.project?.slug ?? "—"}</TableCell>
                   <TableCell>{row.state}</TableCell>

@@ -35,8 +35,9 @@ export function ProjectHealthGrid({
           <Card key={p.id ?? p.slug ?? p.name ?? "unknown"}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <span aria-hidden title={health} className={cn("size-2.5 rounded-full", healthStyles[health])} />
+                <span aria-hidden className={cn("size-2.5 rounded-full", healthStyles[health])} />
                 <span className="truncate">{p.slug ?? p.name ?? "unnamed"}</span>
+                <span className="sr-only">({health})</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="flex gap-4 font-mono text-sm text-muted-foreground">

@@ -70,8 +70,9 @@ export function Sidebar() {
                     to={p.id ? `/projects/${p.id}/edit` : "/projects"}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent/50"
                   >
-                    <span aria-hidden title={health} className={cn("size-2 rounded-full", healthDot[health])} />
+                    <span aria-hidden className={cn("size-2 rounded-full", healthDot[health])} />
                     <span className="truncate">{p.slug ?? p.name ?? "unnamed"}</span>
+                    <span className="sr-only">({health})</span>
                     {active > 0 ? (
                       <span className="ml-auto font-mono text-xs text-muted-foreground">
                         {active}
