@@ -138,7 +138,7 @@ defmodule SymphonyElixir.StorageTest do
       %{project: project, other_project: other_project}
     end
 
-    defp insert_work_run(project_id, attrs \\ %{}) do
+    defp insert_work_run(project_id, attrs) do
       defaults = %{
         project_id: project_id,
         type: "implementation",
@@ -151,11 +151,20 @@ defmodule SymphonyElixir.StorageTest do
       run
     end
 
+    defp set_inserted_at(run, inserted_at) do
+      import Ecto.Query
+      SymphonyElixir.Repo.update_all(
+        from(r in SymphonyElixir.Storage.WorkRun, where: r.id == ^run.id),
+        set: [inserted_at: inserted_at]
+      )
+      %{run | inserted_at: inserted_at}
+    end
+
     @tag :db
     test "returns work runs for a project ordered newest-first", %{project: project, other_project: other_project} do
-      run1 = insert_work_run(project.id, %{linear_identifier: "COD-1"})
-      run2 = insert_work_run(project.id, %{linear_identifier: "COD-2"})
-      run3 = insert_work_run(project.id, %{linear_identifier: "COD-3"})
+      run1 = insert_work_run(project.id, %{linear_identifier: "COD-1"}) |> set_inserted_at(~U[2026-06-13 10:00:01.000000Z])
+      run2 = insert_work_run(project.id, %{linear_identifier: "COD-2"}) |> set_inserted_at(~U[2026-06-13 10:00:02.000000Z])
+      run3 = insert_work_run(project.id, %{linear_identifier: "COD-3"}) |> set_inserted_at(~U[2026-06-13 10:00:03.000000Z])
       _other_run = insert_work_run(other_project.id, %{linear_identifier: "OTH-1"})
 
       runs = SymphonyElixir.Storage.list_work_runs_for_project(project.id)
@@ -191,9 +200,9 @@ defmodule SymphonyElixir.StorageTest do
 
     @tag :db
     test "cursor pagination returns correct second page without overlap", %{project: project} do
-      run1 = insert_work_run(project.id, %{linear_identifier: "COD-1"})
-      run2 = insert_work_run(project.id, %{linear_identifier: "COD-2"})
-      run3 = insert_work_run(project.id, %{linear_identifier: "COD-3"})
+      run1 = insert_work_run(project.id, %{linear_identifier: "COD-1"}) |> set_inserted_at(~U[2026-06-13 11:00:01.000000Z])
+      run2 = insert_work_run(project.id, %{linear_identifier: "COD-2"}) |> set_inserted_at(~U[2026-06-13 11:00:02.000000Z])
+      run3 = insert_work_run(project.id, %{linear_identifier: "COD-3"}) |> set_inserted_at(~U[2026-06-13 11:00:03.000000Z])
 
       # First page of 2 (overfetch gives 3 rows) → take the 2nd row as cursor pivot
       page1 = SymphonyElixir.Storage.list_work_runs_for_project(project.id, %{page_size: 2})
@@ -297,6 +306,15 @@ defmodule SymphonyElixir.StorageTest do
           metadata: %{}
         })
 
+      # Stamp distinct updated_at values so the ordering assertion is unambiguous
+      import Ecto.Query
+      t1 = ~U[2026-06-13 12:00:01.000000Z]
+      t2 = ~U[2026-06-13 12:00:02.000000Z]
+      t3 = ~U[2026-06-13 12:00:03.000000Z]
+      SymphonyElixir.Repo.update_all(from(l in SymphonyElixir.Storage.PullRequestLink, where: l.id == ^pr1.id), set: [updated_at: t1])
+      SymphonyElixir.Repo.update_all(from(l in SymphonyElixir.Storage.PullRequestLink, where: l.id == ^pr2.id), set: [updated_at: t2])
+      SymphonyElixir.Repo.update_all(from(l in SymphonyElixir.Storage.PullRequestLink, where: l.id == ^pr3.id), set: [updated_at: t3])
+
       links = SymphonyElixir.Storage.list_pull_request_links_for_project(project.id)
       ids = Enum.map(links, & &1.id)
 
@@ -305,9 +323,11 @@ defmodule SymphonyElixir.StorageTest do
       assert pr2.id in ids
       assert pr3.id in ids
 
-      # Ordered by updated_at desc (most recently upserted first)
-      assert Enum.at(links, 0).github_pr_number > Enum.at(links, 1).github_pr_number or
-               Enum.at(links, 0).updated_at >= Enum.at(links, 1).updated_at
+      # Ordered strictly by updated_at desc (most recently updated first)
+      updated_ats = Enum.map(links, & &1.updated_at)
+      assert updated_ats == Enum.sort_by(updated_ats, & &1, {:desc, DateTime})
+      [first, second | _] = links
+      assert DateTime.compare(first.updated_at, second.updated_at) == :gt
     end
 
     @tag :db
