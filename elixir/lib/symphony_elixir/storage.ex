@@ -69,13 +69,39 @@ defmodule SymphonyElixir.Storage do
 
   @spec decode_work_run_cursor(binary()) :: {:ok, %{inserted_at: DateTime.t(), id: binary()}} | :error
   def decode_work_run_cursor(binary) when is_binary(binary) do
-    with {:ok, json} <- Base.url_decode64(binary, padding: false),
-         {:ok, %{"inserted_at" => ts_str, "id" => id}} when is_binary(ts_str) and is_binary(id) <- Jason.decode(json),
-         {:ok, inserted_at, _offset} <- DateTime.from_iso8601(ts_str) do
-      {:ok, %{inserted_at: inserted_at, id: id}}
-    else
-      _ -> :error
-    end
+    decode_cursor_json(binary)
+  end
+
+  @spec get_work_run_by_linear_identifier(String.t()) :: WorkRun.t() | nil
+  def get_work_run_by_linear_identifier(identifier) when is_binary(identifier) do
+    WorkRun
+    |> where([run], run.linear_identifier == ^identifier)
+    |> order_by([run], desc: run.inserted_at, desc: run.id)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @spec list_work_events_for_run(binary(), map()) :: [WorkEvent.t()]
+  def list_work_events_for_run(work_run_id, opts \\ %{}) when is_binary(work_run_id) do
+    page_size = Map.get(opts, :page_size, 50)
+
+    WorkEvent
+    |> where([event], event.work_run_id == ^work_run_id)
+    |> apply_work_event_cursor(Map.get(opts, :cursor))
+    |> order_by([event], asc: event.inserted_at, asc: event.id)
+    |> limit(^(page_size + 1))
+    |> Repo.all()
+  end
+
+  @spec encode_work_event_cursor(WorkEvent.t()) :: binary()
+  def encode_work_event_cursor(%WorkEvent{} = event) do
+    json = Jason.encode!(%{"inserted_at" => DateTime.to_iso8601(event.inserted_at), "id" => event.id})
+    Base.url_encode64(json, padding: false)
+  end
+
+  @spec decode_work_event_cursor(binary()) :: {:ok, %{inserted_at: DateTime.t(), id: binary()}} | :error
+  def decode_work_event_cursor(binary) when is_binary(binary) do
+    decode_cursor_json(binary)
   end
 
   @spec list_pull_request_links(pos_integer()) :: [PullRequestLink.t()]
@@ -335,12 +361,35 @@ defmodule SymphonyElixir.Storage do
   defp apply_work_run_cursor(query, nil), do: query
 
   defp apply_work_run_cursor(query, cursor) when is_binary(cursor) do
-    case decode_work_run_cursor(cursor) do
+    case decode_cursor_json(cursor) do
       {:ok, %{inserted_at: ts, id: id}} ->
         where(query, [run], run.inserted_at < ^ts or (run.inserted_at == ^ts and run.id < ^id))
 
       :error ->
         query
+    end
+  end
+
+  defp apply_work_event_cursor(query, nil), do: query
+
+  defp apply_work_event_cursor(query, cursor) when is_binary(cursor) do
+    case decode_cursor_json(cursor) do
+      {:ok, %{inserted_at: ts, id: id}} ->
+        where(query, [event], event.inserted_at > ^ts or (event.inserted_at == ^ts and event.id > ^id))
+
+      :error ->
+        query
+    end
+  end
+
+  @spec decode_cursor_json(binary()) :: {:ok, %{inserted_at: DateTime.t(), id: binary()}} | :error
+  defp decode_cursor_json(binary) when is_binary(binary) do
+    with {:ok, json} <- Base.url_decode64(binary, padding: false),
+         {:ok, %{"inserted_at" => ts_str, "id" => id}} when is_binary(ts_str) and is_binary(id) <- Jason.decode(json),
+         {:ok, inserted_at, _offset} <- DateTime.from_iso8601(ts_str) do
+      {:ok, %{inserted_at: inserted_at, id: id}}
+    else
+      _ -> :error
     end
   end
 
