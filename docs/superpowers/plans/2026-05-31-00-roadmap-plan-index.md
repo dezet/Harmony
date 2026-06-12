@@ -27,8 +27,7 @@ Post-repair E2E proof plan:
 
 ## Current Implementation Status
 
-Status as of 2026-06-01 on branch `harmony-roadmap-mvp` / PR #3:
-`https://github.com/dezet/Harmony/pull/3`.
+Status as of 2026-06-03 on branch `spec/react-websockets-frontend`.
 
 The plan files below are historical implementation plans. Their unchecked
 checkboxes are not the source of truth for current status until each plan is
@@ -43,7 +42,7 @@ converted into an archive/status format.
 | 5. `@hreview` workflow | Implemented | Review trigger/dedupe source is in `elixir/lib/symphony_elixir/work_sources/github_review_request_source.ex:15`; inline diff comment mapping is in `elixir/lib/symphony_elixir/workflows/inline_review_comments.ex:21`. |
 | 6. Browser evidence MVP | Implemented and covered by v2 proof | Evidence manifest parsing is in `elixir/lib/symphony_elixir/evidence/manifest.ex:22`; handoff evidence gate is in `elixir/lib/symphony_elixir/runtime_policy/handoff.ex:28`; e2e proof is `docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm`. |
 | 7. Operations hardening | Implemented as tooling/runbook; rollout proof missing | Sandbox diagnostics are in `elixir/lib/symphony_elixir/diagnostics/sandbox.ex:26`; operations runbook starts at `docs/harmony-operations.md:55`. No repo-recorded post-v2 host/systemd proof was found. |
-| 8. Platform expansion | Partially implemented | Project UI, webhooks, multi-project scheduling, inline comments, and video evidence exist. Claude Code and Pi are capability spikes only: `elixir/lib/symphony_elixir/agent_backends/claude_code.ex:11` and `elixir/lib/symphony_elixir/agent_backends/pi.ex:11` return execution-not-implemented errors. |
+| 8. Platform expansion | Implemented and verified | React project UI, webhooks, multi-project scheduling, inline comments, video evidence, and non-interactive Claude Code/Pi adapters exist. Backend execution coverage is in `elixir/test/symphony_elixir/agent_backend_test.exs`; React project UI coverage is in `elixir/assets/src/routes/ProjectsPage.test.tsx` and `elixir/assets/src/routes/ProjectFormPage.test.tsx`; `make all` exits 0. |
 | 9. Roadmap E2E video proof | Mostly complete; independent review open | V2 videos and sidecars are present under `docs/evidence/roadmap-e2e/`. `docs/superpowers/plans/2026-05-31-09-roadmap-e2e-video-proof.tasks.md:101` still tracks independent review and release-blocking findings. |
 
 ## Cross-Plan Rules

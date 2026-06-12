@@ -6,7 +6,7 @@
 
 **Architecture:** Extract agent execution behind an `AgentBackend` behavior first, then add backend-specific adapters for Codex, Claude Code, and Pi. Expand project scheduling only after WorkRun storage is stable. Build UI against Postgres models, not YAML directly, while preserving YAML sync as an import path.
 
-**Tech Stack:** Elixir behaviours, Codex app-server, Claude Code CLI/runtime docs, Pi RPC/JSON event stream docs, Phoenix LiveView, GitHub REST/webhooks, Playwright video.
+**Tech Stack:** Elixir behaviours, Codex app-server, Claude Code CLI print mode, Pi JSON event stream mode, React SPA, Phoenix JSON API, GitHub REST/webhooks, Playwright video.
 
 ---
 
@@ -19,14 +19,17 @@
 - Modify: `elixir/lib/symphony_elixir/agent_runner.ex`
 - Modify: `elixir/lib/symphony_elixir/codex/app_server.ex`
 - Modify: `elixir/lib/symphony_elixir/project_config/schema.ex`
-- Create: `elixir/lib/symphony_elixir_web/live/projects_live.ex`
-- Create: `elixir/lib/symphony_elixir_web/live/project_form_live.ex`
+- Modify: `elixir/assets/src/routes/ProjectsPage.tsx`
+- Modify: `elixir/assets/src/routes/ProjectFormPage.tsx`
+- Modify: `elixir/lib/symphony_elixir_web/controllers/project_controller.ex`
 - Modify: `elixir/lib/symphony_elixir_web/router.ex`
 - Create: `elixir/lib/symphony_elixir_web/controllers/github_webhook_controller.ex`
 - Create: `elixir/lib/symphony_elixir/workflows/inline_review_comments.ex`
 - Modify: `elixir/lib/symphony_elixir/evidence/collector.ex`
 - Test: `elixir/test/symphony_elixir/agent_backend_test.exs`
-- Test: `elixir/test/symphony_elixir/project_ui_test.exs`
+- Test: `elixir/test/symphony_elixir/project_api_test.exs`
+- Test: `elixir/assets/src/routes/ProjectsPage.test.tsx`
+- Test: `elixir/assets/src/routes/ProjectFormPage.test.tsx`
 - Test: `elixir/test/symphony_elixir/github_webhook_test.exs`
 - Test: `elixir/test/symphony_elixir/inline_review_comments_test.exs`
 - Test: `elixir/test/symphony_elixir/video_evidence_test.exs`
@@ -109,7 +112,7 @@ git commit -m "refactor(agent): extract backend interface"
 
 Expected: tests pass.
 
-### Task 2: Add Claude Code Backend Spike
+### Task 2: Add Claude Code Backend Adapter
 
 **Files:**
 - Create: `elixir/lib/symphony_elixir/agent_backends/claude_code.ex`
@@ -126,18 +129,21 @@ test "claude code backend reports missing executable" do
 end
 ```
 
-- [ ] **Step 2: Implement capability check**
+- [ ] **Step 2: Implement capability check and execution**
 
-Use `System.find_executable("claude")`. Do not execute work until the non-interactive invocation contract is verified against current Claude Code docs and local CLI behavior.
+Use `System.find_executable("claude")` for capability checks. Execute work with the verified
+non-interactive CLI contract: `claude --print --output-format json <prompt>` from the workspace
+directory, parse `session_id` and `result`, emit an `:agent_output` update, and return command
+failures as `{:claude_code_failed, exit_status, output}`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add elixir/lib/symphony_elixir/agent_backends/claude_code.ex elixir/test/symphony_elixir/agent_backend_test.exs
-git commit -m "feat(agent): add claude code backend capability check"
+git commit -m "feat(agent): add claude code backend execution"
 ```
 
-### Task 3: Add Pi Backend Spike
+### Task 3: Add Pi Backend Adapter
 
 **Files:**
 - Create: `elixir/lib/symphony_elixir/agent_backends/pi.ex`
@@ -154,15 +160,18 @@ test "pi backend reports missing executable" do
 end
 ```
 
-- [ ] **Step 2: Implement capability check**
+- [ ] **Step 2: Implement capability check and execution**
 
-Use `System.find_executable("pi")`. Do not execute work until Pi RPC or JSON event stream mode is validated against the installed version.
+Use `System.find_executable("pi")` for capability checks. Execute work with the documented JSON
+event stream contract: `pi --mode json <prompt>` from the workspace directory, parse the session
+header and final assistant text, emit an `:agent_output` update, and return command failures as
+`{:pi_failed, exit_status, output}`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add elixir/lib/symphony_elixir/agent_backends/pi.ex elixir/test/symphony_elixir/agent_backend_test.exs
-git commit -m "feat(agent): add pi backend capability check"
+git commit -m "feat(agent): add pi backend execution"
 ```
 
 ### Task 4: Add Multi-Project Scheduling
@@ -192,31 +201,36 @@ git add elixir/lib/symphony_elixir/project_config/sync.ex elixir/lib/symphony_el
 git commit -m "feat(projects): schedule multiple projects"
 ```
 
-### Task 5: Add Database-Backed Project UI
+### Task 5: Add Database-Backed React Project UI
 
 **Files:**
-- Create: `elixir/lib/symphony_elixir_web/live/projects_live.ex`
-- Create: `elixir/lib/symphony_elixir_web/live/project_form_live.ex`
+- Modify: `elixir/assets/src/routes/ProjectsPage.tsx`
+- Modify: `elixir/assets/src/routes/ProjectFormPage.tsx`
 - Modify: `elixir/lib/symphony_elixir_web/router.ex`
-- Test: `elixir/test/symphony_elixir/project_ui_test.exs`
+- Test: `elixir/test/symphony_elixir/project_api_test.exs`
+- Test: `elixir/assets/src/routes/ProjectsPage.test.tsx`
+- Test: `elixir/assets/src/routes/ProjectFormPage.test.tsx`
 
-- [ ] **Step 1: Write LiveView tests**
+- [ ] **Step 1: Write API and React route tests**
 
-Test `/projects` lists project slug, GitHub repo, Linear project slug, and active config version. Test `/projects/new` can submit a form creating a project record.
+Test the Phoenix JSON project API for list/show/create/update. Test the React `/projects`,
+`/projects/new`, and `/projects/:id/edit` routes for loaded, empty, loading, failed, create, edit,
+field-error, and pending-save states.
 
-- [ ] **Step 2: Implement LiveViews**
+- [ ] **Step 2: Implement React screens**
 
 Keep UI utilitarian:
 
 - table of projects,
 - edit/new form,
 - no destructive deletes in first UI version,
-- validation errors from Ecto changesets.
+- validation errors from the Phoenix JSON API,
+- React Query cache invalidation after create/update.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add elixir/lib/symphony_elixir_web/live/projects_live.ex elixir/lib/symphony_elixir_web/live/project_form_live.ex elixir/lib/symphony_elixir_web/router.ex elixir/test/symphony_elixir/project_ui_test.exs
+git add elixir/assets/src/routes/ProjectsPage.tsx elixir/assets/src/routes/ProjectFormPage.tsx elixir/assets/src/routes/ProjectsPage.test.tsx elixir/assets/src/routes/ProjectFormPage.test.tsx elixir/lib/symphony_elixir_web/controllers/project_controller.ex elixir/test/symphony_elixir/project_api_test.exs
 git commit -m "feat(ui): add project configuration screens"
 ```
 
@@ -304,7 +318,8 @@ git commit -m "feat(evidence): support playwright video proof"
 
 ```bash
 cd elixir
-mix test test/symphony_elixir/agent_backend_test.exs test/symphony_elixir/project_ui_test.exs test/symphony_elixir/github_webhook_test.exs test/symphony_elixir/inline_review_comments_test.exs test/symphony_elixir/video_evidence_test.exs
+mix test test/symphony_elixir/agent_backend_test.exs test/symphony_elixir/project_api_test.exs test/symphony_elixir/github_webhook_test.exs test/symphony_elixir/inline_review_comments_test.exs test/symphony_elixir/video_evidence_test.exs
+cd assets && npm test -- ProjectsPage.test.tsx ProjectFormPage.test.tsx --run
 ```
 
 Expected: all pass.
@@ -317,4 +332,3 @@ make all
 ```
 
 Expected: full gate exits 0.
-
