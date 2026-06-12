@@ -27,6 +27,12 @@ defmodule SymphonyElixirWeb.Router do
     put("/api/v1/projects/:id", ProjectController, :update)
     patch("/api/v1/projects/:id", ProjectController, :update)
 
+    # Per-project summary endpoint. Must come after the CRUD routes (which bind
+    # /projects/:id) but before the :issue_identifier catch-all. The :project_ref
+    # segment accepts a UUID or slug.
+    get("/api/v1/projects/:project_ref/summary", ProjectSummaryController, :summary)
+    match(:*, "/api/v1/projects/:project_ref/summary", ProjectSummaryController, :method_not_allowed)
+
     get("/api/v1/:issue_identifier", ObservabilityApiController, :issue)
     match(:*, "/api/v1/:issue_identifier", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/*path", ObservabilityApiController, :not_found)
