@@ -31,7 +31,8 @@ already uses in `docs/superpowers/plans/`.
 
 - The committed spec document (the single source of intended scope and decisions).
 - The repository's plan conventions (`docs/superpowers/plans/`), especially the
-  roadmap index `docs/superpowers/plans/2026-05-31-00-roadmap-plan-index.md`.
+  current status index `docs/superpowers/plans/2026-06-01-roadmap-current-status.md`
+  (historical plans live under `docs/superpowers/archive/plans/`).
 
 ## Steps
 
