@@ -4,6 +4,7 @@ import { queryClient } from "@/lib/queryClient";
 import { DashboardConnectionProvider, useDashboardConnection } from "@/lib/dashboardConnection";
 import { useDashboardChannel } from "@/lib/socket";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
 
 function ChannelBridge({ children }: { children: ReactNode }) {
@@ -15,12 +16,14 @@ function ChannelBridge({ children }: { children: ReactNode }) {
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <DashboardConnectionProvider>
-          <ChannelBridge>{children}</ChannelBridge>
-        </DashboardConnectionProvider>
-        <Toaster />
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <DashboardConnectionProvider>
+            <ChannelBridge>{children}</ChannelBridge>
+          </DashboardConnectionProvider>
+          <Toaster />
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
