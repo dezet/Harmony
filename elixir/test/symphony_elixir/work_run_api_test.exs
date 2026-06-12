@@ -156,6 +156,69 @@ defmodule SymphonyElixir.WorkRunApiTest do
   end
 
   # ===========================================================================
+  # page_size with trailing non-numeric characters → default 25
+  # ===========================================================================
+
+  @tag :db
+  test "uses default page_size of 25 for page_size param with trailing non-numeric chars (e.g. 5abc)" do
+    :ok = checkout_repo(%{})
+    {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
+
+    insert_work_run(project.id, %{})
+
+    conn = get(build_conn(), "/api/v1/work_runs?project=alpha&page_size=5abc")
+    body = json_response(conn, 200)
+
+    assert body["meta"]["page_size"] == 25
+  end
+
+  # ===========================================================================
+  # page_size floor at 1 for zero and negative values
+  # ===========================================================================
+
+  @tag :db
+  test "floors page_size to 1 for zero and negative page_size params" do
+    :ok = checkout_repo(%{})
+    {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
+
+    insert_work_run(project.id, %{})
+
+    conn_zero = get(build_conn(), "/api/v1/work_runs?project=alpha&page_size=0")
+    body_zero = json_response(conn_zero, 200)
+    assert body_zero["meta"]["page_size"] == 1
+
+    conn_neg = get(build_conn(), "/api/v1/work_runs?project=alpha&page_size=-3")
+    body_neg = json_response(conn_neg, 200)
+    assert body_neg["meta"]["page_size"] == 1
+  end
+
+  # ===========================================================================
+  # invalid cursor → behaves like first page (no cursor)
+  # ===========================================================================
+
+  @tag :db
+  test "invalid cursor param behaves like first page (returns newest rows)" do
+    :ok = checkout_repo(%{})
+    {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
+
+    run1 = insert_work_run(project.id, %{linear_identifier: "COD-1"}) |> set_inserted_at(~U[2026-06-13 10:00:01.000000Z])
+    run2 = insert_work_run(project.id, %{linear_identifier: "COD-2"}) |> set_inserted_at(~U[2026-06-13 10:00:02.000000Z])
+
+    conn_no_cursor = get(build_conn(), "/api/v1/work_runs?project=alpha&page_size=10")
+    body_no_cursor = json_response(conn_no_cursor, 200)
+
+    conn_bad_cursor = get(build_conn(), "/api/v1/work_runs?project=alpha&page_size=10&cursor=!!!not-a-cursor!!!")
+    body_bad_cursor = json_response(conn_bad_cursor, 200)
+
+    ids_no_cursor = Enum.map(body_no_cursor["work_runs"], & &1["id"])
+    ids_bad_cursor = Enum.map(body_bad_cursor["work_runs"], & &1["id"])
+
+    assert run1.id in ids_bad_cursor
+    assert run2.id in ids_bad_cursor
+    assert ids_no_cursor == ids_bad_cursor
+  end
+
+  # ===========================================================================
   # results scoped to the requested project
   # ===========================================================================
 

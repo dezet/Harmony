@@ -77,12 +77,12 @@ defmodule SymphonyElixirWeb.WorkRunController do
 
   defp parse_page_size(value) when is_binary(value) do
     case Integer.parse(value) do
-      {n, _rest} ->
+      {n, ""} ->
         n
         |> max(@min_page_size)
         |> min(@max_page_size)
 
-      :error ->
+      _ ->
         @default_page_size
     end
   end
