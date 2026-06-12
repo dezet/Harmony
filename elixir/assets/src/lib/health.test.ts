@@ -81,4 +81,22 @@ describe("needsAttention", () => {
   it("returns an empty list when everything is clear", () => {
     expect(needsAttention({ generated_at: "2026-06-12T00:00:00Z" })).toEqual([]);
   });
+
+  it("generates unique keys for duplicate sandbox warnings", () => {
+    const items = needsAttention({
+      generated_at: "2026-06-12T00:00:00Z",
+      runtime: {
+        sandbox: {
+          posture: null,
+          bubblewrap_available: null,
+          apparmor_restrict_unprivileged_userns: null,
+          thread_sandbox: null,
+          turn_sandbox_type: null,
+          warnings: ["bubblewrap unavailable", "bubblewrap unavailable"],
+        },
+      },
+    });
+    expect(items).toHaveLength(2);
+    expect(new Set(items.map((i) => i.key)).size).toBe(2);
+  });
 });

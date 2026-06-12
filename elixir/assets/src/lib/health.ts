@@ -46,16 +46,16 @@ export function needsAttention(state: StatePayload): AttentionItem[] {
     });
   }
 
-  for (const warning of state.runtime?.sandbox?.warnings ?? []) {
+  (state.runtime?.sandbox?.warnings ?? []).forEach((warning, index) => {
     items.push({
-      key: `sandbox-${warning}`,
+      key: `sandbox-${index}-${warning}`,
       kind: "sandbox_warning",
       identifier: null,
       projectSlug: null,
       message: warning,
       since: null,
     });
-  }
+  });
 
   return items;
 }
