@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AppRoutes } from "@/App";
+import { DashboardConnectionProvider } from "@/lib/dashboardConnection";
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -28,17 +29,20 @@ function renderAt(path: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[path]}>
-        <AppRoutes />
-      </MemoryRouter>
+      <DashboardConnectionProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </DashboardConnectionProvider>
     </QueryClientProvider>,
   );
 }
 
 describe("AppRoutes", () => {
-  it("shows the nav and the dashboard at /", () => {
+  it("shows the sidebar nav and the dashboard at /", () => {
     renderAt("/");
-    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /dashboard/i })).toBeInTheDocument();
   });
 
@@ -49,6 +53,6 @@ describe("AppRoutes", () => {
 
   it("shows a not-found page for unknown routes", () => {
     renderAt("/nope");
-    expect(screen.getByText(/not found/i)).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByText(/not found/i)).toBeInTheDocument();
   });
 });
