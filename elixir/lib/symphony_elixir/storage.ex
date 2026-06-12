@@ -48,11 +48,49 @@ defmodule SymphonyElixir.Storage do
     |> Repo.all()
   end
 
+  @spec list_work_runs_for_project(binary(), map()) :: [WorkRun.t()]
+  def list_work_runs_for_project(project_id, opts \\ %{}) when is_binary(project_id) do
+    page_size = Map.get(opts, :page_size, 25)
+
+    WorkRun
+    |> where([run], run.project_id == ^project_id)
+    |> filter_work_run_status(Map.get(opts, :status))
+    |> apply_work_run_cursor(Map.get(opts, :cursor))
+    |> order_by([run], desc: run.inserted_at, desc: run.id)
+    |> limit(^(page_size + 1))
+    |> Repo.all()
+  end
+
+  @spec encode_work_run_cursor(WorkRun.t()) :: binary()
+  def encode_work_run_cursor(%WorkRun{} = run) do
+    json = Jason.encode!(%{"inserted_at" => DateTime.to_iso8601(run.inserted_at), "id" => run.id})
+    Base.url_encode64(json, padding: false)
+  end
+
+  @spec decode_work_run_cursor(binary()) :: {:ok, %{inserted_at: DateTime.t(), id: binary()}} | :error
+  def decode_work_run_cursor(binary) when is_binary(binary) do
+    with {:ok, json} <- Base.url_decode64(binary, padding: false),
+         {:ok, %{"inserted_at" => ts_str, "id" => id}} when is_binary(ts_str) and is_binary(id) <- Jason.decode(json),
+         {:ok, inserted_at, _offset} <- DateTime.from_iso8601(ts_str) do
+      {:ok, %{inserted_at: inserted_at, id: id}}
+    else
+      _ -> :error
+    end
+  end
+
   @spec list_pull_request_links(pos_integer()) :: [PullRequestLink.t()]
   def list_pull_request_links(limit) when is_integer(limit) and limit > 0 do
     PullRequestLink
     |> order_by([link], desc: link.updated_at)
     |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @spec list_pull_request_links_for_project(binary()) :: [PullRequestLink.t()]
+  def list_pull_request_links_for_project(project_id) when is_binary(project_id) do
+    PullRequestLink
+    |> where([link], link.project_id == ^project_id)
+    |> order_by([link], desc: link.updated_at)
     |> Repo.all()
   end
 
@@ -286,6 +324,24 @@ defmodule SymphonyElixir.Storage do
     |> where([run], run.status == "queued")
     |> order_by([run], asc: run.inserted_at)
     |> Repo.all()
+  end
+
+  defp filter_work_run_status(query, nil), do: query
+
+  defp filter_work_run_status(query, status) when is_binary(status) do
+    where(query, [run], run.status == ^status)
+  end
+
+  defp apply_work_run_cursor(query, nil), do: query
+
+  defp apply_work_run_cursor(query, cursor) when is_binary(cursor) do
+    case decode_work_run_cursor(cursor) do
+      {:ok, %{inserted_at: ts, id: id}} ->
+        where(query, [run], run.inserted_at < ^ts or (run.inserted_at == ^ts and run.id < ^id))
+
+      :error ->
+        query
+    end
   end
 
   defp stringify_keys(attrs) do
