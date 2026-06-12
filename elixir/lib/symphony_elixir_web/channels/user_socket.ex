@@ -9,6 +9,7 @@ defmodule SymphonyElixirWeb.UserSocket do
   use Phoenix.Socket
 
   channel("observability:dashboard", SymphonyElixirWeb.ObservabilityChannel)
+  channel("observability:run:*", SymphonyElixirWeb.RunChannel)
 
   @impl true
   def connect(_params, socket, _connect_info), do: {:ok, socket}
