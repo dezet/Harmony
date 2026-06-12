@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +18,7 @@ const healthDotClass: Record<string, string> = {
 
 export function ProjectWorkspacePage() {
   const { slug } = useParams<{ slug: string }>();
-  const [activeTab] = useState<Tab>("work");
+  const activeTab: Tab = "work";
 
   const { data: summary, isLoading, error, refetch } = useProjectSummary(slug!);
 

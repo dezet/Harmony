@@ -6,7 +6,7 @@ import { DataTable } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ElapsedTime } from "@/components/ElapsedTime";
 import { useWorkRuns } from "@/features/project/useWorkRuns";
-import type { WorkRunListItem, WorkRunsPage } from "@/types/contract";
+import type { WorkRunListItem } from "@/types/contract";
 
 interface WorkRunHistoryTableProps {
   slug: string;
@@ -16,7 +16,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
   const { data, isFetching, hasNextPage, fetchNextPage, refetch, error } = useWorkRuns(slug, {});
 
   const rows = useMemo(
-    () => (data as { pages: WorkRunsPage[] } | undefined)?.pages.flatMap((p) => p.work_runs) ?? [],
+    () => data?.pages.flatMap((p) => p.work_runs) ?? [],
     [data],
   );
 
