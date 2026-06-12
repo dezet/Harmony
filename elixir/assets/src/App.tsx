@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { OverviewPage } from "@/features/overview/OverviewPage";
+import { RuntimePage } from "@/features/runtime/RuntimePage";
 import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
@@ -10,6 +11,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<OverviewPage />} />
+        <Route path="runtime" element={<RuntimePage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/new" element={<ProjectFormPage />} />
         <Route path="projects/:id/edit" element={<ProjectFormPage />} />
