@@ -67,16 +67,13 @@ defmodule SymphonyElixirWeb.RunDetailController do
             end
 
           # First events page + stream_cursor.
-          {events, stream_cursor} =
+          stream_cursor =
             if work_run do
-              page = Storage.list_work_events_for_run(work_run.id, %{page_size: 50})
-              stream_page = Presenter.run_stream_payload(page, 50, has_live)
-              {page, stream_page.meta.next_cursor}
+              page = Storage.list_work_events_for_run(work_run.id, %{page_size: @default_page_size})
+              Presenter.run_stream_payload(page, @default_page_size, has_live).meta.next_cursor
             else
-              {[], nil}
+              nil
             end
-
-          _ = events
 
           payload =
             Presenter.run_detail_payload(identifier, work_run, snapshot, pr_links, artifacts, project)
