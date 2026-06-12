@@ -51,4 +51,45 @@ describe("ProjectsPage", () => {
     await waitFor(() => expect(screen.getByText("portal")).toBeInTheDocument());
     expect(screen.getByText("dezet/portal")).toBeInTheDocument();
   });
+
+  it("shows an empty state when no projects exist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ projects: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("No projects configured")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /new project/i })).toHaveAttribute(
+      "href",
+      "/projects/new",
+    );
+  });
+
+  it("shows an error state when projects cannot be loaded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { code: "db_down", message: "Database unavailable" },
+            }),
+            { status: 500, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("Could not load projects")).toBeInTheDocument();
+    expect(screen.getByText("Database unavailable")).toBeInTheDocument();
+  });
 });

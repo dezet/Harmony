@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   projectFormSchema,
   toProjectInput,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const FIELDS = [
   { name: "slug", label: "Slug" },
@@ -38,9 +39,15 @@ export function ProjectFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const editing = !!id;
-  const { data: project } = useProject(id);
+  const {
+    data: project,
+    isLoading: isProjectLoading,
+    isError: isProjectError,
+    error: projectError,
+  } = useProject(id);
   const createMut = useCreateProject();
   const updateMut = useUpdateProject(id ?? "");
+  const isSaving = createMut.isPending || updateMut.isPending;
 
   const {
     register,
@@ -89,6 +96,30 @@ export function ProjectFormPage() {
         toast.error("Unexpected error saving the project");
       }
     }
+  }
+
+  if (editing && isProjectLoading) {
+    return (
+      <div className="max-w-xl space-y-4">
+        <h1 className="text-2xl font-semibold">Edit project</h1>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (editing && isProjectError) {
+    const message = projectError instanceof Error ? projectError.message : "Unexpected error";
+
+    return (
+      <div className="max-w-xl space-y-4">
+        <h1 className="text-2xl font-semibold">Edit project</h1>
+        <div role="alert" className="rounded-md border border-destructive/40 p-4">
+          <h2 className="font-medium">Could not load project</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+        </div>
+        <Button variant="outline" render={<Link to="/projects">Back to projects</Link>} />
+      </div>
+    );
   }
 
   return (
@@ -141,7 +172,7 @@ export function ProjectFormPage() {
         ) : null}
       </div>
 
-      <Button type="submit" disabled={isSubmitting}>
+      <Button type="submit" disabled={isSubmitting || isSaving}>
         Save
       </Button>
     </form>
