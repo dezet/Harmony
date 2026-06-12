@@ -14,10 +14,20 @@ describe("format", () => {
     expect(elapsedSeconds(null, now)).toBeNull();
   });
 
+  it("returns null for invalid ISO date in elapsedSeconds", () => {
+    const now = new Date("2026-06-02T00:01:00Z").getTime();
+    expect(elapsedSeconds("not-a-date", now)).toBeNull();
+  });
+
   it("computes seconds until a future ISO timestamp", () => {
     const now = new Date("2026-06-02T00:00:00Z").getTime();
     expect(secondsUntil("2026-06-02T00:00:30Z", now)).toBe(30);
     expect(secondsUntil("2026-06-01T23:59:00Z", now)).toBe(0);
     expect(secondsUntil(null, now)).toBeNull();
+  });
+
+  it("returns null for invalid ISO date in secondsUntil", () => {
+    const now = new Date("2026-06-02T00:00:00Z").getTime();
+    expect(secondsUntil("not-a-date", now)).toBeNull();
   });
 });
