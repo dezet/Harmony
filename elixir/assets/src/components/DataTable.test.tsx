@@ -100,4 +100,38 @@ describe("DataTable", () => {
     );
     expect(screen.getByRole("button", { name: /load more/i })).toBeDisabled();
   });
+
+  it("sortable column header has aria-sort='ascending' after first click and 'descending' after second click", async () => {
+    const user = userEvent.setup();
+    render(<DataTable columns={columns} data={data} />);
+
+    const nameHeader = screen.getByRole("columnheader", { name: /name/i });
+
+    // Before any sort interaction, sortable column has aria-sort="none"
+    expect(nameHeader).toHaveAttribute("aria-sort", "none");
+
+    // After first click → ascending
+    await user.click(screen.getByRole("button", { name: /name/i }));
+    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+
+    // After second click → descending
+    await user.click(screen.getByRole("button", { name: /name/i }));
+    expect(nameHeader).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("non-sortable column header does not have aria-sort attribute", () => {
+    const nonSortableColumns: ColumnDef<Person, unknown>[] = [
+      { accessorKey: "name", header: "Name", enableSorting: false },
+    ];
+    render(<DataTable columns={nonSortableColumns} data={data} />);
+
+    const nameHeader = screen.getByRole("columnheader", { name: /name/i });
+    expect(nameHeader).not.toHaveAttribute("aria-sort");
+  });
+
+  it("shows Loading… row when data is empty and isLoading is true", () => {
+    render(<DataTable columns={columns} data={[]} isLoading={true} />);
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText("No rows.")).not.toBeInTheDocument();
+  });
 });

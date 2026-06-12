@@ -58,8 +58,11 @@ export function DataTable<TData>({
                 const content = header.isPlaceholder
                   ? null
                   : flexRender(header.column.columnDef.header, header.getContext());
+                const ariaSortValue = canSort
+                  ? (sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none")
+                  : undefined;
                 return (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} aria-sort={ariaSortValue}>
                     {canSort ? (
                       <button
                         type="button"
@@ -79,7 +82,16 @@ export function DataTable<TData>({
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.length === 0 && !isLoading ? (
+          {table.getRowModel().rows.length === 0 && isLoading ? (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="text-center text-muted-foreground"
+              >
+                Loading…
+              </TableCell>
+            </TableRow>
+          ) : table.getRowModel().rows.length === 0 ? (
             <TableRow>
               <TableCell
                 colSpan={columns.length}
