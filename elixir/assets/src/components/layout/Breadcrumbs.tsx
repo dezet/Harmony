@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
 
