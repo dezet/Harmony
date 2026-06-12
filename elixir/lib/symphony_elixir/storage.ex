@@ -152,6 +152,14 @@ defmodule SymphonyElixir.Storage do
     |> Repo.all()
   end
 
+  @spec list_artifacts_for_work_run(binary()) :: [Artifact.t()]
+  def list_artifacts_for_work_run(work_run_id) when is_binary(work_run_id) do
+    Artifact
+    |> where([artifact], artifact.work_run_id == ^work_run_id)
+    |> order_by([artifact], asc: artifact.inserted_at)
+    |> Repo.all()
+  end
+
   @spec create_work_run(map()) :: {:ok, WorkRun.t()} | {:error, Ecto.Changeset.t()}
   def create_work_run(attrs) when is_map(attrs) do
     %WorkRun{}

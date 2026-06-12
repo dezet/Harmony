@@ -1,0 +1,54 @@
+{
+  "identifier": "COD-10",
+  "issue_id": "issue-cod-10",
+  "work_run_id": "run-uuid-1",
+  "status": "running",
+  "project": {
+    "id": "proj-uuid-1",
+    "slug": "alpha",
+    "name": "Alpha"
+  },
+  "workspace": {
+    "path": "/ws/cod-10",
+    "host": "host1"
+  },
+  "session_id": "sess-abc",
+  "turn_count": 7,
+  "started_at": "2026-06-13T08:00:00Z",
+  "last_event_at": "2026-06-13T09:00:00Z",
+  "last_event": "turn_end",
+  "last_message": null,
+  "tokens": {
+    "input": 200,
+    "output": 80,
+    "total": 280
+  },
+  "attempts": {
+    "restart_count": null,
+    "current_retry_attempt": null
+  },
+  "pull_requests": [
+    {
+      "id": "pr-uuid-1",
+      "github_owner": "acme",
+      "github_repo": "portal",
+      "github_pr_number": 42,
+      "github_head_sha": "abc123def456",
+      "github_head_ref": "cod-10-feature",
+      "github_base_ref": "main",
+      "linear_identifier": "COD-10",
+      "linear_url": "https://linear.app/acme/issue/COD-10",
+      "metadata": {}
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "artifact-uuid-1",
+      "kind": "screenshot",
+      "path": "/artifacts/screen.png",
+      "metadata": {}
+    }
+  ],
+  "last_error": null,
+  "stream_cursor": "eyJpbnNlcnRlZF9hdCI6IjIwMjYtMDYtMTNUMTA6MDA6MDFaIiwiaWQiOiJldnQtdXVpZC0xIn0"
+}

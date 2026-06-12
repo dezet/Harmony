@@ -25,6 +25,12 @@ defmodule SymphonyElixirWeb.FallbackController do
     |> json(%{error: %{code: "not_found", message: "Resource not found"}})
   end
 
+  def call(conn, {:error, :run_not_found}) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: %{code: "run_not_found", message: "Run not found"}})
+  end
+
   defp changeset_errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Enum.reduce(opts, msg, fn {key, value}, acc ->

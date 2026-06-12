@@ -38,6 +38,13 @@ defmodule SymphonyElixirWeb.Router do
     get("/api/v1/work_runs", WorkRunController, :index)
     match(:*, "/api/v1/work_runs", WorkRunController, :method_not_allowed)
 
+    # Per-run detail and stream endpoints. Must come before the :issue_identifier
+    # catch-all so that /api/v1/runs/:identifier is not captured as an issue identifier.
+    get("/api/v1/runs/:identifier", RunDetailController, :show)
+    match(:*, "/api/v1/runs/:identifier", RunDetailController, :method_not_allowed)
+    get("/api/v1/runs/:identifier/stream", RunDetailController, :stream)
+    match(:*, "/api/v1/runs/:identifier/stream", RunDetailController, :method_not_allowed)
+
     get("/api/v1/:issue_identifier", ObservabilityApiController, :issue)
     match(:*, "/api/v1/:issue_identifier", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/*path", ObservabilityApiController, :not_found)
