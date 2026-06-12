@@ -1,7 +1,7 @@
 defmodule SymphonyElixirWeb.PresenterProjectionsTest do
   use ExUnit.Case, async: true
 
-  alias SymphonyElixir.Storage.{PullRequestLink, WorkRun}
+  alias SymphonyElixir.Storage.{Artifact, PullRequestLink, WorkEvent, WorkRun}
   alias SymphonyElixirWeb.Presenter
 
   # ---------------------------------------------------------------------------
@@ -383,6 +383,34 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
     end
   end
 
+  # Extra helpers for Phase 3 tests
+
+  defp artifact(overrides \\ %{}) do
+    base = %Artifact{
+      id: "art-uuid-1",
+      project_id: "proj-uuid-1",
+      work_run_id: "run-uuid-1",
+      kind: "screenshot",
+      path: "/artifacts/screenshot.png",
+      metadata: %{"width" => 1280}
+    }
+
+    Map.merge(base, overrides)
+  end
+
+  defp work_event(overrides \\ %{}) do
+    base = %WorkEvent{
+      id: "evt-uuid-1",
+      project_id: "proj-uuid-1",
+      work_run_id: "run-uuid-1",
+      type: "agent_turn",
+      payload: %{"message" => "hello"},
+      inserted_at: ~U[2026-06-10 09:00:00.000000Z]
+    }
+
+    Map.merge(base, overrides)
+  end
+
   describe "work_run_list_payload/2 — field projection" do
     test "includes required fields and omits payload" do
       run = work_run()
@@ -436,6 +464,454 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
       assert projected.github_pr_number == 42
       assert projected.agent_backend == "codex"
       assert projected.linear_identifier == "COD-10"
+    end
+  end
+
+  # ===========================================================================
+  # run_detail_payload/6
+  # ===========================================================================
+
+  describe "run_detail_payload/6 — live-only (running)" do
+    test "status is 'running' when entry is in running list" do
+      snap = snapshot([running_entry(%{identifier: "COD-10"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.status == "running"
+    end
+
+    test "issue_id comes from live running entry" do
+      snap = snapshot([running_entry(%{identifier: "COD-10", issue_id: "live-issue-1"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.issue_id == "live-issue-1"
+    end
+
+    test "workspace path and host come from live entry" do
+      snap =
+        snapshot(
+          [running_entry(%{identifier: "COD-10", workspace_path: "/ws/cod-10", worker_host: "host1"})],
+          [],
+          []
+        )
+
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.workspace == %{path: "/ws/cod-10", host: "host1"}
+    end
+
+    test "tokens come from live running entry" do
+      snap =
+        snapshot(
+          [
+            running_entry(%{
+              identifier: "COD-10",
+              codex_input_tokens: 100,
+              codex_output_tokens: 50,
+              codex_total_tokens: 150
+            })
+          ],
+          [],
+          []
+        )
+
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.tokens == %{input: 100, output: 50, total: 150}
+    end
+
+    test "session_id and turn_count come from live running entry" do
+      snap =
+        snapshot([running_entry(%{identifier: "COD-10", session_id: "sess-abc", turn_count: 7})], [], [])
+
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.session_id == "sess-abc"
+      assert result.turn_count == 7
+    end
+
+    test "started_at and last_event_at are ISO 8601" do
+      snap =
+        snapshot(
+          [
+            running_entry(%{
+              identifier: "COD-10",
+              started_at: ~U[2026-06-10 08:00:00Z],
+              last_codex_timestamp: ~U[2026-06-10 09:30:00Z]
+            })
+          ],
+          [],
+          []
+        )
+
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.started_at == "2026-06-10T08:00:00Z"
+      assert result.last_event_at == "2026-06-10T09:30:00Z"
+    end
+
+    test "last_event and last_message from live running entry" do
+      snap =
+        snapshot(
+          [
+            running_entry(%{
+              identifier: "COD-10",
+              last_codex_event: "turn_end",
+              last_codex_message: nil
+            })
+          ],
+          [],
+          []
+        )
+
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.last_event == "turn_end"
+    end
+
+    test "attempts has nil restart_count and current_retry_attempt for running entry" do
+      snap = snapshot([running_entry(%{identifier: "COD-10"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.attempts == %{restart_count: nil, current_retry_attempt: nil}
+    end
+
+    test "last_error is nil for running entry" do
+      snap = snapshot([running_entry(%{identifier: "COD-10"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.last_error == nil
+    end
+
+    test "stream_cursor is always nil" do
+      snap = snapshot([running_entry(%{identifier: "COD-10"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.stream_cursor == nil
+    end
+
+    test "work_run_id is nil when no durable run" do
+      snap = snapshot([running_entry(%{identifier: "COD-10"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
+
+      assert result.work_run_id == nil
+    end
+  end
+
+  describe "run_detail_payload/6 — live-only (retrying)" do
+    test "status is 'retrying' when entry is in retrying list" do
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11"})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.status == "retrying"
+    end
+
+    test "attempts carry restart_count and current_retry_attempt from retry entry" do
+      # attempt: 2 → restart_count = 1, current_retry_attempt = 2
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11", attempt: 2})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.attempts == %{restart_count: 1, current_retry_attempt: 2}
+    end
+
+    test "attempt: 1 → restart_count is 0" do
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11", attempt: 1})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.attempts == %{restart_count: 0, current_retry_attempt: 1}
+    end
+
+    test "last_error from retry entry's error field" do
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11", error: "api timeout"})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.last_error == "api timeout"
+    end
+
+    test "tokens is nil for retry entry (no token data)" do
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11"})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.tokens == nil
+    end
+
+    test "session_id is nil for retry entry" do
+      snap = snapshot([], [retry_entry(%{identifier: "COD-11"})], [])
+      result = Presenter.run_detail_payload("COD-11", nil, snap, [], [])
+
+      assert result.session_id == nil
+    end
+  end
+
+  describe "run_detail_payload/6 — live-only (blocked)" do
+    test "status is 'blocked' when entry is in blocked list" do
+      snap = snapshot([], [], [blocked_entry(%{identifier: "COD-12"})])
+      result = Presenter.run_detail_payload("COD-12", nil, snap, [], [])
+
+      assert result.status == "blocked"
+    end
+
+    test "last_error comes from blocked entry's error field" do
+      snap = snapshot([], [], [blocked_entry(%{identifier: "COD-12", error: "human review required"})])
+      result = Presenter.run_detail_payload("COD-12", nil, snap, [], [])
+
+      assert result.last_error == "human review required"
+    end
+
+    test "session_id comes from blocked entry" do
+      snap = snapshot([], [], [blocked_entry(%{identifier: "COD-12", session_id: "sess-blocked"})])
+      result = Presenter.run_detail_payload("COD-12", nil, snap, [], [])
+
+      assert result.session_id == "sess-blocked"
+    end
+
+    test "tokens is nil for blocked entry" do
+      snap = snapshot([], [], [blocked_entry(%{identifier: "COD-12"})])
+      result = Presenter.run_detail_payload("COD-12", nil, snap, [], [])
+
+      assert result.tokens == nil
+    end
+
+    test "attempts has nil fields for blocked entry" do
+      snap = snapshot([], [], [blocked_entry(%{identifier: "COD-12"})])
+      result = Presenter.run_detail_payload("COD-12", nil, snap, [], [])
+
+      assert result.attempts == %{restart_count: nil, current_retry_attempt: nil}
+    end
+  end
+
+  describe "run_detail_payload/6 — durable-only (no live entry)" do
+    test "status comes verbatim from work_run.status" do
+      run = work_run(%{status: "completed", linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.status == "completed"
+    end
+
+    test "work_run_id comes from work_run.id" do
+      run = work_run(%{id: "run-uuid-1", linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.work_run_id == "run-uuid-1"
+    end
+
+    test "issue_id falls back to linear_issue_id from work_run" do
+      run = work_run(%{linear_issue_id: "li-123", linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.issue_id == "li-123"
+    end
+
+    test "all live-sourced fields are nil" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.session_id == nil
+      assert result.turn_count == nil
+      assert result.started_at == nil
+      assert result.last_event_at == nil
+      assert result.last_event == nil
+      assert result.last_message == nil
+      assert result.tokens == nil
+      assert result.last_error == nil
+    end
+
+    test "workspace has nil path and host" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.workspace == %{path: nil, host: nil}
+    end
+
+    test "attempts has nil fields" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.attempts == %{restart_count: nil, current_retry_attempt: nil}
+    end
+
+    test "project from work_run.project_id when no project arg given" do
+      run = work_run(%{project_id: "proj-uuid-1", linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.project == %{id: "proj-uuid-1", slug: nil, name: nil}
+    end
+
+    test "project from 6th arg struct when provided" do
+      run = work_run(%{project_id: "proj-uuid-1", linear_identifier: "COD-10"})
+      proj = project_struct(%{id: "proj-uuid-1", slug: "alpha"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [], proj)
+
+      assert result.project.id == "proj-uuid-1"
+      assert result.project.slug == "alpha"
+    end
+  end
+
+  describe "run_detail_payload/6 — merged (live wins)" do
+    test "live status wins over durable status" do
+      run = work_run(%{status: "completed", linear_identifier: "COD-10", linear_issue_id: "li-1"})
+      snap = snapshot([running_entry(%{identifier: "COD-10", issue_id: "live-issue-1"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", run, snap, [], [])
+
+      assert result.status == "running"
+    end
+
+    test "durable ids are present alongside live tokens" do
+      run = work_run(%{id: "run-uuid-1", linear_issue_id: "li-1", linear_identifier: "COD-10"})
+      snap = snapshot([running_entry(%{identifier: "COD-10", issue_id: "live-issue-1"})], [], [])
+      result = Presenter.run_detail_payload("COD-10", run, snap, [], [])
+
+      assert result.work_run_id == "run-uuid-1"
+      assert result.issue_id == "live-issue-1"
+      assert result.tokens != nil
+    end
+  end
+
+  describe "run_detail_payload/6 — artifacts and pull_requests" do
+    test "artifacts are projected with id/kind/path/metadata" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      art = artifact()
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [art])
+
+      assert [projected] = result.artifacts
+      assert projected.id == "art-uuid-1"
+      assert projected.kind == "screenshot"
+      assert projected.path == "/artifacts/screenshot.png"
+      assert projected.metadata == %{"width" => 1280}
+    end
+
+    test "pull_requests projected via pr_link_payload" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      link = pr_link()
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [link], [])
+
+      assert [pr] = result.pull_requests
+      assert pr.id == "pr-uuid-1"
+      assert pr.github_pr_number == 42
+      assert pr.linear_identifier == "COD-10"
+    end
+
+    test "empty artifacts and pull_requests when none given" do
+      run = work_run(%{linear_identifier: "COD-10"})
+      result = Presenter.run_detail_payload("COD-10", run, snapshot(), [], [])
+
+      assert result.artifacts == []
+      assert result.pull_requests == []
+    end
+  end
+
+  describe "run_detail_payload/6 — project resolution" do
+    test "live entry project fields take precedence over durable" do
+      run = work_run(%{project_id: "durable-proj-id", linear_identifier: "COD-10"})
+
+      snap =
+        snapshot(
+          [
+            running_entry(%{
+              identifier: "COD-10",
+              project_id: "live-proj-id",
+              project_name: "Live Project",
+              project_slug: "live-slug"
+            })
+          ],
+          [],
+          []
+        )
+
+      result = Presenter.run_detail_payload("COD-10", run, snap, [], [])
+
+      assert result.project.id == "live-proj-id"
+      assert result.project.slug == "live-slug"
+    end
+  end
+
+  # ===========================================================================
+  # run_stream_payload/3
+  # ===========================================================================
+
+  describe "run_stream_payload/3 — slicing and cursor" do
+    test "returns all events when count <= page_size, next_cursor is nil" do
+      evt = work_event()
+      result = Presenter.run_stream_payload([evt], 50, false)
+
+      assert length(result.items) == 1
+      assert result.meta.next_cursor == nil
+    end
+
+    test "slices to page_size and sets next_cursor when overfetched" do
+      evt1 = work_event(%{id: "evt-1", inserted_at: ~U[2026-06-10 09:00:00.000000Z]})
+      evt2 = work_event(%{id: "evt-2", inserted_at: ~U[2026-06-10 09:01:00.000000Z]})
+      evt3 = work_event(%{id: "evt-3", inserted_at: ~U[2026-06-10 09:02:00.000000Z]})
+
+      result = Presenter.run_stream_payload([evt1, evt2, evt3], 2, false)
+
+      assert length(result.items) == 2
+      assert is_binary(result.meta.next_cursor)
+
+      assert {:ok, decoded} = SymphonyElixir.Storage.decode_work_event_cursor(result.meta.next_cursor)
+      assert decoded.id == "evt-2"
+    end
+
+    test "no next_cursor when exactly page_size events" do
+      evt1 = work_event(%{id: "evt-1"})
+      evt2 = work_event(%{id: "evt-2"})
+
+      result = Presenter.run_stream_payload([evt1, evt2], 2, false)
+
+      assert length(result.items) == 2
+      assert result.meta.next_cursor == nil
+    end
+
+    test "empty events list returns empty items and nil cursor" do
+      result = Presenter.run_stream_payload([], 50, false)
+
+      assert result.items == []
+      assert result.meta.next_cursor == nil
+    end
+  end
+
+  describe "run_stream_payload/3 — has_live flag" do
+    test "has_live: true is passed through to meta" do
+      result = Presenter.run_stream_payload([], 50, true)
+
+      assert result.meta.has_live == true
+    end
+
+    test "has_live: false is passed through to meta" do
+      result = Presenter.run_stream_payload([], 50, false)
+
+      assert result.meta.has_live == false
+    end
+  end
+
+  describe "run_stream_payload/3 — item projection" do
+    test "each item has id/kind/type/at/payload" do
+      evt =
+        work_event(%{
+          id: "evt-uuid-1",
+          type: "agent_turn",
+          payload: %{"message" => "hello"},
+          inserted_at: ~U[2026-06-10 09:00:00.000000Z]
+        })
+
+      result = Presenter.run_stream_payload([evt], 50, false)
+
+      assert [item] = result.items
+      assert item.id == "evt-uuid-1"
+      assert item.kind == "work_event"
+      assert item.type == "agent_turn"
+      assert item.at == "2026-06-10T09:00:00Z"
+      assert item.payload == %{"message" => "hello"}
+    end
+
+    test "ascending order is preserved (caller is responsible for ordering)" do
+      evt1 = work_event(%{id: "evt-1", inserted_at: ~U[2026-06-10 09:00:00.000000Z]})
+      evt2 = work_event(%{id: "evt-2", inserted_at: ~U[2026-06-10 09:01:00.000000Z]})
+
+      result = Presenter.run_stream_payload([evt1, evt2], 50, false)
+
+      assert [first, second] = result.items
+      assert first.id == "evt-1"
+      assert second.id == "evt-2"
     end
   end
 end

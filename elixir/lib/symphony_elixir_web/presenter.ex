@@ -4,7 +4,7 @@ defmodule SymphonyElixirWeb.Presenter do
   """
 
   alias SymphonyElixir.{Config, Orchestrator, StatusDashboard, Storage}
-  alias SymphonyElixir.Storage.WorkRun
+  alias SymphonyElixir.Storage.{WorkEvent, WorkRun}
 
   @durable_limit 50
 
@@ -76,6 +76,204 @@ defmodule SymphonyElixirWeb.Presenter do
       meta: %{
         next_cursor: next_cursor,
         page_size: page_size
+      }
+    }
+  end
+
+  @doc """
+  Builds the run detail payload for a single run identified by `identifier`.
+
+  Locates the live entry across the running/retrying/blocked snapshot lists by
+  `issue_identifier == identifier`.  When a live entry is found its status wins
+  ("running" | "retrying" | "blocked"); otherwise the durable `work_run.status`
+  is used verbatim.
+
+  Decision points:
+  - `project`: optional 6th arg (struct or nil).  When nil and work_run has a
+    project_id the response carries `%{id: project_id, slug: nil, name: nil}`.
+    When a live entry has project fields they take precedence.
+  - `tokens`: live token map when a live entry is present; `nil` for durable-only
+    (WorkRun carries no token data).
+  - `attempts`: sourced from the retry entry's `:attempt` field.  Running and
+    blocked entries carry no attempt counter so both fields are `nil` for those
+    states.  Durable-only → both `nil`.
+  - `stream_cursor`: always `nil` here; the controller merges it in after
+    fetching the first events page.
+  """
+  @spec run_detail_payload(
+          String.t(),
+          WorkRun.t() | nil,
+          map(),
+          list(),
+          list(),
+          map() | nil
+        ) :: map()
+  def run_detail_payload(identifier, work_run, snapshot, pr_links, artifacts, project \\ nil) do
+    live = find_live_entry(identifier, snapshot)
+
+    {live_running, live_retry, live_blocked} =
+      case live do
+        {:running, entry} -> {entry, nil, nil}
+        {:retrying, entry} -> {nil, entry, nil}
+        {:blocked, entry} -> {nil, nil, entry}
+        nil -> {nil, nil, nil}
+      end
+
+    status =
+      case live do
+        {:running, _} -> "running"
+        {:retrying, _} -> "retrying"
+        {:blocked, _} -> "blocked"
+        nil -> work_run && work_run.status
+      end
+
+    live_entry = live_running || live_retry || live_blocked
+
+    issue_id =
+      (live_entry && live_entry.issue_id) ||
+        (work_run && work_run.linear_issue_id)
+
+    work_run_id = work_run && work_run.id
+
+    project_payload =
+      cond do
+        live_entry && not blank_project?(project_payload(live_entry)) ->
+          project_payload(live_entry)
+
+        not is_nil(project) ->
+          project_payload_from_struct(project)
+
+        work_run && work_run.project_id ->
+          %{id: work_run.project_id, slug: nil, name: nil}
+
+        true ->
+          nil
+      end
+
+    workspace =
+      if live_entry do
+        %{
+          path: Map.get(live_entry, :workspace_path),
+          host: Map.get(live_entry, :worker_host)
+        }
+      else
+        %{path: nil, host: nil}
+      end
+
+    {session_id, turn_count, started_at, last_event_at, last_event, last_message, tokens} =
+      cond do
+        live_running ->
+          {
+            live_running.session_id,
+            Map.get(live_running, :turn_count, 0),
+            iso8601(live_running.started_at),
+            iso8601(live_running.last_codex_timestamp),
+            live_running.last_codex_event,
+            summarize_message(live_running.last_codex_message),
+            %{
+              input: live_running.codex_input_tokens,
+              output: live_running.codex_output_tokens,
+              total: live_running.codex_total_tokens
+            }
+          }
+
+        live_blocked ->
+          {
+            live_blocked.session_id,
+            nil,
+            iso8601(Map.get(live_blocked, :started_at)),
+            iso8601(live_blocked.last_codex_timestamp),
+            live_blocked.last_codex_event,
+            summarize_message(live_blocked.last_codex_message),
+            nil
+          }
+
+        live_retry ->
+          {
+            nil,
+            nil,
+            iso8601(Map.get(live_retry, :started_at)),
+            nil,
+            nil,
+            nil,
+            nil
+          }
+
+        true ->
+          {nil, nil, nil, nil, nil, nil, nil}
+      end
+
+    attempts =
+      cond do
+        live_retry ->
+          attempt = live_retry.attempt || 0
+          %{restart_count: max(attempt - 1, 0), current_retry_attempt: attempt}
+
+        live_entry ->
+          %{restart_count: nil, current_retry_attempt: nil}
+
+        true ->
+          %{restart_count: nil, current_retry_attempt: nil}
+      end
+
+    last_error =
+      (live_blocked && live_blocked.error) ||
+        (live_retry && live_retry.error)
+
+    %{
+      identifier: identifier,
+      issue_id: issue_id,
+      work_run_id: work_run_id,
+      status: status,
+      project: project_payload,
+      workspace: workspace,
+      session_id: session_id,
+      turn_count: turn_count,
+      started_at: started_at,
+      last_event_at: last_event_at,
+      last_event: last_event,
+      last_message: last_message,
+      tokens: tokens,
+      attempts: attempts,
+      pull_requests: Enum.map(pr_links, &pr_link_payload/1),
+      artifacts: Enum.map(artifacts, &run_artifact_payload/1),
+      last_error: last_error,
+      stream_cursor: nil
+    }
+  end
+
+  @doc """
+  Builds a stream page payload from a pre-fetched list of work events.
+
+  `events` must be overfetched by +1 relative to `page_size`.  The function
+  slices to `page_size` items (ascending) and derives `next_cursor` from the
+  last visible event via `Storage.encode_work_event_cursor/1`.
+
+  `has_live` is passed through from the caller (true when a live orchestrator
+  entry exists for this run).
+  """
+  @spec run_stream_payload([WorkEvent.t()], pos_integer(), boolean()) :: map()
+  def run_stream_payload(events, page_size, has_live)
+      when is_integer(page_size) and page_size > 0 and is_boolean(has_live) do
+    {visible, has_more} =
+      if length(events) > page_size do
+        {Enum.take(events, page_size), true}
+      else
+        {events, false}
+      end
+
+    next_cursor =
+      if has_more do
+        Storage.encode_work_event_cursor(List.last(visible))
+      else
+        nil
+      end
+
+    %{
+      items: Enum.map(visible, &stream_event_payload/1),
+      meta: %{
+        next_cursor: next_cursor,
+        has_live: has_live
       }
     }
   end
@@ -323,6 +521,46 @@ defmodule SymphonyElixirWeb.Presenter do
       linear_identifier: link.linear_identifier,
       linear_url: link.linear_url,
       metadata: link.metadata
+    }
+  end
+
+  defp find_live_entry(identifier, snapshot) do
+    running = Enum.find(snapshot.running, &(&1.identifier == identifier))
+    retry = Enum.find(snapshot.retrying, &(&1.identifier == identifier))
+    blocked = Enum.find(Map.get(snapshot, :blocked, []), &(&1.identifier == identifier))
+
+    cond do
+      running -> {:running, running}
+      retry -> {:retrying, retry}
+      blocked -> {:blocked, blocked}
+      true -> nil
+    end
+  end
+
+  defp project_payload_from_struct(project) do
+    %{
+      id: Map.get(project, :id),
+      slug: Map.get(project, :slug),
+      name: Map.get(project, :name) || Map.get(project, :linear_project_slug)
+    }
+  end
+
+  defp run_artifact_payload(artifact) do
+    %{
+      id: artifact.id,
+      kind: artifact.kind,
+      path: artifact.path,
+      metadata: artifact.metadata
+    }
+  end
+
+  defp stream_event_payload(event) do
+    %{
+      id: event.id,
+      kind: "work_event",
+      type: event.type,
+      at: iso8601(event.inserted_at),
+      payload: event.payload
     }
   end
 
