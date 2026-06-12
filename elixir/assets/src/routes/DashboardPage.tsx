@@ -1,6 +1,6 @@
 import { useDashboard } from "@/features/dashboard/useDashboard";
 import { useNow } from "@/lib/useNow";
-import { MetricCards } from "@/features/dashboard/components/MetricCards";
+import { MetricCards } from "@/features/overview/components/MetricCards";
 import { RunningTable } from "@/features/dashboard/components/RunningTable";
 import { RetryTable } from "@/features/dashboard/components/RetryTable";
 import { BlockedTable } from "@/features/dashboard/components/BlockedTable";
