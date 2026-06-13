@@ -44,7 +44,7 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
     assert "implementation run persisted with project_id" in summary.expected_assertions
     assert "pull_request_links contains COD-101 PR #17" in summary.expected_assertions
 
-    assert %WorkRun{payload: payload, github_base_ref: "develop"} =
+    assert %WorkRun{payload: payload, forge_base_ref: "develop"} =
              stored_work_run(summary.project_id, "linear:roadmap-e2e-issue")
 
     assert payload["project_id"] == summary.project_id
@@ -52,10 +52,10 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
     assert payload["required_evidence"] == []
 
     assert %PullRequestLink{
-             github_pr_number: 17,
-             github_head_sha: "abc123",
-             github_head_ref: "cod-101-roadmap-e2e",
-             github_base_ref: "develop",
+             forge_pr_number: 17,
+             forge_head_sha: "abc123",
+             forge_head_ref: "cod-101-roadmap-e2e",
+             forge_base_ref: "develop",
              linear_identifier: "COD-101"
            } = stored_pr_link(summary.project_id, 17)
   end
@@ -398,7 +398,7 @@ defmodule SymphonyElixir.RoadmapE2EHarnessTest do
   end
 
   defp stored_pr_link(project_id, pr_number) do
-    Repo.get_by!(PullRequestLink, project_id: project_id, github_pr_number: pr_number)
+    Repo.get_by!(PullRequestLink, project_id: project_id, forge_pr_number: pr_number)
   end
 
   defp stored_dedupe(project_id, key) do

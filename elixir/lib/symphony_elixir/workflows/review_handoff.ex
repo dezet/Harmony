@@ -3,19 +3,27 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
   Publishes requested GitHub PR review output.
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.{Forge, Storage, WorkRun}
+  alias SymphonyElixir.Forge.ProjectCreds
 
   @processed_marker "harmony-review-processed"
 
   @spec publish(WorkRun.t(), String.t(), keyword()) :: :ok | {:error, term()}
   def publish(%WorkRun{} = run, body, opts \\ []) when is_binary(body) do
-    create_review = Keyword.get(opts, :create_review, &Github.Client.create_pull_request_review/5)
+    creds = ProjectCreds.creds(run, opts)
+
+    create_review =
+      Keyword.get(opts, :create_review, fn owner, repo, pr_number, review_body, call_opts ->
+        ref = %{owner: owner, repo: repo, base_url: creds.base_url}
+        Forge.Github.create_review(creds, ref, pr_number, review_body, call_opts)
+      end)
+
     append_event = Keyword.get(opts, :append_event, &Storage.append_event/1)
 
     case create_review.(
-           run.github_owner,
-           run.github_repo,
-           run.github_pr_number,
+           run.forge_owner,
+           run.forge_repo,
+           run.forge_pr_number,
            body_with_processed_marker(body, run),
            event: "COMMENT"
          ) do
@@ -49,7 +57,7 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
           key: key,
           scope: "github_review",
           status: "processed",
-          metadata: %{"github_pr_number" => run.github_pr_number}
+          metadata: %{"forge_pr_number" => run.forge_pr_number}
         }
         |> mark.()
         |> normalize_mark_result()
@@ -69,7 +77,7 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
           project_id: project_id,
           work_run_id: run.id,
           type: "github_review_created",
-          payload: %{"github_pr_number" => run.github_pr_number}
+          payload: %{"forge_pr_number" => run.forge_pr_number}
         }
         |> append_event.()
         |> normalize_mark_result()

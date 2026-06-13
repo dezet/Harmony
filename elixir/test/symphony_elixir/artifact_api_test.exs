@@ -54,9 +54,9 @@ defmodule SymphonyElixir.ArtifactApiTest do
       SymphonyElixir.Storage.upsert_project(%{
         slug: "artifact-api-proj-#{System.unique_integer([:positive])}",
         linear_project_slug: "art-linear",
-        github_owner: "acme",
-        github_repo: "app",
-        github_base_branch: "main",
+        forge_owner: "acme",
+        forge_repo: "app",
+        forge_base_branch: "main",
         linear_human_review_state: "Human Review",
         config_version: 1,
         config: %{}

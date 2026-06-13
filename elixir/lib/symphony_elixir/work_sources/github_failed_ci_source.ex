@@ -4,18 +4,34 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   """
 
   alias SymphonyElixir.{Github, RuntimePolicy, Storage, WorkRun}
+  alias SymphonyElixir.Forge.ProjectCreds
 
   @max_log_excerpt_bytes 12_000
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
-    list_pull_requests = Keyword.get(opts, :list_pull_requests, &Github.Client.list_open_pull_requests/3)
-    list_workflow_runs = Keyword.get(opts, :list_workflow_runs, &Github.Client.list_workflow_runs/3)
-    get_workflow_run_logs = Keyword.get(opts, :get_workflow_run_logs, &Github.Client.get_workflow_run_logs/4)
+    ref = ProjectCreds.repo_ref(project)
+    client_opts = ProjectCreds.client_opts(project, opts)
+
+    list_pull_requests =
+      Keyword.get(opts, :list_pull_requests, fn owner, repo, _call_opts ->
+        Github.Client.list_open_pull_requests(owner, repo, client_opts)
+      end)
+
+    list_workflow_runs =
+      Keyword.get(opts, :list_workflow_runs, fn owner, repo, call_opts ->
+        Github.Client.list_workflow_runs(owner, repo, client_opts ++ call_opts)
+      end)
+
+    get_workflow_run_logs =
+      Keyword.get(opts, :get_workflow_run_logs, fn owner, repo, run_id, _call_opts ->
+        Github.Client.get_workflow_run_logs(owner, repo, run_id, client_opts)
+      end)
+
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
-    owner = project_value(project, :github_owner)
-    repo = project_value(project, :github_repo)
+    owner = ref.owner || project_value(project, :forge_owner)
+    repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
@@ -64,12 +80,12 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
       type: "ci_fix",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, pr, workflow_run),
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
+      forge_owner: owner,
+      forge_repo: repo,
+      forge_pr_number: pr.number,
+      forge_head_sha: pr.head_sha,
+      forge_head_ref: pr.head_ref,
+      forge_base_ref: pr.base_ref,
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",
@@ -106,9 +122,9 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   defp repo_policy(project, pr) do
     case RuntimePolicy.RepoPolicy.authorize_push(%{
            head_repo_full_name: pr.head_repo_full_name,
-           base_repo_full_name: pr.base_repo_full_name || "#{project_value(project, :github_owner)}/#{project_value(project, :github_repo)}",
+           base_repo_full_name: pr.base_repo_full_name || "#{project_value(project, :forge_owner)}/#{project_value(project, :forge_repo)}",
            head_ref: pr.head_ref,
-           base_ref: pr.base_ref || project_value(project, :github_base_branch),
+           base_ref: pr.base_ref || project_value(project, :forge_base_branch),
            protected_branches: protected_branches(project)
          }) do
       :ok -> "direct_push_allowed"
@@ -124,7 +140,7 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
     |> map_get_any(:protected_branches)
     |> case do
       branches when is_list(branches) -> branches
-      _other -> List.wrap(project_value(project, :github_base_branch))
+      _other -> List.wrap(project_value(project, :forge_base_branch))
     end
   end
 

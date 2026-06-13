@@ -8,9 +8,9 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
     defstruct [:project_slug, :team_key, :human_review_state]
   end
 
-  defmodule Github do
+  defmodule Forge do
     @moduledoc false
-    defstruct [:owner, :repo, :base_branch, protected_branches: []]
+    defstruct [:owner, :repo, :base_branch, :base_url, type: "github", protected_branches: []]
   end
 
   defmodule Review do
@@ -18,7 +18,7 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
     defstruct trigger: "@hreview", template_version: 1
   end
 
-  defstruct [:slug, :linear, :github, :review, raw: %{}]
+  defstruct [:slug, :linear, :forge, :review, raw: %{}]
 
   @type t :: %__MODULE__{}
 
@@ -28,9 +28,9 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
 
     with {:ok, slug} <- required_string(raw, "slug"),
          {:ok, linear} <- parse_linear(Map.get(raw, "linear", %{})),
-         {:ok, github} <- parse_github(Map.get(raw, "github", %{})),
+         {:ok, forge} <- parse_forge(raw),
          {:ok, review} <- parse_review(Map.get(raw, "review", %{})) do
-      {:ok, %__MODULE__{slug: slug, linear: linear, github: github, review: review, raw: raw}}
+      {:ok, %__MODULE__{slug: slug, linear: linear, forge: forge, review: review, raw: raw}}
     end
   end
 
@@ -50,7 +50,24 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
 
   defp parse_linear(_raw), do: {:error, {:invalid_project_config_section, "linear"}}
 
-  defp parse_github(raw) when is_map(raw) do
+  # Accepts a `forge:` section; falls back to legacy `github:` section.
+  defp parse_forge(raw) do
+    case Map.get(raw, "forge") do
+      forge_map when is_map(forge_map) ->
+        parse_forge_map(forge_map)
+
+      _ ->
+        case Map.get(raw, "github") do
+          github_map when is_map(github_map) ->
+            parse_forge_map(github_map)
+
+          _ ->
+            {:error, {:invalid_project_config_section, "forge"}}
+        end
+    end
+  end
+
+  defp parse_forge_map(raw) when is_map(raw) do
     with {:ok, owner} <- required_string(raw, "owner"),
          {:ok, repo} <- required_string(raw, "repo"),
          {:ok, base_branch} <- required_string(raw, "base_branch") do
@@ -59,11 +76,19 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
         |> Map.get("protected_branches", [])
         |> normalize_string_list()
 
-      {:ok, %Github{owner: owner, repo: repo, base_branch: base_branch, protected_branches: protected_branches}}
+      {:ok,
+       %Forge{
+         type: optional_string(raw, "type") || "github",
+         owner: owner,
+         repo: repo,
+         base_branch: base_branch,
+         base_url: optional_string(raw, "base_url"),
+         protected_branches: protected_branches
+       }}
     end
   end
 
-  defp parse_github(_raw), do: {:error, {:invalid_project_config_section, "github"}}
+  defp parse_forge_map(_raw), do: {:error, {:invalid_project_config_section, "forge"}}
 
   defp parse_review(raw) when is_map(raw) do
     {:ok,

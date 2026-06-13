@@ -59,9 +59,9 @@ defmodule SymphonyElixir.GithubWebhookTest do
         linear_project_slug: "portal-linear",
         linear_team_key: "COD",
         linear_human_review_state: "Human Review",
-        github_owner: "dezet",
-        github_repo: "portal",
-        github_base_branch: "develop",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
         config_version: 1,
         config: %{}
       })

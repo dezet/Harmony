@@ -12,7 +12,8 @@ defmodule SymphonyElixirWeb.ProjectController do
   action_fallback(SymphonyElixirWeb.FallbackController)
 
   @permitted ~w(slug linear_project_slug linear_team_key linear_human_review_state
-                github_owner github_repo github_base_branch config_version config)
+                github_owner github_repo github_base_branch forge_type forge_owner
+                forge_repo forge_base_branch forge_base_url config_version config)
 
   @spec index(Conn.t(), map()) :: Conn.t()
   def index(conn, _params) do
@@ -47,7 +48,26 @@ defmodule SymphonyElixirWeb.ProjectController do
     Ecto.NoResultsError -> {:error, :not_found}
   end
 
-  defp project_attrs(params), do: Map.take(params, @permitted)
+  # Accept legacy github_* HTTP params and remap them to forge_* for storage.
+  # Explicit forge_* params (if present) take precedence over the github_* aliases.
+  defp project_attrs(params) do
+    params
+    |> Map.take(@permitted)
+    |> then(fn p ->
+      p
+      |> maybe_remap("github_owner", "forge_owner")
+      |> maybe_remap("github_repo", "forge_repo")
+      |> maybe_remap("github_base_branch", "forge_base_branch")
+      |> Map.drop(["github_owner", "github_repo", "github_base_branch"])
+    end)
+  end
+
+  defp maybe_remap(params, from_key, to_key) do
+    case {Map.get(params, from_key), Map.has_key?(params, to_key)} do
+      {val, false} when not is_nil(val) -> Map.put(params, to_key, val)
+      _ -> params
+    end
+  end
 
   defp project_json(p) do
     %{
@@ -56,9 +76,9 @@ defmodule SymphonyElixirWeb.ProjectController do
       linear_project_slug: p.linear_project_slug,
       linear_team_key: p.linear_team_key,
       linear_human_review_state: p.linear_human_review_state,
-      github_owner: p.github_owner,
-      github_repo: p.github_repo,
-      github_base_branch: p.github_base_branch,
+      github_owner: p.forge_owner,
+      github_repo: p.forge_repo,
+      github_base_branch: p.forge_base_branch,
       config_version: p.config_version,
       config: p.config,
       inserted_at: p.inserted_at,

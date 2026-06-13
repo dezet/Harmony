@@ -44,9 +44,11 @@ defmodule SymphonyElixir.ProjectConfig.Sync do
       linear_project_slug: config.linear.project_slug,
       linear_team_key: config.linear.team_key,
       linear_human_review_state: config.linear.human_review_state,
-      github_owner: config.github.owner,
-      github_repo: config.github.repo,
-      github_base_branch: config.github.base_branch,
+      forge_type: config.forge.type,
+      forge_owner: config.forge.owner,
+      forge_repo: config.forge.repo,
+      forge_base_branch: config.forge.base_branch,
+      forge_base_url: config.forge.base_url,
       config_version: config.review.template_version,
       config: config.raw
     }

@@ -16,12 +16,12 @@ defmodule SymphonyElixir.Storage.WorkRun do
     field(:type, :string)
     field(:status, :string)
     field(:dedupe_key, :string)
-    field(:github_owner, :string)
-    field(:github_repo, :string)
-    field(:github_pr_number, :integer)
-    field(:github_head_sha, :string)
-    field(:github_head_ref, :string)
-    field(:github_base_ref, :string)
+    field(:forge_owner, :string)
+    field(:forge_repo, :string)
+    field(:forge_pr_number, :integer)
+    field(:forge_head_sha, :string)
+    field(:forge_head_ref, :string)
+    field(:forge_base_ref, :string)
     field(:linear_issue_id, :string)
     field(:linear_identifier, :string)
     field(:linear_url, :string)
@@ -40,12 +40,12 @@ defmodule SymphonyElixir.Storage.WorkRun do
       :type,
       :status,
       :dedupe_key,
-      :github_owner,
-      :github_repo,
-      :github_pr_number,
-      :github_head_sha,
-      :github_head_ref,
-      :github_base_ref,
+      :forge_owner,
+      :forge_repo,
+      :forge_pr_number,
+      :forge_head_sha,
+      :forge_head_ref,
+      :forge_base_ref,
       :linear_issue_id,
       :linear_identifier,
       :linear_url,

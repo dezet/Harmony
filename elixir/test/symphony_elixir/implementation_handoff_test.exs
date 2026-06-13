@@ -10,7 +10,7 @@ defmodule SymphonyElixir.ImplementationHandoffTest do
     run = %WorkRun{
       id: "work-run-1",
       type: "implementation",
-      github_base_ref: "develop",
+      forge_base_ref: "develop",
       linear_issue_id: "issue-1",
       linear_identifier: "COD-5",
       payload: %{project_id: "project-1"}
@@ -19,13 +19,13 @@ defmodule SymphonyElixir.ImplementationHandoffTest do
     project = %{
       id: "project-1",
       linear_human_review_state: "Human Review",
-      github_base_branch: "develop"
+      forge_base_branch: "develop"
     }
 
     pr_link = %{
-      github_pr_number: 7,
-      github_head_ref: "feature/cod-5",
-      github_base_ref: "develop",
+      forge_pr_number: 7,
+      forge_head_ref: "feature/cod-5",
+      forge_base_ref: "develop",
       linear_issue_id: "issue-1",
       linear_identifier: "COD-5"
     }
@@ -61,7 +61,7 @@ defmodule SymphonyElixir.ImplementationHandoffTest do
 
     assert {:error, :missing_pull_request_link} =
              ImplementationHandoff.publish(run,
-               get_project: fn "project-1" -> %{id: "project-1", github_base_branch: "develop"} end,
+               get_project: fn "project-1" -> %{id: "project-1", forge_base_branch: "develop"} end,
                find_pull_request_link: fn "project-1", "issue-1", "COD-5" -> nil end,
                linear_comment: fn issue_id, body ->
                  send(parent, {:linear_comment, issue_id, body})
@@ -92,23 +92,23 @@ defmodule SymphonyElixir.ImplementationHandoffTest do
     run = %WorkRun{
       id: "work-run-1",
       type: "implementation",
-      github_base_ref: "develop",
+      forge_base_ref: "develop",
       linear_issue_id: "issue-1",
       linear_identifier: "COD-5",
       payload: %{project_id: "project-1"}
     }
 
     pr_link = %{
-      github_pr_number: 7,
-      github_head_ref: "feature/cod-5",
-      github_base_ref: "main",
+      forge_pr_number: 7,
+      forge_head_ref: "feature/cod-5",
+      forge_base_ref: "main",
       linear_issue_id: "issue-1",
       linear_identifier: "COD-5"
     }
 
     assert {:error, {:invalid_pull_request_link, :base_branch_mismatch}} =
              ImplementationHandoff.publish(run,
-               get_project: fn "project-1" -> %{id: "project-1", github_base_branch: "develop"} end,
+               get_project: fn "project-1" -> %{id: "project-1", forge_base_branch: "develop"} end,
                find_pull_request_link: fn "project-1", "issue-1", "COD-5" -> pr_link end,
                record_blocker: fn attrs ->
                  send(parent, {:blocker, attrs})

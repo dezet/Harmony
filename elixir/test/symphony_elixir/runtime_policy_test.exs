@@ -62,9 +62,9 @@ defmodule SymphonyElixir.RuntimePolicyTest do
     {:ok, project} =
       Storage.upsert_project(%{
         slug: "portal",
-        github_owner: "dezet",
-        github_repo: "portal",
-        github_base_branch: "develop",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
         linear_project_slug: "portal-linear",
         linear_human_review_state: "Human Review",
         config_version: 1,

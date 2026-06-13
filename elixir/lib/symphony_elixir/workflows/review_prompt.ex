@@ -13,12 +13,12 @@ defmodule SymphonyElixir.Workflows.ReviewPrompt do
   @spec build(WorkRun.t()) :: String.t()
   def build(%WorkRun{} = run) do
     """
-    Perform a comprehensive code review for #{run.github_owner}/#{run.github_repo} PR ##{run.github_pr_number}.
+    Perform a comprehensive code review for #{run.forge_owner}/#{run.forge_repo} PR ##{run.forge_pr_number}.
 
     Review target:
-    - Head SHA: #{run.github_head_sha || "unknown"}
-    - Head branch: #{run.github_head_ref || "unknown"}
-    - Base branch: #{run.github_base_ref || "unknown"}
+    - Head SHA: #{run.forge_head_sha || "unknown"}
+    - Head branch: #{run.forge_head_ref || "unknown"}
+    - Base branch: #{run.forge_base_ref || "unknown"}
     - Trigger comment ID: #{payload_value(run.payload, :trigger_comment_id) || "unknown"}
 
     Review template:

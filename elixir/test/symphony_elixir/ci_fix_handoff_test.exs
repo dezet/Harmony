@@ -23,9 +23,9 @@ defmodule SymphonyElixir.CiFixHandoffTest do
     end
 
     run = %WorkRun{
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
       linear_issue_id: "issue-1",
       linear_identifier: "COD-5",
       payload: %{blocker_reason: "fork PR requires repair branch"}
@@ -56,9 +56,9 @@ defmodule SymphonyElixir.CiFixHandoffTest do
 
     run = %WorkRun{
       id: "work-run-1",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
       linear_issue_id: "issue-1",
       payload: %{project_id: "project-1", blocker_reason: "fork PR requires repair branch"}
     }

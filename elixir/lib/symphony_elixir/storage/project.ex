@@ -14,9 +14,11 @@ defmodule SymphonyElixir.Storage.Project do
     field(:linear_project_slug, :string)
     field(:linear_team_key, :string)
     field(:linear_human_review_state, :string)
-    field(:github_owner, :string)
-    field(:github_repo, :string)
-    field(:github_base_branch, :string)
+    field(:forge_type, :string, default: "github")
+    field(:forge_owner, :string)
+    field(:forge_repo, :string)
+    field(:forge_base_branch, :string)
+    field(:forge_base_url, :string)
     field(:config_version, :integer, default: 1)
     field(:config, :map, default: %{})
     timestamps(type: :utc_datetime_usec)
@@ -32,13 +34,15 @@ defmodule SymphonyElixir.Storage.Project do
       :linear_project_slug,
       :linear_team_key,
       :linear_human_review_state,
-      :github_owner,
-      :github_repo,
-      :github_base_branch,
+      :forge_type,
+      :forge_owner,
+      :forge_repo,
+      :forge_base_branch,
+      :forge_base_url,
       :config_version,
       :config
     ])
-    |> validate_required([:slug, :github_owner, :github_repo, :github_base_branch, :config_version, :config])
+    |> validate_required([:slug, :forge_owner, :forge_repo, :forge_base_branch, :forge_type, :config_version, :config])
     |> unique_constraint(:slug)
   end
 end

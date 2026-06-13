@@ -11,13 +11,13 @@ defmodule SymphonyElixir.Workflows.CiFixPrompt do
     log_excerpt = payload_value(run.payload, :log_excerpt, "No log excerpt captured.")
 
     """
-    Fix the failed GitHub Actions run for #{run.github_owner}/#{run.github_repo} PR ##{run.github_pr_number}.
+    Fix the failed GitHub Actions run for #{run.forge_owner}/#{run.forge_repo} PR ##{run.forge_pr_number}.
 
     Branch policy:
-    - Work only on branch #{run.github_head_ref}.
-    - Base branch is #{run.github_base_ref}.
+    - Work only on branch #{run.forge_head_ref}.
+    - Base branch is #{run.forge_base_ref}.
     - Do not merge the pull request.
-    - Do not push directly to #{run.github_base_ref}.
+    - Do not push directly to #{run.forge_base_ref}.
 
     Failing workflow:
     - Name: #{payload_value(workflow_run, :name, "unknown")}
