@@ -16,7 +16,7 @@ defmodule SymphonyElixirWeb.ProjectActivityController do
 
   alias Plug.Conn
   alias SymphonyElixir.Storage
-  alias SymphonyElixirWeb.Presenter
+  alias SymphonyElixirWeb.{Presenter, ProjectRef}
 
   action_fallback(SymphonyElixirWeb.FallbackController)
 
@@ -26,7 +26,7 @@ defmodule SymphonyElixirWeb.ProjectActivityController do
 
   @spec index(Conn.t(), map()) :: Conn.t()
   def index(conn, %{"project_ref" => ref} = params) do
-    with {:ok, project} <- fetch_project(ref) do
+    with {:ok, project} <- ProjectRef.resolve(ref) do
       page_size = parse_page_size(params["page_size"])
 
       opts =
@@ -46,31 +46,6 @@ defmodule SymphonyElixirWeb.ProjectActivityController do
     conn
     |> put_status(405)
     |> json(%{error: %{code: "method_not_allowed", message: "Method not allowed"}})
-  end
-
-  # ---------------------------------------------------------------------------
-  # Private helpers
-  # ---------------------------------------------------------------------------
-
-  defp fetch_project(ref) do
-    case Ecto.UUID.cast(ref) do
-      {:ok, _uuid} ->
-        try do
-          {:ok, Storage.get_project!(ref)}
-        rescue
-          Ecto.NoResultsError ->
-            case Storage.get_project_by_slug(ref) do
-              nil -> {:error, :not_found}
-              project -> {:ok, project}
-            end
-        end
-
-      :error ->
-        case Storage.get_project_by_slug(ref) do
-          nil -> {:error, :not_found}
-          project -> {:ok, project}
-        end
-    end
   end
 
   defp parse_page_size(nil), do: @default_page_size

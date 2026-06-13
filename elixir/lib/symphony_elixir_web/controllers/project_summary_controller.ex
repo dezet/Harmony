@@ -8,13 +8,13 @@ defmodule SymphonyElixirWeb.ProjectSummaryController do
 
   alias Plug.Conn
   alias SymphonyElixir.{Orchestrator, Storage}
-  alias SymphonyElixirWeb.{Endpoint, Presenter}
+  alias SymphonyElixirWeb.{Endpoint, Presenter, ProjectRef}
 
   action_fallback(SymphonyElixirWeb.FallbackController)
 
   @spec summary(Conn.t(), map()) :: Conn.t()
   def summary(conn, %{"project_ref" => ref}) do
-    with {:ok, project} <- fetch_project(ref) do
+    with {:ok, project} <- ProjectRef.resolve(ref) do
       snapshot = Orchestrator.snapshot(orchestrator(), snapshot_timeout_ms())
       links = Storage.list_pull_request_links_for_project(project.id)
 
@@ -45,27 +45,6 @@ defmodule SymphonyElixirWeb.ProjectSummaryController do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
-
-  defp fetch_project(ref) do
-    case Ecto.UUID.cast(ref) do
-      {:ok, _uuid} ->
-        try do
-          {:ok, Storage.get_project!(ref)}
-        rescue
-          Ecto.NoResultsError ->
-            case Storage.get_project_by_slug(ref) do
-              nil -> {:error, :not_found}
-              project -> {:ok, project}
-            end
-        end
-
-      :error ->
-        case Storage.get_project_by_slug(ref) do
-          nil -> {:error, :not_found}
-          project -> {:ok, project}
-        end
-    end
-  end
 
   defp orchestrator do
     Endpoint.config(:orchestrator) || SymphonyElixir.Orchestrator
