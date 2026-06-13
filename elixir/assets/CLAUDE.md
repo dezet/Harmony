@@ -51,8 +51,11 @@ plus `tsconfig.json` (for the shadcn CLI's resolver). If `npx shadcn add` ever w
 
 The Phase 3 cutover is complete: Vite builds with `base: "/"`, Phoenix serves `priv/static/app`
 from `/`, and React Router owns `/` (Overview), `/runtime`, `/projects`, `/projects/new`,
-`/projects/:slug` (project workspace), and `/projects/:id/edit`. The shell is a project sidebar
-(`src/components/layout/Sidebar.tsx`) + breadcrumb header; page features live under
-`src/features/{overview,runtime,projects,project}/`. The project workspace (`/projects/:slug`) is
-implemented in `src/features/project/` and renders the Work tab with live data from
-`/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`.
+`/projects/:slug` (project workspace), `/projects/:slug/runs/:identifier` (run detail), and
+`/projects/:id/edit`. The shell is a project sidebar (`src/components/layout/Sidebar.tsx`) +
+breadcrumb header; page features live under
+`src/features/{overview,runtime,projects,project,run}/`. The project workspace (`/projects/:slug`)
+is implemented in `src/features/project/` and renders the Work tab with live data from
+`/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`. The run detail page
+(`/projects/:slug/runs/:identifier`) is implemented in `src/features/run/` and fetches from
+`/api/v1/runs/:identifier` (detail) and `/api/v1/runs/:identifier/stream` (paginated events).

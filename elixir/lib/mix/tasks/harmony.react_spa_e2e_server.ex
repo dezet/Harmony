@@ -72,7 +72,7 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
   # e2e harness (both controllers read from Postgres; the snapshot orchestrator
   # provides the live-entry portion of the summary).
   defp seed_e2e_project do
-    {:ok, _project} =
+    {:ok, project} =
       Storage.upsert_project(%{
         slug: "react-spa-e2e",
         github_owner: "harmony-e2e",
@@ -84,6 +84,36 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
         config_version: 1,
         config: %{}
       })
+
+    seed_e2e_run(project)
+    :ok
+  end
+
+  # Upserts a durable WorkRun for COD-1 (the identifier that the snapshot
+  # version=1 puts in the running list) so that /api/v1/runs/COD-1 and
+  # /api/v1/runs/COD-1/stream return real data in the e2e harness.
+  defp seed_e2e_run(project) do
+    {:ok, work_run} =
+      Storage.upsert_work_run(%{
+        project_id: project.id,
+        type: "linear_issue",
+        status: "running",
+        dedupe_key: "e2e-cod-1",
+        linear_issue_id: "react-spa-e2e-1",
+        linear_identifier: "COD-1",
+        agent_backend: "codex",
+        payload: %{}
+      })
+
+    unless Storage.work_event_exists?(project.id, work_run.id, "run_started") do
+      {:ok, _event} =
+        Storage.append_event(%{
+          project_id: project.id,
+          work_run_id: work_run.id,
+          type: "run_started",
+          payload: %{message: "E2E run started"}
+        })
+    end
 
     :ok
   end

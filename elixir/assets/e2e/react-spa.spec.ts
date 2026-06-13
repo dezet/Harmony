@@ -46,3 +46,31 @@ test("sidebar project link navigates to the workspace", async ({ page }) => {
   // Running column heading is visible (card title — exact match to avoid the counts line)
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
 });
+
+test("clicking a running identifier navigates to run detail", async ({ page }) => {
+  // Navigate to the project workspace where the running column is visible
+  await page.goto("/projects/react-spa-e2e");
+
+  // Wait for the running column to appear and find the COD-1 link
+  const runLink = page.getByRole("link", { name: "COD-1" });
+  await expect(runLink).toBeVisible();
+
+  await runLink.click();
+
+  // URL should be the run detail page
+  await expect(page).toHaveURL(/\/projects\/react-spa-e2e\/runs\/COD-1$/);
+
+  // h1 shows the identifier
+  await expect(page.getByRole("heading", { level: 1, name: "COD-1" })).toBeVisible();
+
+  // Breadcrumb shows the identifier as the current page
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByText("COD-1")).toBeVisible();
+
+  // Stream shows the seeded work_event type
+  await expect(page.getByText("run_started")).toBeVisible();
+
+  // Rail Stop button is disabled (wired in Phase 5)
+  const stopButton = page.getByRole("button", { name: "Stop" });
+  await expect(stopButton).toBeVisible();
+  await expect(stopButton).toBeDisabled();
+});
