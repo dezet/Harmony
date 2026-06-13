@@ -7,6 +7,27 @@ import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import summaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsFixture from "@/test/fixtures/work_runs_page.fixture.json";
 
+vi.mock("@/components/JsonEditor", () => ({
+  JsonEditor: ({
+    value,
+    onChange,
+    ariaLabel,
+    ariaDescribedBy,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    ariaLabel?: string;
+    ariaDescribedBy?: string;
+  }) => (
+    <textarea
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
+
 afterEach(() => vi.restoreAllMocks());
 
 /**
@@ -18,6 +39,23 @@ function LocationDisplay() {
   return <div data-testid="location">{location.pathname}{location.search}</div>;
 }
 
+const projectDetailFixture = {
+  project: {
+    id: summaryFixture.project.id,
+    slug: summaryFixture.project.slug,
+    github_owner: summaryFixture.project.github_owner,
+    github_repo: summaryFixture.project.github_repo,
+    github_base_branch: summaryFixture.project.github_base_branch,
+    linear_project_slug: summaryFixture.project.linear_project_slug,
+    linear_team_key: summaryFixture.project.linear_team_key,
+    linear_human_review_state: summaryFixture.project.linear_human_review_state,
+    config_version: summaryFixture.project.config_version,
+    config: {},
+    inserted_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  },
+};
+
 function makeSuccessFetch(url: string): Promise<Response> {
   if ((url as string).includes("/work_runs")) {
     return Promise.resolve(
@@ -27,8 +65,17 @@ function makeSuccessFetch(url: string): Promise<Response> {
       }),
     );
   }
+  if ((url as string).includes("/summary")) {
+    return Promise.resolve(
+      new Response(JSON.stringify(summaryFixture), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  // Project detail fetch (for ConfigurationTab)
   return Promise.resolve(
-    new Response(JSON.stringify(summaryFixture), {
+    new Response(JSON.stringify(projectDetailFixture), {
       status: 200,
       headers: { "content-type": "application/json" },
     }),
@@ -192,15 +239,17 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.queryByText("Coming soon.")).not.toBeInTheDocument();
   });
 
-  it("renders Configuration stub when ?tab=configuration", async () => {
+  it("renders ConfigurationTab (with form) when ?tab=configuration", async () => {
     renderAtSlug("alpha", "/projects/alpha?tab=configuration");
 
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: summaryFixture.project.slug })).toBeInTheDocument(),
     );
 
-    expect(screen.getByRole("heading", { name: /^configuration$/i })).toBeInTheDocument();
-    expect(screen.getByText("Coming soon.")).toBeInTheDocument();
+    // The ConfigurationTab renders the project form once the project loads
+    await waitFor(() =>
+      expect(screen.getByLabelText("Slug")).toBeInTheDocument(),
+    );
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 });

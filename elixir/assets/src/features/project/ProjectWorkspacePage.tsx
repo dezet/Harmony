@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useProjectSummary } from "@/features/project/useProjectSummary";
 import { WorkTab } from "@/features/project/WorkTab";
+import { ConfigurationTab } from "@/features/project/ConfigurationTab";
 import { projectHealth } from "@/lib/health";
 import { ApiError } from "@/lib/api";
 
@@ -40,14 +41,6 @@ function ActivityStub() {
   );
 }
 
-function ConfigurationStub() {
-  return (
-    <section>
-      <h2 className="text-lg font-semibold">Configuration</h2>
-      <p className="text-muted-foreground">Coming soon.</p>
-    </section>
-  );
-}
 
 export function ProjectWorkspacePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -151,7 +144,13 @@ export function ProjectWorkspacePage() {
       {activeTab === "work" && <WorkTab summary={summary} slug={slug!} />}
       {activeTab === "evidence" && <EvidenceStub />}
       {activeTab === "activity" && <ActivityStub />}
-      {activeTab === "configuration" && <ConfigurationStub />}
+      {activeTab === "configuration" && (
+        <ConfigurationTab
+          projectId={summary.project.id}
+          slug={slug!}
+          active={activeTab === "configuration"}
+        />
+      )}
     </div>
   );
 }

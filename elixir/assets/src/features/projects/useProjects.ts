@@ -8,11 +8,11 @@ export function useProjects() {
   return useQuery<Project[]>({ queryKey: PROJECTS_KEY, queryFn: getProjects });
 }
 
-export function useProject(id: string | undefined) {
+export function useProject(id: string | undefined, options?: { enabled?: boolean }) {
   return useQuery<Project>({
     queryKey: ["project", id],
     queryFn: () => getProject(id as string),
-    enabled: !!id,
+    enabled: !!id && (options?.enabled ?? true),
   });
 }
 

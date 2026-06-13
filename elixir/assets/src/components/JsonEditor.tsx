@@ -6,9 +6,10 @@ interface JsonEditorProps {
   onChange: (value: string) => void;
   readOnly?: boolean;
   ariaLabel?: string;
+  ariaDescribedBy?: string;
 }
 
-export function JsonEditor({ value, onChange, readOnly, ariaLabel }: JsonEditorProps) {
+export function JsonEditor({ value, onChange, readOnly, ariaLabel, ariaDescribedBy }: JsonEditorProps) {
   return (
     <CodeMirror
       value={value}
@@ -16,6 +17,7 @@ export function JsonEditor({ value, onChange, readOnly, ariaLabel }: JsonEditorP
       extensions={[json()]}
       readOnly={readOnly}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       basicSetup={{ lineNumbers: true }}
       minHeight="160px"
       className="rounded-md border text-sm"

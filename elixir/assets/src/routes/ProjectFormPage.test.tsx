@@ -5,6 +5,27 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 
+vi.mock("@/components/JsonEditor", () => ({
+  JsonEditor: ({
+    value,
+    onChange,
+    ariaLabel,
+    ariaDescribedBy,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    ariaLabel?: string;
+    ariaDescribedBy?: string;
+  }) => (
+    <textarea
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
+
 afterEach(() => vi.restoreAllMocks());
 
 function renderForm() {
