@@ -33,6 +33,14 @@ defmodule SymphonyElixirWeb.Router do
     get("/api/v1/projects/:project_ref/summary", ProjectSummaryController, :summary)
     match(:*, "/api/v1/projects/:project_ref/summary", ProjectSummaryController, :method_not_allowed)
 
+    # Project artifacts listing endpoint. Must come before the :issue_identifier catch-all.
+    get("/api/v1/projects/:project_ref/artifacts", ProjectArtifactsController, :index)
+    match(:*, "/api/v1/projects/:project_ref/artifacts", ProjectArtifactsController, :method_not_allowed)
+
+    # Project activity (work events) pagination endpoint. Must come before the :issue_identifier catch-all.
+    get("/api/v1/projects/:project_ref/activity", ProjectActivityController, :index)
+    match(:*, "/api/v1/projects/:project_ref/activity", ProjectActivityController, :method_not_allowed)
+
     # Paginated work-runs endpoint. Uses ?project=<slug> query param. Must come
     # before the :issue_identifier catch-all.
     get("/api/v1/work_runs", WorkRunController, :index)

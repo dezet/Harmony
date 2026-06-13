@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "id": "evt-uuid-1",
+      "kind": "work_event",
+      "type": "turn_start",
+      "at": "2026-06-13T10:00:01Z",
+      "payload": {}
+    },
+    {
+      "id": "evt-uuid-2",
+      "kind": "work_event",
+      "type": "turn_end",
+      "at": "2026-06-13T10:00:02Z",
+      "payload": { "message": "Turn completed successfully" }
+    }
+  ],
+  "meta": {
+    "next_cursor": "eyJpbnNlcnRlZF9hdCI6IjIwMjYtMDYtMTNUMTA6MDA6MDJaIiwiaWQiOiJldnQtdXVpZC0yIn0"
+  }
+}

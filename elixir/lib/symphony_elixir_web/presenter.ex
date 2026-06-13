@@ -243,6 +243,80 @@ defmodule SymphonyElixirWeb.Presenter do
   end
 
   @doc """
+  Builds the project artifacts list payload.
+
+  Wraps the artifact list in `%{artifacts: [...]}`. Each item is projected via
+  `project_artifact_payload/1` which omits `path` and inlines the preloaded
+  `work_run` (or nil when the association is not set).
+  """
+  @spec project_artifacts_payload([map()]) :: map()
+  def project_artifacts_payload(artifacts) do
+    %{artifacts: Enum.map(artifacts, &project_artifact_payload/1)}
+  end
+
+  @doc """
+  Builds a single project artifact item payload.
+
+  Omits `path`. Inlines `work_run` as `%{linear_identifier, status, inserted_at}`
+  when the association is loaded; nil when `work_run_id` is nil or the assoc is
+  not loaded.
+  """
+  @spec project_artifact_payload(map()) :: map()
+  def project_artifact_payload(artifact) do
+    work_run_payload =
+      case artifact.work_run do
+        %SymphonyElixir.Storage.WorkRun{} = run ->
+          %{
+            linear_identifier: run.linear_identifier,
+            status: run.status,
+            inserted_at: iso8601(run.inserted_at)
+          }
+
+        _ ->
+          nil
+      end
+
+    %{
+      id: artifact.id,
+      kind: artifact.kind,
+      metadata: artifact.metadata,
+      work_run_id: artifact.work_run_id,
+      work_run: work_run_payload
+    }
+  end
+
+  @doc """
+  Builds the project activity page payload from a pre-fetched list of work events.
+
+  `events` must be overfetched by +1 relative to `page_size`.  The function
+  slices to `page_size` items and derives `next_cursor` from the last visible event
+  via `Storage.encode_work_event_cursor/1`.
+
+  Unlike `run_stream_payload`, this payload has no `has_live` field.
+  """
+  @spec project_activity_payload([WorkEvent.t()], pos_integer()) :: map()
+  def project_activity_payload(events, page_size) when is_integer(page_size) and page_size > 0 do
+    {visible, has_more} =
+      if length(events) > page_size do
+        {Enum.take(events, page_size), true}
+      else
+        {events, false}
+      end
+
+    next_cursor =
+      if has_more do
+        Storage.encode_work_event_cursor(List.last(visible))
+      else
+        nil
+      end
+
+    %{
+      items: Enum.map(visible, &stream_event_payload/1),
+      meta: %{next_cursor: next_cursor}
+    }
+  end
+
+  @doc """
   Builds a stream page payload from a pre-fetched list of work events.
 
   `events` must be overfetched by +1 relative to `page_size`.  The function
