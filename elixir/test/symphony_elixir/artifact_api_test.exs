@@ -10,6 +10,9 @@ defmodule SymphonyElixir.ArtifactApiTest do
   - valid file under workspace root → 200 with correct bytes + headers
   - file deleted from disk after row insert → 404
   - non-GET → 405
+  - symlink inside root pointing to a file outside root → 403
+  - artifact with empty string path → 4xx (not 500)
+  - filename with CRLF chars → 200 with sanitized content-disposition header
   """
 
   use SymphonyElixir.TestSupport
@@ -294,6 +297,108 @@ defmodule SymphonyElixir.ArtifactApiTest do
   test "path_within?/2 returns false for a completely unrelated path" do
     root = "/tmp/workspaces"
     refute SymphonyElixirWeb.ArtifactController.path_within?("/etc/passwd", root)
+  end
+
+  # ---------------------------------------------------------------------------
+  # 403 — symlink inside workspace root pointing to a file outside root
+  # ---------------------------------------------------------------------------
+
+  @tag :db
+  test "returns 403 when artifact path is a symlink pointing outside the workspace root",
+       %{workspace_root: workspace_root, project: project, run: run} do
+    # Create the real target file OUTSIDE the workspace root.
+    outside_dir =
+      Path.join(System.tmp_dir!(), "harmony-symlink-target-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(outside_dir)
+    outside_file = Path.join(outside_dir, "secret.txt")
+    File.write!(outside_file, "top-secret outside content")
+
+    # Create a symlink INSIDE the workspace root pointing to the outside file.
+    symlink_path = Path.join(workspace_root, "link_to_secret.txt")
+    :ok = File.ln_s(outside_file, symlink_path)
+
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "report",
+        path: symlink_path,
+        metadata: %{}
+      })
+
+    conn = get(build_conn(), "/api/v1/artifacts/#{artifact.id}")
+    assert json_response(conn, 403)["error"]["code"] == "artifact_path_unsafe"
+
+    File.rm_rf(outside_dir)
+    File.rm(symlink_path)
+  end
+
+  @tag :db
+  test "returns 200 for a normal (non-symlink) file inside root — realpath does not break happy path",
+       %{workspace_root: workspace_root, project: project, run: run} do
+    file_path = Path.join(workspace_root, "normal.png")
+    png_bytes = <<137, 80, 78, 71, 13, 10, 26, 10>>
+    File.write!(file_path, png_bytes)
+
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: file_path,
+        metadata: %{}
+      })
+
+    conn = get(build_conn(), "/api/v1/artifacts/#{artifact.id}")
+    assert conn.status == 200
+    assert conn.resp_body == png_bytes
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit test: path_within?/2 and real_path/1 are total over nil/empty string
+  # (the schema validates :required so nil/blank cannot reach the DB, but we
+  # guard the helpers directly so a corrupt row or future schema change cannot
+  # cause a 500 FunctionClauseError)
+  # ---------------------------------------------------------------------------
+
+  test "path_within?/2 returns false for nil path (no FunctionClauseError)" do
+    refute SymphonyElixirWeb.ArtifactController.path_within?(nil, "/tmp/workspaces")
+  end
+
+  test "path_within?/2 returns false for empty string path (no FunctionClauseError)" do
+    refute SymphonyElixirWeb.ArtifactController.path_within?("", "/tmp/workspaces")
+  end
+
+  # ---------------------------------------------------------------------------
+  # 200 — filename with CRLF → sanitized content-disposition header
+  # ---------------------------------------------------------------------------
+
+  @tag :db
+  test "returns 200 with sanitized content-disposition when filename contains CRLF",
+       %{workspace_root: workspace_root, project: project, run: run} do
+    # On Linux, CRLF bytes are valid in filenames. Create a real file whose
+    # name contains \r\n so we can verify the header is sanitized.
+    dirty_filename = "report\r\nevil-header: injected.bin"
+    file_path = Path.join(workspace_root, dirty_filename)
+    File.write!(file_path, "data")
+
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "report",
+        path: file_path,
+        metadata: %{}
+      })
+
+    conn = get(build_conn(), "/api/v1/artifacts/#{artifact.id}")
+    assert conn.status == 200
+
+    [disposition] = get_resp_header(conn, "content-disposition")
+    refute disposition =~ "\r", "content-disposition must not contain CR"
+    refute disposition =~ "\n", "content-disposition must not contain LF"
+    refute disposition =~ "\x00", "content-disposition must not contain NUL"
   end
 
   # ---------------------------------------------------------------------------

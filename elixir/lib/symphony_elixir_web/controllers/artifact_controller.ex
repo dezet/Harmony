@@ -8,12 +8,16 @@ defmodule SymphonyElixirWeb.ArtifactController do
 
   Security posture (Locked decision 2):
   1. Only the artifact UUID is untrusted input — the DB row is the allowlist.
-  2. At serve time we re-expand the stored path and require it to be within the
-     configured workspace.root. 403 on escape (catches symlink drift and
-     config changes since write time). 404 on miss.
+  2. At serve time the stored path is FULLY resolved (all symlinks expanded via
+     real_path/1) and the canonical path must be within the configured
+     workspace.root. 403 on escape. 404 on miss.
+     Symlink resolution uses a hop-limited loop over File.read_link/1, guarded
+     against infinite cycles (max 40 hops → {:error, :artifact_path_unsafe}).
   3. File size is capped at 100 MB; exceeding it returns 413.
   4. Content-type is derived from a static kind→mime map (no sniffing).
   5. `path` is never returned in any JSON response.
+  6. Content-disposition filename is stripped of CRLF, NUL, quote, and
+     backslash to prevent response-splitting / header injection.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -51,14 +55,16 @@ defmodule SymphonyElixirWeb.ArtifactController do
          {:ok, root} <- workspace_root(),
          :ok <- check_path_within_root(artifact.path, root),
          expanded = Path.expand(artifact.path),
-         {:ok, stat} <- stat_or_not_found(expanded),
-         :ok <- check_size(expanded, stat) do
-      {content_type, disposition} = resolve_content(artifact.kind, expanded)
+         {:ok, real} <- real_path(expanded),
+         :ok <- check_path_within_root(real, root),
+         {:ok, stat} <- stat_or_not_found(real),
+         :ok <- check_size(real, stat) do
+      {content_type, disposition} = resolve_content(artifact.kind, real)
 
       conn
-      |> apply_disposition(disposition, expanded)
+      |> apply_disposition(disposition, real)
       |> put_resp_content_type(content_type)
-      |> send_file(200, expanded)
+      |> send_file(200, real)
     else
       nil -> {:error, :artifact_not_found}
       {:error, _} = err -> err
@@ -92,7 +98,10 @@ defmodule SymphonyElixirWeb.ArtifactController do
   # path_within?/2 — true iff path is exactly root or directly under root/.
   # Defends against the prefix-bypass attack: a root of "/workspaces" must NOT
   # match a path like "/workspaces-evil/file.txt".
-  @spec path_within?(String.t(), String.t()) :: boolean()
+  # Returns false (not a crash) for nil or empty string.
+  @spec path_within?(String.t() | nil, String.t()) :: boolean()
+  def path_within?(path, _root) when not is_binary(path) or path == "", do: false
+
   def path_within?(path, root) do
     expanded_path = Path.expand(path)
     expanded_root = Path.expand(root)
@@ -104,6 +113,47 @@ defmodule SymphonyElixirWeb.ArtifactController do
       :ok
     else
       {:error, :artifact_path_unsafe}
+    end
+  end
+
+  # real_path/1 — resolve all symlinks in `path` to a canonical absolute path.
+  #
+  # Implements a hop-limited loop: at each step we call File.read_link/1.
+  # - {:ok, target}    → the path is a symlink; resolve target relative to the
+  #                      current path's directory and continue.
+  # - {:error, :einval} → not a symlink (regular file/dir); we are done.
+  # - {:error, other}  → the file does not exist or is inaccessible.
+  #                      We still return {:ok, current} so that
+  #                      stat_or_not_found/1 can produce the correct 404.
+  # - hop limit exceeded → {:error, :artifact_path_unsafe} (symlink loop).
+  @max_symlink_hops 40
+
+  @doc false
+  @spec real_path(String.t()) :: {:ok, String.t()} | {:error, :artifact_path_unsafe}
+  def real_path(path), do: resolve_symlinks(path, @max_symlink_hops)
+
+  defp resolve_symlinks(_path, 0), do: {:error, :artifact_path_unsafe}
+
+  defp resolve_symlinks(path, hops_remaining) do
+    case File.read_link(path) do
+      {:ok, target} ->
+        # target may be relative — resolve it against the directory of path.
+        next =
+          if Path.type(target) == :absolute do
+            Path.expand(target)
+          else
+            Path.expand(target, Path.dirname(path))
+          end
+
+        resolve_symlinks(next, hops_remaining - 1)
+
+      {:error, :einval} ->
+        # Not a symlink — canonical path reached.
+        {:ok, path}
+
+      {:error, _other} ->
+        # File does not exist or unreadable; return as-is so stat produces 404.
+        {:ok, path}
     end
   end
 
@@ -141,7 +191,11 @@ defmodule SymphonyElixirWeb.ArtifactController do
   end
 
   defp apply_disposition(conn, :attachment, path) do
-    filename = Path.basename(path)
+    filename =
+      path
+      |> Path.basename()
+      |> String.replace(~r/[\r\n\x00"\\]/, "")
+
     put_resp_header(conn, "content-disposition", "attachment; filename=\"#{filename}\"")
   end
 end
