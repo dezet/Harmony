@@ -6,7 +6,7 @@ defmodule SymphonyElixirWeb.FallbackController do
 
   use Phoenix.Controller, formats: [:json]
 
-  @spec call(Plug.Conn.t(), {:error, Ecto.Changeset.t() | :not_found | :run_not_found}) :: Plug.Conn.t()
+  @spec call(Plug.Conn.t(), {:error, Ecto.Changeset.t() | :not_found | :run_not_found | :artifact_not_found | :artifact_path_unsafe | {:artifact_too_large, String.t(), non_neg_integer()}}) :: Plug.Conn.t()
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)
@@ -29,6 +29,24 @@ defmodule SymphonyElixirWeb.FallbackController do
     conn
     |> put_status(:not_found)
     |> json(%{error: %{code: "run_not_found", message: "Run not found"}})
+  end
+
+  def call(conn, {:error, :artifact_not_found}) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: %{code: "artifact_not_found", message: "Artifact not found"}})
+  end
+
+  def call(conn, {:error, :artifact_path_unsafe}) do
+    conn
+    |> put_status(:forbidden)
+    |> json(%{error: %{code: "artifact_path_unsafe", message: "Artifact path is outside the workspace root"}})
+  end
+
+  def call(conn, {:error, {:artifact_too_large, _path, _size}}) do
+    conn
+    |> put_status(413)
+    |> json(%{error: %{code: "artifact_too_large", message: "Artifact exceeds the maximum allowed size"}})
   end
 
   defp changeset_errors(changeset) do

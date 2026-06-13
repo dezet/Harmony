@@ -45,6 +45,10 @@ defmodule SymphonyElixirWeb.Router do
     get("/api/v1/runs/:identifier/stream", RunDetailController, :stream)
     match(:*, "/api/v1/runs/:identifier/stream", RunDetailController, :method_not_allowed)
 
+    # Artifact content endpoint. Must come before the :issue_identifier catch-all.
+    get("/api/v1/artifacts/:id", ArtifactController, :show)
+    match(:*, "/api/v1/artifacts/:id", ArtifactController, :method_not_allowed)
+
     get("/api/v1/:issue_identifier", ObservabilityApiController, :issue)
     match(:*, "/api/v1/:issue_identifier", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/*path", ObservabilityApiController, :not_found)
