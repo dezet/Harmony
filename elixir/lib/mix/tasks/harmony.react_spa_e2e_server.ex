@@ -213,6 +213,29 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
        }, next_version}
     end
 
+    # Handles stop_run/retry_now GenServer calls from RunActionController.
+    #
+    # The snapshot always includes the stable seeded entry (react-spa-e2e-1 /
+    # COD-1), so RunActionController.find_issue_id/2 can resolve "COD-1" to its
+    # issue_id and call stop_run/2 with "react-spa-e2e-1" here. We return :ok
+    # for that seeded id and :run_not_found for anything else.
+    #
+    # retry_now is not exercised by the e2e suite (the seeded run is always
+    # running, never retrying); return :not_retrying rather than crashing.
+    def handle_call({:stop_run, issue_id}, _from, version) do
+      running_ids = snapshot(version).running |> Enum.map(& &1.issue_id)
+
+      if issue_id in running_ids do
+        {:reply, :ok, version}
+      else
+        {:reply, {:error, :run_not_found}, version}
+      end
+    end
+
+    def handle_call({:retry_now, _issue_id}, _from, version) do
+      {:reply, {:error, :not_retrying}, version}
+    end
+
     @impl true
     def handle_info(:broadcast_update, version) do
       :ok = SymphonyElixirWeb.ObservabilityPubSub.broadcast_update()
@@ -220,8 +243,20 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     end
 
     defp snapshot(version) do
+      # The stable seeded entry (COD-1 / react-spa-e2e-1) is always present in
+      # the running list so that RunActionController.find_issue_id/2 can resolve
+      # "COD-1" to its issue_id regardless of how many /api/v1/refresh calls have
+      # advanced the version counter. When version > 1 the refreshed entry
+      # (COD-{version}) is prepended — the overview test asserts its appearance.
+      running =
+        if version > 1 do
+          [running_entry(version), running_entry(1)]
+        else
+          [running_entry(version)]
+        end
+
       %{
-        running: [running_entry(version)],
+        running: running,
         retrying: [],
         blocked: [],
         runtime: runtime(),

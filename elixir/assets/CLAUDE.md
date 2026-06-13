@@ -85,6 +85,48 @@ only loads the summary, which omits `config`). On save: toast + invalidate the s
 `@codemirror/lang-json`. Used by `ProjectConfigForm` for the `config_json` field. In tests it is
 mocked as a plain `<textarea>` so CodeMirror does not interfere with jsdom.
 
+## Run actions (Phase 5)
+
+Two operator-initiated run actions are wired end-to-end:
+
+- **Stop:** `POST /api/v1/runs/:identifier/stop` → `RunActionController.stop/2` → `Orchestrator.stop_run/2`
+  - **Soft-stop semantics:** kills the Elixir Task supervising the agent; the underlying Codex OS
+    subprocess may keep running until it exhausts context/timeout. The operator-facing meaning is:
+    stop tracking + free the slot + mark status `"stopped"` + prevent re-dispatch this cycle. If the
+    tracker issue is still active on Linear the run may be re-dispatched on a later poll.
+  - Frontend: Stop button in `RunRail` enabled when `status === "running" | "blocked"`. Click opens
+    `ConfirmDialog` (shadcn `AlertDialog`, focus-trapped). Confirm fires `useStopRun` mutation
+    (no optimistic update); on success shows `toast.success("Run stop requested")` and invalidates
+    `RUN_KEY`. On error surfaces `ApiError.code` in a toast.
+  - HTTP responses: 200 `{status:"stopped"}`, 404 `run_not_found`, 409 `already_terminal`, 405 on
+    wrong method.
+
+- **Retry now:** `POST /api/v1/runs/:identifier/retry` → `RunActionController.retry/2` → `Orchestrator.retry_now/2`
+  - Reuses `handle_info(:retry_issue)` by sending the message immediately (0ms timer) after
+    cancelling the existing timer. The 0ms race with the poll tick is harmless — stale token → no-op.
+  - Frontend: Retry button in `RunRail` enabled when `status === "retrying"`. Fires directly
+    (no confirm dialog). Success toast: `"Retry scheduled"`.
+  - HTTP responses: 200 `{status:"retrying"}`, 404 `run_not_found`, 409 `not_retrying`, 405 on
+    wrong method.
+
+- **Rate-limit rendering:** `RateLimits` in the Runtime page renders defensively: progress bars when
+  a bucket (`primary`/`secondary`/`credits`) has numeric `used`+`limit`; key-value fallback for
+  unknown fields; `"No rate limit data."` when null/empty. The shape is opaque (Codex passes it
+  through raw); only `limit_id`/`limit_name` + bucket presence are validated. `RateLimitsPayload`
+  and `RateLimitBucket` types live in `contract.ts`.
+
+- **A11y additions (Phase 5):**
+  - RunStream list: `aria-live="polite"` `aria-atomic="false"` `aria-label="Run event stream"` for
+    live-append announcements.
+  - Filter buttons on RunStream: `aria-pressed` reflecting active state.
+  - Stop/Retry buttons: `aria-label="Stop this run"` / `"Stopping run…"` / `"Retry this run now"` /
+    `"Retrying run…"` (pending variants).
+  - ConfirmDialog: focus trap via shadcn AlertDialog (Base UI).
+  - Page `document.title` effects: `"${identifier} — Harmony"` on RunDetailPage; slugged title on
+    ProjectWorkspacePage; `"Runtime — Harmony"` / `"Overview — Harmony"` on Runtime/OverviewPage.
+  - Channel error: `useRunChannel(onConnectionError?)` triggers an inline `role=alert` Alert on
+    RunDetailPage if the Phoenix channel join fails.
+
 ## New API endpoints (Phase 4)
 
 - `GET /api/v1/projects/:project_ref/artifacts` — list artifacts for a project (no `path` field

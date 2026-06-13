@@ -57,8 +57,11 @@ test("workspace tabs: evidence, activity, and configuration deep-link", async ({
   await page.getByRole("button", { name: "Evidence" }).click();
   await expect(page).toHaveURL(/[?&]tab=evidence/);
 
-  // An artifact group with the COD-1 run identifier should be visible
-  await expect(page.getByText("COD-1")).toBeVisible();
+  // An artifact group with the COD-1 run identifier should be visible.
+  // The EvidenceTab renders the identifier as a <span> — scope to it so the
+  // assertion is not confused by any COD-1 links that React is still unmounting
+  // from the Work tab after the URL change.
+  await expect(page.locator("span.font-mono").filter({ hasText: "COD-1" }).first()).toBeVisible();
 
   // A screenshot <img> whose src contains the artifact API path
   await expect(
@@ -95,8 +98,11 @@ test("clicking a running identifier navigates to run detail", async ({ page }) =
   // Navigate to the project workspace where the running column is visible
   await page.goto("/projects/react-spa-e2e");
 
-  // Wait for the running column to appear and find the COD-1 link
-  const runLink = page.getByRole("link", { name: "COD-1" });
+  // Wait for the running column to appear and find a COD-1 link.
+  // When the snapshot has multiple running entries (e.g. after a /refresh bumped
+  // the version) COD-1 may appear both in the RunningColumn and the history table;
+  // .first() picks whichever renders first — both navigate to the same URL.
+  const runLink = page.getByRole("link", { name: "COD-1" }).first();
   await expect(runLink).toBeVisible();
 
   await runLink.click();
@@ -113,8 +119,33 @@ test("clicking a running identifier navigates to run detail", async ({ page }) =
   // Stream shows the seeded work_event type
   await expect(page.getByText("run_started")).toBeVisible();
 
-  // Rail Stop button is disabled (wired in Phase 5)
-  const stopButton = page.getByRole("button", { name: "Stop" });
+  // Rail Stop button is enabled for a running run (wired in Phase 5)
+  const stopButton = page.getByRole("button", { name: "Stop this run" });
   await expect(stopButton).toBeVisible();
-  await expect(stopButton).toBeDisabled();
+  await expect(stopButton).not.toBeDisabled();
+});
+
+test("stop action: confirm dialog and success toast", async ({ page }) => {
+  // Navigate directly to the run detail for the seeded COD-1 (status: running)
+  await page.goto("/projects/react-spa-e2e/runs/COD-1");
+
+  // Wait for the page to fully load
+  await expect(page.getByRole("heading", { level: 1, name: "COD-1" })).toBeVisible();
+
+  // The Stop button is enabled (COD-1 is running)
+  const stopButton = page.getByRole("button", { name: "Stop this run" });
+  await expect(stopButton).toBeVisible();
+  await expect(stopButton).not.toBeDisabled();
+
+  // Click Stop — the ConfirmDialog should open
+  await stopButton.click();
+
+  // The dialog title is visible
+  await expect(page.getByRole("heading", { name: "Stop this run?" })).toBeVisible();
+
+  // Click the confirm button ("Stop run") — fires POST /api/v1/runs/COD-1/stop
+  await page.getByRole("button", { name: "Stop run" }).click();
+
+  // The mock orchestrator returns :ok → HTTP 200 → frontend shows success toast
+  await expect(page.getByText("Run stop requested")).toBeVisible();
 });
