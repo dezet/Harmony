@@ -106,6 +106,49 @@ defmodule SymphonyElixir.StorageTest do
     end
   end
 
+  describe "forge_* fields on Project" do
+    @tag :db
+    setup :checkout_repo
+
+    @tag :db
+    test "project persists forge_* fields and defaults forge_type to github" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "forge-fields",
+          github_owner: "o",
+          github_repo: "r",
+          github_base_branch: "main",
+          forge_owner: "o",
+          forge_repo: "r",
+          forge_base_branch: "main",
+          forge_base_url: "https://ghe.example.com",
+          config_version: 1,
+          config: %{}
+        })
+
+      assert project.forge_owner == "o"
+      assert project.forge_repo == "r"
+      assert project.forge_base_branch == "main"
+      assert project.forge_base_url == "https://ghe.example.com"
+      assert project.forge_type == "github"
+    end
+
+    @tag :db
+    test "forge_type defaults to github when omitted" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "forge-default-type",
+          github_owner: "o",
+          github_repo: "r",
+          github_base_branch: "main",
+          config_version: 1,
+          config: %{}
+        })
+
+      assert project.forge_type == "github"
+    end
+  end
+
   describe "list_work_runs_for_project/2" do
     @tag :db
     setup :checkout_repo
