@@ -22,9 +22,12 @@ this phase:
   shape. GitLab therefore gets its **own** `GitlabMrSource` / `GitlabPipelineSource` /
   `GitlabReviewRequestSource` modules — it does not reuse the GitHub sources.
 - **The `Forge` behaviour's production role** is the genuinely shared ops: `create_comment` /
-  `create_review` (handoffs, already routed) and `list_repositories` / `get_repository` (picker,
-  Phase 3). The `list_change_requests` / `list_pipeline_runs` / `get_pipeline_logs` callbacks are the
-  **GitLab contract surface** — each adapter must implement them.
+  `create_review` (handoffs) and `list_repositories` / `get_repository` (picker, Phase 3). The
+  `list_change_requests` / `list_pipeline_runs` / `get_pipeline_logs` callbacks are the **GitLab
+  contract surface** — each adapter must implement them. **Correction discovered during planning:**
+  the handoffs currently call `Forge.Github.create_comment` / `create_review` *directly* (not via
+  `Forge.adapter/1`), and `ProjectCreds.creds/2` hardcodes `GITHUB_TOKEN`. This phase makes both
+  forge-neutral so a `gitlab` project's handoff posts to GitLab with a GitLab token.
 - **Work-source fetchers are injected via `Application.get_env`;** production defaults hardcode the
   `Github*` sources. This phase adds a `forge_type` dispatch wrapper that selects `Gitlab*` sources
   when `project.forge_type == "gitlab"`.
@@ -140,16 +143,23 @@ Orchestrator poll → forge_type selector → Gitlab{Mr,Pipeline,ReviewRequest}S
 
 ## Task sequence
 
-1. Add `list_change_request_comments` to `Forge` + `Forge.Github`; repoint `GithubReviewRequestSource`
-   (parity-neutral; keeps GitHub green and retires the Phase 1 follow-up).
-2. `Gitlab.Client` (REST v4, `instance_url`, `request_fun`/`token`) — repo, MRs, pipelines+jobs+trace,
+1. Add `list_change_request_comments` to `Forge` + `Forge.Github` (+ `Forge.Memory`); repoint
+   `GithubReviewRequestSource`'s comment fetch (parity-neutral; keeps GitHub green and retires the
+   Phase 1 follow-up).
+2. Forge-neutral credentials + handoffs: forge-aware `ProjectCreds.creds/2` (`GITLAB_TOKEN` for
+   `gitlab`), `gitlab_client_opts/2`, and repoint the CI-fix / review handoffs through `Forge.adapter/1`.
+3. `MergeRequest` / `Pipeline` / `Job` / `Note` structs.
+4. `Gitlab.Client` (REST v4, `instance_url`, `request_fun`/`token`) — repo, MRs, pipelines+jobs+trace,
    notes, MR review.
-3. `Forge.Gitlab` + `MergeRequest`/`Pipeline` structs — implement every `Forge` callback, normalize.
-4. `GitlabMrSource`.
-5. `GitlabPipelineSource`.
-6. `GitlabReviewRequestSource`.
-7. `forge_type` dispatch wrapper in the orchestrator.
-8. End-to-end Memory test for a `gitlab` project; full-suite + format + specs gates.
+5. `Forge.Gitlab` — implement every `Forge` callback, normalize.
+6. `GitlabMrSource`.
+7. `GitlabPipelineSource`.
+8. `GitlabReviewRequestSource`.
+9. `forge_type` dispatch wrapper in the orchestrator.
+10. End-to-end test for a `gitlab` project; full-suite + format + specs gates.
+
+The detailed task-by-task implementation plan lives in
+`docs/superpowers/plans/2026-06-13-gitlab-adapter.md`.
 
 ## Out of scope (this phase)
 
