@@ -129,7 +129,7 @@ defmodule SymphonyElixir.RuntimePolicy.ImplementationHandoff do
   end
 
   defp expected_base_ref(project, %WorkRun{} = run) do
-    run.forge_base_ref || run.github_base_ref || project_value(project, :forge_base_branch) || project_value(project, :github_base_branch)
+    run.forge_base_ref || project_value(project, :forge_base_branch)
   end
 
   defp pr_link_metadata(pr_link) do

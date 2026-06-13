@@ -7,10 +7,10 @@ defmodule SymphonyElixir.ReviewPromptTest do
   test "builds aggregate review prompt" do
     run = %WorkRun{
       type: "code_review",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
-      github_head_sha: "abc123",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
+      forge_head_sha: "abc123",
       payload: %{
         trigger_comment_id: 99,
         template: "Review correctness, tests, and maintainability."
