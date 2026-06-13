@@ -1,0 +1,8 @@
+# Local, machine-specific config — not for the shared repo.
+# Files named *.local.* hold per-operator settings (API keys, host IPs,
+# private project slugs, sandbox policies) and must stay untracked.
+*.local.md
+*.local.yml
+*.local.yaml
+*.local.json
+*.local.toml
