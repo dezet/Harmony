@@ -6,6 +6,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import summaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsFixture from "@/test/fixtures/work_runs_page.fixture.json";
+import artifactsFixture from "@/test/fixtures/project_artifacts_page.fixture.json";
+import activityFixture from "@/test/fixtures/project_activity_page.fixture.json";
 
 vi.mock("@/components/JsonEditor", () => ({
   JsonEditor: ({
@@ -68,6 +70,22 @@ function makeSuccessFetch(url: string): Promise<Response> {
   if ((url as string).includes("/summary")) {
     return Promise.resolve(
       new Response(JSON.stringify(summaryFixture), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  if ((url as string).includes("/artifacts")) {
+    return Promise.resolve(
+      new Response(JSON.stringify(artifactsFixture), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  if ((url as string).includes("/activity")) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ ...activityFixture, meta: { next_cursor: null } }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
@@ -181,18 +199,17 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByTestId("location").textContent).toContain("tab=evidence"),
     );
 
-    // Evidence stub panel should be visible
-    expect(screen.getByRole("heading", { name: /^evidence$/i })).toBeInTheDocument();
-    expect(screen.getByText("Coming soon.")).toBeInTheDocument();
+    // EvidenceTab should mount (real tab, no stub)
+    expect(screen.queryByText("Coming soon.")).not.toBeInTheDocument();
   });
 
   it("clicking Work tab clears the tab param from the URL", async () => {
     const user = userEvent.setup();
     renderAtSlug("alpha", "/projects/alpha?tab=evidence");
 
-    // Wait for page to load with evidence tab active
+    // Wait for page to load (evidence tab active — real EvidenceTab mounts)
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: /^evidence$/i })).toBeInTheDocument(),
+      expect(screen.getByRole("heading", { name: summaryFixture.project.slug })).toBeInTheDocument(),
     );
 
     // Click Work tab
@@ -208,7 +225,7 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
 
-  it("renders Activity stub when initialEntries includes ?tab=activity", async () => {
+  it("renders ActivityTab when initialEntries includes ?tab=activity", async () => {
     renderAtSlug("alpha", "/projects/alpha?tab=activity");
 
     // Wait for page to load
@@ -216,9 +233,8 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByRole("heading", { name: summaryFixture.project.slug })).toBeInTheDocument(),
     );
 
-    // Activity stub panel should be visible
-    expect(screen.getByRole("heading", { name: /^activity$/i })).toBeInTheDocument();
-    expect(screen.getByText("Coming soon.")).toBeInTheDocument();
+    // ActivityTab should mount (real tab, no stub)
+    expect(screen.queryByText("Coming soon.")).not.toBeInTheDocument();
 
     // Work tab content should NOT be rendered
     expect(screen.queryByText("Running")).not.toBeInTheDocument();

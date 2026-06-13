@@ -361,6 +361,35 @@ export interface RunStreamPage {
   };
 }
 
+// ─── Project Artifacts endpoint (/api/v1/projects/:ref/artifacts) ────────────
+
+export interface ProjectArtifactWorkRun {
+  linear_identifier: string | null;
+  status: string;
+  inserted_at: string;
+}
+
+export interface ProjectArtifact {
+  id: string;
+  kind: string;
+  metadata: Record<string, unknown> | null;
+  work_run_id: string | null;
+  work_run: ProjectArtifactWorkRun | null;
+}
+
+export interface ProjectArtifactsPage {
+  artifacts: ProjectArtifact[];
+}
+
+// ─── Project Activity endpoint (/api/v1/projects/:ref/activity) ──────────────
+
+export interface ProjectActivityPage {
+  items: RunStreamItem[];
+  meta: {
+    next_cursor: string | null;
+  };
+}
+
 // What the project form submits. `config` is an object parsed from the JSON textarea.
 export interface ProjectInput {
   slug: string;

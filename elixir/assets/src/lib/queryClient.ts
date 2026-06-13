@@ -15,3 +15,7 @@ export const WORK_RUNS_KEY = (slug: string, filters: WorkRunFilters) =>
 export const RUN_KEY = (identifier: string) => ["run", identifier] as const;
 
 export const RUN_STREAM_KEY = (identifier: string) => ["run-stream", identifier] as const;
+
+export const ARTIFACTS_KEY = (slug: string) => ["artifacts", slug] as const;
+
+export const ACTIVITY_KEY = (slug: string) => ["activity", slug] as const;

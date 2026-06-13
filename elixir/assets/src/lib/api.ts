@@ -1,6 +1,8 @@
 import type {
   ApiErrorBody,
   Project,
+  ProjectActivityPage,
+  ProjectArtifactsPage,
   ProjectInput,
   ProjectSummary,
   RunDetail,
@@ -105,4 +107,23 @@ export function getRunStream(identifier: string, cursor?: string): Promise<RunSt
   return request<RunStreamPage>(
     `/runs/${encodeURIComponent(identifier)}/stream${query ? `?${query}` : ""}`,
   );
+}
+
+export function getProjectArtifacts(slug: string): Promise<ProjectArtifactsPage> {
+  return request<ProjectArtifactsPage>(
+    `/projects/${encodeURIComponent(slug)}/artifacts`,
+  );
+}
+
+export function getProjectActivity(slug: string, cursor?: string): Promise<ProjectActivityPage> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const query = params.toString();
+  return request<ProjectActivityPage>(
+    `/projects/${encodeURIComponent(slug)}/activity${query ? `?${query}` : ""}`,
+  );
+}
+
+export function getArtifactUrl(id: string): string {
+  return `${BASE}/artifacts/${encodeURIComponent(id)}`;
 }

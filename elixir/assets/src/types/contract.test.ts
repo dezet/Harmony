@@ -4,7 +4,11 @@ import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json"
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
 import runStreamPageFixture from "@/test/fixtures/run_stream_page.fixture.json";
+import projectArtifactsPageFixture from "@/test/fixtures/project_artifacts_page.fixture.json";
+import projectActivityPageFixture from "@/test/fixtures/project_activity_page.fixture.json";
 import type {
+  ProjectActivityPage,
+  ProjectArtifactsPage,
   ProjectSummary,
   RunDetail,
   RunStreamPage,
@@ -305,5 +309,41 @@ describe("RunStreamPage contract fixture", () => {
     expect(page.items[1].payload).toMatchObject({ message: "Turn completed successfully" });
     expect(page.meta.next_cursor).not.toBeNull();
     expect(page.meta.has_live).toBe(true);
+  });
+});
+
+describe("ProjectArtifactsPage contract fixture", () => {
+  it("type-checks and exposes all fields used by the artifacts endpoint", () => {
+    const page: ProjectArtifactsPage = projectArtifactsPageFixture;
+
+    expect(page.artifacts).toHaveLength(2);
+    expectKeys(page.artifacts[0], ["id", "kind", "metadata", "work_run_id", "work_run"]);
+    expectKeys(page.artifacts[0].work_run!, ["linear_identifier", "status", "inserted_at"]);
+    expect(page.artifacts[0].id).toBe("art-uuid-1");
+    expect(page.artifacts[0].kind).toBe("screenshot");
+    expect(page.artifacts[0].metadata).toMatchObject({ label: "Homepage" });
+    expect(page.artifacts[0].work_run_id).toBe("run-uuid-1");
+    expect(page.artifacts[0].work_run!.linear_identifier).toBe("COD-42");
+    expect(page.artifacts[0].work_run!.status).toBe("completed");
+    // Second artifact: unattached (null work_run_id)
+    expect(page.artifacts[1].id).toBe("art-uuid-2");
+    expect(page.artifacts[1].kind).toBe("report");
+    expect(page.artifacts[1].work_run_id).toBeNull();
+    expect(page.artifacts[1].work_run).toBeNull();
+  });
+});
+
+describe("ProjectActivityPage contract fixture", () => {
+  it("type-checks and exposes all fields used by the activity endpoint", () => {
+    const page: ProjectActivityPage = projectActivityPageFixture as ProjectActivityPage;
+
+    expect(page.items).toHaveLength(2);
+    expectKeys(page.items[0], ["id", "kind", "type", "at", "payload"]);
+    expectKeys(page.meta, ["next_cursor"]);
+    expect(page.items[0].id).toBe("evt-uuid-1");
+    expect(page.items[0].kind).toBe("work_event");
+    expect(page.items[0].type).toBe("turn_start");
+    expect(page.items[1].payload).toMatchObject({ message: "Turn completed successfully" });
+    expect(page.meta.next_cursor).not.toBeNull();
   });
 });

@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, ApiError } from "@/lib/api";
+import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, ApiError } from "@/lib/api";
 import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
 import runStreamPageFixture from "@/test/fixtures/run_stream_page.fixture.json";
+import projectArtifactsFixture from "@/test/fixtures/project_artifacts_page.fixture.json";
+import projectActivityFixture from "@/test/fixtures/project_activity_page.fixture.json";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -303,5 +305,130 @@ describe("getRunStream", () => {
       status: 404,
     });
     await expect(getRunStream("UNKNOWN-99")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("getProjectArtifacts", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("requests the correct URL and returns parsed artifacts page", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(projectArtifactsFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await getProjectArtifacts("alpha");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/projects/alpha/artifacts");
+    expect(page.artifacts).toHaveLength(2);
+    expect(page.artifacts[0].kind).toBe("screenshot");
+  });
+
+  it("encodes special characters in the slug", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(projectArtifactsFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getProjectArtifacts("my project/slug");
+
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/projects/my%20project%2Fslug/artifacts");
+  });
+
+  it("throws ApiError on error envelope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: "not_found", message: "Project not found" } }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    await expect(getProjectArtifacts("unknown")).rejects.toMatchObject({
+      code: "not_found",
+      status: 404,
+    });
+    await expect(getProjectArtifacts("unknown")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("getProjectActivity", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("requests the correct URL without cursor", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(projectActivityFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await getProjectActivity("alpha");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/projects/alpha/activity");
+    expect(page.items).toHaveLength(2);
+  });
+
+  it("includes cursor param when provided", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(projectActivityFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getProjectActivity("alpha", "abc123cursor");
+
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/projects/alpha/activity?cursor=abc123cursor");
+  });
+
+  it("throws ApiError on error envelope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: "not_found", message: "Project not found" } }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    await expect(getProjectActivity("unknown")).rejects.toMatchObject({
+      code: "not_found",
+      status: 404,
+    });
+    await expect(getProjectActivity("unknown")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("getArtifactUrl", () => {
+  it("returns the correct URL for an artifact id", () => {
+    expect(getArtifactUrl("art-uuid-1")).toBe("/api/v1/artifacts/art-uuid-1");
+  });
+
+  it("encodes special characters in the artifact id", () => {
+    expect(getArtifactUrl("art/with spaces")).toBe("/api/v1/artifacts/art%2Fwith%20spaces");
   });
 });

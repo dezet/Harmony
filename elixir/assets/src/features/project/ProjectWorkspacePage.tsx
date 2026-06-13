@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useProjectSummary } from "@/features/project/useProjectSummary";
 import { WorkTab } from "@/features/project/WorkTab";
 import { ConfigurationTab } from "@/features/project/ConfigurationTab";
+import { EvidenceTab } from "@/features/project/components/EvidenceTab";
+import { ActivityTab } from "@/features/project/components/ActivityTab";
 import { projectHealth } from "@/lib/health";
 import { ApiError } from "@/lib/api";
 
@@ -22,24 +24,6 @@ const healthDotClass: Record<string, string> = {
   blocked: "bg-red-500",
   idle: "bg-muted-foreground",
 };
-
-function EvidenceStub() {
-  return (
-    <section>
-      <h2 className="text-lg font-semibold">Evidence</h2>
-      <p className="text-muted-foreground">Coming soon.</p>
-    </section>
-  );
-}
-
-function ActivityStub() {
-  return (
-    <section>
-      <h2 className="text-lg font-semibold">Activity</h2>
-      <p className="text-muted-foreground">Coming soon.</p>
-    </section>
-  );
-}
 
 
 export function ProjectWorkspacePage() {
@@ -142,8 +126,8 @@ export function ProjectWorkspacePage() {
 
       {/* Active tab content */}
       {activeTab === "work" && <WorkTab summary={summary} slug={slug!} />}
-      {activeTab === "evidence" && <EvidenceStub />}
-      {activeTab === "activity" && <ActivityStub />}
+      {activeTab === "evidence" && <EvidenceTab slug={slug!} />}
+      {activeTab === "activity" && <ActivityTab slug={slug!} />}
       {activeTab === "configuration" && (
         <ConfigurationTab
           projectId={summary.project.id}
