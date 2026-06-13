@@ -27,6 +27,9 @@ defmodule SymphonyElixirWeb.Router do
     put("/api/v1/projects/:id", ProjectController, :update)
     patch("/api/v1/projects/:id", ProjectController, :update)
 
+    post("/api/v1/forge/repositories", ForgePickerController, :repositories)
+    post("/api/v1/tracker/projects", TrackerPickerController, :projects)
+
     # Per-project summary endpoint. Must come after the CRUD routes (which bind
     # /projects/:id) but before the :issue_identifier catch-all. The :project_ref
     # segment accepts a UUID or slug.
