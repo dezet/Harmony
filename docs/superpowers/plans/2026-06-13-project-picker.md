@@ -517,6 +517,7 @@ defmodule SymphonyElixir.TrackerPickerApiTest do
 
   setup do
     start_test_endpoint()
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory")
     prev = Application.get_env(:symphony_elixir, :memory_tracker_projects)
     on_exit(fn -> Application.put_env(:symphony_elixir, :memory_tracker_projects, prev) end)
     :ok
