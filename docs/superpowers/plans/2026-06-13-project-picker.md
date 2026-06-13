@@ -55,11 +55,10 @@ Create `elixir/test/symphony_elixir/tracker_list_projects_test.exs`:
 
 ```elixir
 defmodule SymphonyElixir.TrackerListProjectsTest do
-  use ExUnit.Case, async: false
-
-  alias SymphonyElixir.Tracker
+  use SymphonyElixir.TestSupport
 
   setup do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory")
     prev = Application.get_env(:symphony_elixir, :memory_tracker_projects)
     on_exit(fn -> Application.put_env(:symphony_elixir, :memory_tracker_projects, prev) end)
     :ok
@@ -76,7 +75,7 @@ defmodule SymphonyElixir.TrackerListProjectsTest do
 end
 ```
 
-(The test relies on `config/config.exs` setting `tracker.kind` to `"memory"` in `:test`; verify it does — existing tracker tests depend on the same.)
+(The default TestSupport workflow sets `tracker_kind: "linear"`, so the setup overrides it to `"memory"` via `write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory")` — the established pattern for memory-tracker tests.)
 
 - [ ] **Step 2: Run it (fails)**
 
