@@ -160,6 +160,35 @@ defmodule SymphonyElixir.Storage do
     |> Repo.all()
   end
 
+  @spec get_artifact(binary()) :: Artifact.t() | nil
+  def get_artifact(id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get(Artifact, uuid)
+      :error -> nil
+    end
+  end
+
+  @spec list_artifacts_for_project(binary()) :: [Artifact.t()]
+  def list_artifacts_for_project(project_id) when is_binary(project_id) do
+    Artifact
+    |> where([artifact], artifact.project_id == ^project_id)
+    |> order_by([artifact], asc: artifact.inserted_at, asc: artifact.id)
+    |> preload(:work_run)
+    |> Repo.all()
+  end
+
+  @spec list_work_events_for_project(binary(), map()) :: [WorkEvent.t()]
+  def list_work_events_for_project(project_id, opts \\ %{}) when is_binary(project_id) do
+    page_size = Map.get(opts, :page_size, 50)
+
+    WorkEvent
+    |> where([event], event.project_id == ^project_id)
+    |> apply_work_event_cursor(Map.get(opts, :cursor))
+    |> order_by([event], asc: event.inserted_at, asc: event.id)
+    |> limit(^(page_size + 1))
+    |> Repo.all()
+  end
+
   @spec create_work_run(map()) :: {:ok, WorkRun.t()} | {:error, Ecto.Changeset.t()}
   def create_work_run(attrs) when is_map(attrs) do
     %WorkRun{}

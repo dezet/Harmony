@@ -596,4 +596,322 @@ defmodule SymphonyElixir.StorageTest do
       refute prb.id in ids
     end
   end
+
+  describe "get_artifact/1" do
+    @tag :db
+    setup :checkout_repo
+
+    setup do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "artifact-get-proj",
+          linear_project_slug: "ag-linear",
+          github_owner: "acme",
+          github_repo: "widget",
+          github_base_branch: "main",
+          linear_human_review_state: "Human Review",
+          config_version: 1,
+          config: %{}
+        })
+
+      {:ok, run} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      %{project: project, run: run}
+    end
+
+    @tag :db
+    test "returns the artifact when found", %{project: project, run: run} do
+      {:ok, artifact} =
+        SymphonyElixir.Storage.create_artifact(%{
+          project_id: project.id,
+          work_run_id: run.id,
+          kind: "screenshot",
+          path: "/tmp/screenshot.png",
+          metadata: %{}
+        })
+
+      result = SymphonyElixir.Storage.get_artifact(artifact.id)
+      assert result != nil
+      assert result.id == artifact.id
+      assert result.kind == "screenshot"
+    end
+
+    @tag :db
+    test "returns nil for an unknown but valid UUID" do
+      unknown_id = Ecto.UUID.generate()
+      assert nil == SymphonyElixir.Storage.get_artifact(unknown_id)
+    end
+
+    @tag :db
+    test "returns nil for garbage (non-UUID) input" do
+      assert nil == SymphonyElixir.Storage.get_artifact("not-a-uuid")
+      assert nil == SymphonyElixir.Storage.get_artifact("")
+      assert nil == SymphonyElixir.Storage.get_artifact("12345")
+    end
+  end
+
+  describe "list_artifacts_for_project/1" do
+    @tag :db
+    setup :checkout_repo
+
+    setup do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "artifacts-for-proj",
+          linear_project_slug: "afp-linear",
+          github_owner: "acme",
+          github_repo: "widget",
+          github_base_branch: "main",
+          linear_human_review_state: "Human Review",
+          config_version: 1,
+          config: %{}
+        })
+
+      {:ok, other_project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "other-artifacts-proj",
+          linear_project_slug: "oap-linear",
+          github_owner: "acme",
+          github_repo: "other",
+          github_base_branch: "main",
+          linear_human_review_state: "Human Review",
+          config_version: 1,
+          config: %{}
+        })
+
+      {:ok, run} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      {:ok, other_run} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: other_project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      %{project: project, other_project: other_project, run: run, other_run: other_run}
+    end
+
+    defp insert_artifact(project_id, work_run_id, kind) do
+      {:ok, artifact} =
+        SymphonyElixir.Storage.create_artifact(%{
+          project_id: project_id,
+          work_run_id: work_run_id,
+          kind: kind,
+          path: "/tmp/#{kind}.png",
+          metadata: %{}
+        })
+
+      artifact
+    end
+
+    defp set_artifact_inserted_at(artifact, inserted_at) do
+      import Ecto.Query
+
+      SymphonyElixir.Repo.update_all(
+        from(a in SymphonyElixir.Storage.Artifact, where: a.id == ^artifact.id),
+        set: [inserted_at: inserted_at]
+      )
+
+      %{artifact | inserted_at: inserted_at}
+    end
+
+    @tag :db
+    test "returns artifacts for the project in ascending inserted_at order", %{project: project, run: run} do
+      a1 = insert_artifact(project.id, run.id, "screenshot") |> set_artifact_inserted_at(~U[2026-06-13 10:00:01.000000Z])
+      a2 = insert_artifact(project.id, run.id, "report") |> set_artifact_inserted_at(~U[2026-06-13 10:00:02.000000Z])
+      a3 = insert_artifact(project.id, run.id, "trace") |> set_artifact_inserted_at(~U[2026-06-13 10:00:03.000000Z])
+
+      artifacts = SymphonyElixir.Storage.list_artifacts_for_project(project.id)
+      ids = Enum.map(artifacts, & &1.id)
+
+      assert ids == [a1.id, a2.id, a3.id]
+    end
+
+    @tag :db
+    test "does not return artifacts from other projects", %{project: project, run: run, other_project: other_project, other_run: other_run} do
+      insert_artifact(project.id, run.id, "screenshot")
+      other_artifact = insert_artifact(other_project.id, other_run.id, "screenshot")
+
+      artifacts = SymphonyElixir.Storage.list_artifacts_for_project(project.id)
+      ids = Enum.map(artifacts, & &1.id)
+
+      refute other_artifact.id in ids
+    end
+
+    @tag :db
+    test "preloads work_run association (non-nil)", %{project: project, run: run} do
+      insert_artifact(project.id, run.id, "screenshot")
+
+      [artifact] = SymphonyElixir.Storage.list_artifacts_for_project(project.id)
+      assert artifact.work_run != nil
+      assert %SymphonyElixir.Storage.WorkRun{} = artifact.work_run
+      assert artifact.work_run.id == run.id
+    end
+  end
+
+  describe "list_work_events_for_project/2" do
+    @tag :db
+    setup :checkout_repo
+
+    setup do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "events-proj-wide",
+          linear_project_slug: "epw-linear",
+          github_owner: "acme",
+          github_repo: "widget",
+          github_base_branch: "main",
+          linear_human_review_state: "Human Review",
+          config_version: 1,
+          config: %{}
+        })
+
+      {:ok, other_project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "other-events-proj",
+          linear_project_slug: "oep-linear",
+          github_owner: "acme",
+          github_repo: "other",
+          github_base_branch: "main",
+          linear_human_review_state: "Human Review",
+          config_version: 1,
+          config: %{}
+        })
+
+      {:ok, run1} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      {:ok, run2} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      {:ok, other_run} =
+        SymphonyElixir.Storage.create_work_run(%{
+          project_id: other_project.id,
+          type: "implementation",
+          status: "running",
+          agent_backend: "codex",
+          payload: %{}
+        })
+
+      %{project: project, other_project: other_project, run1: run1, run2: run2, other_run: other_run}
+    end
+
+    defp insert_project_event(project_id, work_run_id, type) do
+      {:ok, event} =
+        SymphonyElixir.Storage.append_event(%{
+          project_id: project_id,
+          work_run_id: work_run_id,
+          type: type,
+          payload: %{}
+        })
+
+      event
+    end
+
+    defp set_project_event_inserted_at(event, inserted_at) do
+      import Ecto.Query
+
+      SymphonyElixir.Repo.update_all(
+        from(e in SymphonyElixir.Storage.WorkEvent, where: e.id == ^event.id),
+        set: [inserted_at: inserted_at]
+      )
+
+      %{event | inserted_at: inserted_at}
+    end
+
+    @tag :db
+    test "returns events for a project across multiple runs in ascending order", %{project: project, run1: run1, run2: run2} do
+      e1 = insert_project_event(project.id, run1.id, "queued") |> set_project_event_inserted_at(~U[2026-06-13 08:00:01.000000Z])
+      e2 = insert_project_event(project.id, run2.id, "started") |> set_project_event_inserted_at(~U[2026-06-13 08:00:02.000000Z])
+      e3 = insert_project_event(project.id, run1.id, "agent_update") |> set_project_event_inserted_at(~U[2026-06-13 08:00:03.000000Z])
+
+      events = SymphonyElixir.Storage.list_work_events_for_project(project.id)
+      ids = Enum.map(events, & &1.id)
+
+      assert ids == [e1.id, e2.id, e3.id]
+    end
+
+    @tag :db
+    test "scoped to project_id — does not return events from other projects", %{project: project, run1: run1, other_project: other_project, other_run: other_run} do
+      insert_project_event(project.id, run1.id, "queued")
+      other_event = insert_project_event(other_project.id, other_run.id, "queued")
+
+      events = SymphonyElixir.Storage.list_work_events_for_project(project.id)
+      ids = Enum.map(events, & &1.id)
+
+      refute other_event.id in ids
+    end
+
+    @tag :db
+    test "overfetches page_size + 1 rows so caller can detect next page", %{project: project, run1: run1} do
+      for i <- 1..3 do
+        insert_project_event(project.id, run1.id, "t#{i}")
+      end
+
+      rows = SymphonyElixir.Storage.list_work_events_for_project(project.id, %{page_size: 2})
+      assert length(rows) == 3
+    end
+
+    @tag :db
+    test "cursor pagination returns correct second page without overlap", %{project: project, run1: run1} do
+      e1 = insert_project_event(project.id, run1.id, "e1") |> set_project_event_inserted_at(~U[2026-06-13 09:00:01.000000Z])
+      e2 = insert_project_event(project.id, run1.id, "e2") |> set_project_event_inserted_at(~U[2026-06-13 09:00:02.000000Z])
+      e3 = insert_project_event(project.id, run1.id, "e3") |> set_project_event_inserted_at(~U[2026-06-13 09:00:03.000000Z])
+
+      # page 1: page_size=2, overfetch gives 3 rows [e1, e2, e3]
+      page1 = SymphonyElixir.Storage.list_work_events_for_project(project.id, %{page_size: 2})
+      assert length(page1) == 3
+
+      # pivot = last visible row = index 1 (e2)
+      pivot = Enum.at(page1, 1)
+      cursor = SymphonyElixir.Storage.encode_work_event_cursor(pivot)
+
+      page2 = SymphonyElixir.Storage.list_work_events_for_project(project.id, %{page_size: 2, cursor: cursor})
+
+      page2_ids = Enum.map(page2, & &1.id)
+      assert e3.id in page2_ids
+      refute e1.id in page2_ids
+      refute e2.id in page2_ids
+    end
+
+    @tag :db
+    test "invalid cursor string falls back to first page", %{project: project, run1: run1} do
+      for i <- 1..3 do
+        insert_project_event(project.id, run1.id, "type-#{i}")
+      end
+
+      no_cursor = SymphonyElixir.Storage.list_work_events_for_project(project.id)
+      bad_cursor = SymphonyElixir.Storage.list_work_events_for_project(project.id, %{cursor: "!not-valid-base64!!"})
+
+      assert Enum.map(no_cursor, & &1.id) == Enum.map(bad_cursor, & &1.id)
+    end
+  end
 end
