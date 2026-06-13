@@ -44,12 +44,13 @@ defmodule SymphonyElixirWeb.ObservabilityRunPubSub do
   @spec broadcast_event_appended(String.t(), map()) :: :ok
   def broadcast_event_appended(issue_id, %{identifier: identifier, type: type, message: message}) do
     at = now_iso8601()
+    unique_suffix = Integer.to_string(:erlang.unique_integer([:positive, :monotonic]))
 
     payload = %{
       issue_id: issue_id,
       identifier: identifier,
       item: %{
-        id: "live:" <> at,
+        id: "live:" <> at <> ":" <> unique_suffix,
         kind: "live_event",
         type: type,
         at: at,
