@@ -35,6 +35,8 @@ const sampleProject: Project = {
   github_owner: "dezet",
   github_repo: "portal",
   github_base_branch: "develop",
+  forge_type: "github",
+  forge_base_url: null,
   forge_secret: "set",
   tracker_secret: "unset",
   linear_project_slug: "portal-linear",

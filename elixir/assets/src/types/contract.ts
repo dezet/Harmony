@@ -316,6 +316,8 @@ export interface Project {
   github_owner: string;
   github_repo: string;
   github_base_branch: string;
+  forge_type: string;
+  forge_base_url: string | null;
   forge_secret: SecretState;
   tracker_secret: SecretState;
   config_version: number;
@@ -414,6 +416,41 @@ export interface ProjectActivityPage {
 }
 
 // What the project form submits. `config` is an object parsed from the JSON textarea.
+export interface ForgeRepository {
+  owner: string;
+  name: string;
+  default_branch: string;
+  url: string;
+}
+
+export interface ForgeRepositoriesResponse {
+  repositories: ForgeRepository[];
+  truncated: boolean;
+}
+
+export interface TrackerProject {
+  id: string;
+  name: string;
+  slug: string;
+  team_key: string;
+}
+
+export interface TrackerProjectsResponse {
+  projects: TrackerProject[];
+  truncated: boolean;
+}
+
+export interface ForgeRepositoriesRequest {
+  forge_type: string;
+  base_url?: string | null;
+  token?: string | null;
+}
+
+export interface TrackerProjectsRequest {
+  token?: string | null;
+  base_url?: string | null;
+}
+
 export interface ProjectInput {
   slug: string;
   linear_project_slug?: string | null;
@@ -422,6 +459,8 @@ export interface ProjectInput {
   github_owner: string;
   github_repo: string;
   github_base_branch: string;
+  forge_type?: string;
+  forge_base_url?: string | null;
   config_version: number;
   config: Record<string, unknown>;
   // Write-only secrets: a non-empty value sets it; the clear flag resets to env
