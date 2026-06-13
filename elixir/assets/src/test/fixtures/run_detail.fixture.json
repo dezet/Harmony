@@ -19,9 +19,9 @@
   "last_event": "turn_end",
   "last_message": null,
   "tokens": {
-    "input": 200,
-    "output": 80,
-    "total": 280
+    "input_tokens": 200,
+    "output_tokens": 80,
+    "total_tokens": 280
   },
   "attempts": {
     "restart_count": null,

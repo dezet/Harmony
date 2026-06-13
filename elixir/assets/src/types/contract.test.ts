@@ -259,7 +259,7 @@ describe("RunDetail contract fixture", () => {
     ]);
     expectKeys(detail.project!, ["id", "slug", "name"]);
     expectKeys(detail.workspace!, ["path", "host"]);
-    expectKeys(detail.tokens!, ["input", "output", "total"]);
+    expectKeys(detail.tokens!, ["input_tokens", "output_tokens", "total_tokens"]);
     expectKeys(detail.attempts, ["restart_count", "current_retry_attempt"]);
     expect(detail.pull_requests).toHaveLength(1);
     expectKeys(detail.pull_requests[0], [
@@ -282,7 +282,7 @@ describe("RunDetail contract fixture", () => {
     expect(detail.status).toBe("running");
     expect(detail.project!.slug).toBe("alpha");
     expect(detail.workspace!.host).toBe("host1");
-    expect(detail.tokens!.total).toBe(280);
+    expect(detail.tokens!.total_tokens).toBe(280);
     expect(detail.attempts.restart_count).toBeNull();
     expect(detail.last_message).toBeNull();
     expect(detail.last_error).toBeNull();

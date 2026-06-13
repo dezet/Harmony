@@ -303,12 +303,6 @@ export interface Project {
 
 // ─── Run Detail endpoint (/api/v1/runs/:identifier) ─────────────────────────
 
-export interface RunDetailTokens {
-  input: number;
-  output: number;
-  total: number;
-}
-
 export interface RunDetailProject {
   id: string | null;
   slug: string | null;
@@ -340,7 +334,7 @@ export interface RunDetail {
   last_event_at: string | null;
   last_event: string | null;
   last_message: string | null;
-  tokens: RunDetailTokens | null;
+  tokens: Tokens | null;
   attempts: {
     restart_count: number | null;
     current_retry_attempt: number | null;

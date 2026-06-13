@@ -171,9 +171,9 @@ defmodule SymphonyElixirWeb.Presenter do
             live_running.last_codex_event,
             summarize_message(live_running.last_codex_message),
             %{
-              input: live_running.codex_input_tokens,
-              output: live_running.codex_output_tokens,
-              total: live_running.codex_total_tokens
+              input_tokens: live_running.codex_input_tokens,
+              output_tokens: live_running.codex_output_tokens,
+              total_tokens: live_running.codex_total_tokens
             }
           }
 

@@ -516,7 +516,7 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
 
       result = Presenter.run_detail_payload("COD-10", nil, snap, [], [])
 
-      assert result.tokens == %{input: 100, output: 50, total: 150}
+      assert result.tokens == %{input_tokens: 100, output_tokens: 50, total_tokens: 150}
     end
 
     test "session_id and turn_count come from live running entry" do
