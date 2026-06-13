@@ -24,14 +24,26 @@ Phase 3 picker builds on — it validates repo/tracker access with the *project'
    Rationale: best UI flow ("paste a token, it disappears"), audited crypto, built-in multi-key
    rotation. It dominates `:crypto` at identical UX; `$VAR` is rejected because it breaks the
    "paste token in UI" flow the Phase 3 picker assumes.
-2. **Both secrets now** — `forge_secret` *and* `tracker_secret`. Same Cloak mechanism applied twice;
-   splitting only defers identical work into Phase 3 and leaves an inconsistency there (one secret
-   encrypted, one in env).
+2. **Both secrets stored now; only forge resolved per-project now.** `forge_secret` *and*
+   `tracker_secret` both get the full storage pipeline (encrypted column, write-only API, form field).
+   But the **live tracker poll stays global** — the `Tracker` behaviour
+   (`fetch_candidate_issues/0`, `fetch_issues_by_states/1`, …) takes no project and Linear reads
+   `Config.settings!().tracker.api_key`; there is no project in scope at call time. Threading a
+   per-project key through the global tracker is a large refactor, out of this phase. `tracker_secret`
+   is therefore **stored and managed now** but **consumed in Phase 3** by the new
+   `Tracker.list_projects(creds)` picker op, which takes credentials explicitly. This preserves the
+   symmetric, cheap part of "both now" (storage + API + UI) and defers only the expensive
+   resolution-threading to where it is actually needed. Rejected alternatives: forge-only now (reopens
+   the Phase 3 inconsistency we wanted to avoid); full per-project tracker now (large poll-path
+   refactor, out of scope).
 3. **Hard fail-fast on the key** — `CLOAK_KEY` is required in **every** environment; a missing key
    crashes boot. No silent dev/test default, no lazy no-encryption mode. Implication: CI and the
    local test setup must export `CLOAK_KEY`.
-4. **Resolve loads the project by slug** when only a `WorkRun` is in hand — the secret stays
-   single-source-of-truth on `projects` and is never copied into `work_runs`.
+4. **Resolve looks the project up by forge owner+repo** when only a `WorkRun` is in hand — a `WorkRun`
+   carries `forge_owner`/`forge_repo` but no slug, so resolution uses `Storage.get_project_by_github/2`.
+   The secret stays single-source-of-truth on `projects` and is never copied into `work_runs`. Work
+   sources already pass a full `Project` (secret loaded), so only the run-based handoff path performs
+   the lookup.
 5. **Clear via an explicit boolean** (`clear_forge_secret` / `clear_tracker_secret`), not a sentinel
    string and not omission. Omission leaves a secret unchanged.
 
@@ -58,13 +70,17 @@ The changeset casts the secret fields but the **presenter/serializer never emits
 
 ### 3. Credential resolution (per-call, per-secret fallback)
 
-`ProjectCreds.forge_token/1` → `project.forge_secret || env(forge_type)`; the tracker key resolver →
-`project.tracker_secret || env`. Fallback is **independent per secret**: a project may carry its own
-forge token while its tracker key still comes from env.
+**Forge (resolved this phase):** `ProjectCreds.forge_token/1` → `project.forge_secret ||
+env(forge_type)`. Work sources already pass a full `Project` (secret loaded). When `ProjectCreds` is
+called with a `WorkRun` (handoff path — no secret on the run), it **looks the project up by
+`forge_owner`+`forge_repo`** via `Storage.get_project_by_github/2` to obtain the decrypted secret,
+then applies env fallback. The secret is never duplicated into `work_runs`.
 
-When `ProjectCreds` is called with a `WorkRun` (which does not carry the secret), it **loads the
-project by `slug`** to obtain the decrypted secret, then applies the same fallback. The secret is
-never duplicated into `work_runs`.
+**Tracker (stored this phase, resolved in Phase 3):** the live tracker poll stays global — Linear
+continues to read `Config.settings!().tracker.api_key` with the existing `LINEAR_API_KEY` env
+fallback, unchanged. `project.tracker_secret` is persisted and managed now but only *read back* by the
+Phase 3 `Tracker.list_projects(creds)` picker op. No resolution wiring for `tracker_secret` ships in
+this phase; touching the global tracker poll path is explicitly out of scope.
 
 ### 4. Write-only secret API + form
 
@@ -107,8 +123,9 @@ YAML sync → upsert projects EXCLUDING secret fields → existing UI-set secret
 
 - Vault encrypt/decrypt round-trip.
 - The API/presenter **never** returns a secret value — assert only `set | unset` is exposed.
-- Resolution: project-with-secret uses it; project-without falls back to env; per-secret independently;
-  resolution from a `WorkRun` loads the project by slug.
+- Forge resolution: project-with-secret uses it; project-without falls back to env; resolution from a
+  `WorkRun` loads the project by slug. (Tracker resolution is not wired this phase — the global poll
+  path is asserted unchanged.)
 - YAML sync does **not** clear an existing UI-set secret.
 - `CLOAK_KEY` added to the test environment (CI + local podman test setup).
 
@@ -119,6 +136,8 @@ YAML sync → upsert projects EXCLUDING secret fields → existing UI-set secret
   not automated, in this phase).
 - The Phase 3 picker (`list_repositories` / `list_projects`) — it consumes these credentials but is a
   separate phase.
+- **Per-project tracker resolution** — the global `Tracker` poll path is unchanged; `tracker_secret`
+  is stored/managed now but only consumed by the Phase 3 `Tracker.list_projects(creds)` op.
 
 ## Risks
 
