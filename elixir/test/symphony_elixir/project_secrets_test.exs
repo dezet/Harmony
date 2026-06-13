@@ -28,4 +28,64 @@ defmodule SymphonyElixir.ProjectSecretsTest do
       assert Ecto.Changeset.get_field(cs, :forge_secret) == nil
     end
   end
+
+  describe "Storage.update_project_secrets/2" do
+    @base %{
+      slug: "portal",
+      linear_project_slug: "p",
+      linear_team_key: "COD",
+      linear_human_review_state: "Human Review",
+      forge_type: "github",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "main",
+      config_version: 1,
+      config: %{}
+    }
+
+    setup do
+      :ok = checkout_repo(%{})
+      {:ok, project} = Storage.upsert_project(@base)
+      %{project: project}
+    end
+
+    @tag :db
+    test "sets a secret when present", %{project: project} do
+      {:ok, updated} = Storage.update_project_secrets(project, %{"forge_secret" => "ghp_tok"})
+      assert Storage.get_project!(updated.id).forge_secret == "ghp_tok"
+    end
+
+    @tag :db
+    test "leaves a secret unchanged when absent", %{project: project} do
+      {:ok, _} = Storage.update_project_secrets(project, %{"forge_secret" => "ghp_tok"})
+      reloaded = Storage.get_project!(project.id)
+      {:ok, _} = Storage.update_project_secrets(reloaded, %{"tracker_secret" => "lin_key"})
+      final = Storage.get_project!(project.id)
+      assert final.forge_secret == "ghp_tok"
+      assert final.tracker_secret == "lin_key"
+    end
+
+    @tag :db
+    test "clears a secret via the clear flag", %{project: project} do
+      {:ok, set} = Storage.update_project_secrets(project, %{"forge_secret" => "ghp_tok"})
+      {:ok, _} = Storage.update_project_secrets(set, %{"clear_forge_secret" => true})
+      assert Storage.get_project!(project.id).forge_secret == nil
+    end
+
+    @tag :db
+    test "empty string is treated as absent (no change)", %{project: project} do
+      {:ok, set} = Storage.update_project_secrets(project, %{"forge_secret" => "ghp_tok"})
+      {:ok, _} = Storage.update_project_secrets(set, %{"forge_secret" => ""})
+      assert Storage.get_project!(project.id).forge_secret == "ghp_tok"
+    end
+
+    @tag :db
+    test "YAML-style re-upsert does not clobber a UI-set secret", %{project: project} do
+      {:ok, _} = Storage.update_project_secrets(project, %{"forge_secret" => "ghp_tok"})
+      {:ok, _} = Storage.upsert_project(%{@base | forge_base_branch: "develop"})
+      reloaded = Storage.get_project!(project.id)
+      assert reloaded.forge_base_branch == "develop"
+      assert reloaded.forge_secret == "ghp_tok"
+    end
+  end
 end

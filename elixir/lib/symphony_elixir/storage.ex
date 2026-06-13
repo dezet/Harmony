@@ -373,6 +373,45 @@ defmodule SymphonyElixir.Storage do
     Repo.get_by(Project, slug: slug)
   end
 
+  @doc """
+  Sets or clears a project's encrypted secrets.
+
+  Per field, `params` may carry the value key (`"forge_secret"` /
+  `"tracker_secret"`) to set it, or the clear flag (`"clear_forge_secret"` /
+  `"clear_tracker_secret"`) to reset it to the global-env fallback. An absent or
+  blank value leaves the stored secret unchanged.
+  """
+  @spec update_project_secrets(Project.t(), map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
+  def update_project_secrets(%Project{} = project, params) do
+    changes =
+      %{}
+      |> put_secret_change(params, :forge_secret, "forge_secret", "clear_forge_secret")
+      |> put_secret_change(params, :tracker_secret, "tracker_secret", "clear_tracker_secret")
+
+    project
+    |> Project.secret_changeset(changes)
+    |> Repo.update()
+  end
+
+  defp put_secret_change(changes, params, field, value_key, clear_key) do
+    cond do
+      truthy_param(params, clear_key) -> Map.put(changes, field, nil)
+      present_value(params, value_key) -> Map.put(changes, field, fetch_param(params, value_key))
+      true -> changes
+    end
+  end
+
+  defp truthy_param(params, key), do: fetch_param(params, key) in [true, "true"]
+
+  defp present_value(params, key) do
+    case fetch_param(params, key) do
+      v when is_binary(v) -> String.trim(v) != ""
+      _ -> false
+    end
+  end
+
+  defp fetch_param(params, key), do: Map.get(params, key) || Map.get(params, String.to_atom(key))
+
   @spec get_project_by_github(String.t(), String.t()) :: Project.t() | nil
   def get_project_by_github(owner, repo) when is_binary(owner) and is_binary(repo) do
     Repo.get_by(Project, forge_owner: owner, forge_repo: repo)
