@@ -23,12 +23,11 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
         Github.Client.list_open_pull_requests(owner, repo, client_opts)
       end)
 
-    # list_issue_comments has no direct Forge behaviour equivalent yet.
-    # Keeping it on Github.Client until `list_change_request_comments` is
-    # added to the Forge behaviour in a follow-up task.
+    creds = ProjectCreds.creds(project, opts)
+
     list_issue_comments =
-      Keyword.get(opts, :list_issue_comments, fn owner, repo, issue_number, _call_opts ->
-        Github.Client.list_issue_comments(owner, repo, issue_number, client_opts)
+      Keyword.get(opts, :list_issue_comments, fn _owner, _repo, issue_number, _call_opts ->
+        SymphonyElixir.Forge.adapter(project).list_change_request_comments(creds, ref, issue_number)
       end)
 
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)

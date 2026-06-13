@@ -12,6 +12,8 @@ defmodule SymphonyElixir.Forge do
   @callback get_pipeline_logs(creds, repo_ref, term()) :: {:ok, binary()} | {:error, term()}
   @callback create_comment(creds, repo_ref, term(), String.t()) :: :ok | {:error, term()}
   @callback create_review(creds, repo_ref, term(), String.t(), keyword()) :: :ok | {:error, term()}
+  @callback list_change_request_comments(creds, repo_ref, term()) ::
+              {:ok, [map()]} | {:error, term()}
 
   @spec adapter(map()) :: module()
   def adapter(project) do

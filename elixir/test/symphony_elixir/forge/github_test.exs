@@ -28,4 +28,18 @@ defmodule SymphonyElixir.Forge.GithubTest do
     end
     assert {:ok, %{default_branch: "develop"}} = Github.get_repository(%{token: "t", request_fun: fake}, "o", "r")
   end
+
+  test "list_change_request_comments normalizes GitHub issue comments and honors base_url" do
+    fake = fn opts ->
+      assert opts[:method] == :get
+      assert opts[:url] =~ "https://ghe.example.com/repos/o/r/issues/7/comments"
+      {:ok, %{status: 200, body: [%{"id" => 11, "body" => "@hreview please", "user" => %{"login" => "octo"}}]}}
+    end
+
+    creds = %{token: "t", base_url: "https://ghe.example.com", request_fun: fake}
+    ref = %{owner: "o", repo: "r", base_url: "https://ghe.example.com"}
+
+    assert {:ok, [%SymphonyElixir.Github.Comment{id: 11, body: "@hreview please", author: "octo"}]} =
+             SymphonyElixir.Forge.Github.list_change_request_comments(creds, ref, 7)
+  end
 end
