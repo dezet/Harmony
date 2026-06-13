@@ -1,0 +1,46 @@
+{
+  "work_runs": [
+    {
+      "id": "run-uuid-1",
+      "project_id": "proj-uuid-1",
+      "type": "implementation",
+      "status": "completed",
+      "dedupe_key": "linear:COD-10",
+      "github_owner": "acme",
+      "github_repo": "portal",
+      "github_pr_number": 42,
+      "github_head_sha": "abc123def456",
+      "github_head_ref": "cod-10-feature",
+      "github_base_ref": "main",
+      "linear_issue_id": "issue-running-1",
+      "linear_identifier": "COD-10",
+      "linear_url": "https://linear.app/acme/issue/COD-10",
+      "agent_backend": "codex",
+      "inserted_at": "2026-06-13T10:00:02Z",
+      "updated_at": "2026-06-13T10:05:00Z"
+    },
+    {
+      "id": "run-uuid-2",
+      "project_id": "proj-uuid-1",
+      "type": "implementation",
+      "status": "queued",
+      "dedupe_key": "linear:COD-11",
+      "github_owner": null,
+      "github_repo": null,
+      "github_pr_number": null,
+      "github_head_sha": null,
+      "github_head_ref": null,
+      "github_base_ref": null,
+      "linear_issue_id": "issue-queued-1",
+      "linear_identifier": "COD-11",
+      "linear_url": "https://linear.app/acme/issue/COD-11",
+      "agent_backend": "codex",
+      "inserted_at": "2026-06-13T10:00:01Z",
+      "updated_at": "2026-06-13T10:00:01Z"
+    }
+  ],
+  "meta": {
+    "next_cursor": "eyJpbnNlcnRlZF9hdCI6IjIwMjYtMDYtMTNUMTA6MDA6MDFaIiwiaWQiOiJydW4tdXVpZC0yIn0",
+    "page_size": 25
+  }
+}

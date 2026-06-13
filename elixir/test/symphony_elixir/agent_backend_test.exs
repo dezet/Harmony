@@ -76,6 +76,65 @@ defmodule SymphonyElixir.AgentBackendTest do
     end
   end
 
+  test "agent runner can select non-codex backend names without changing workflow semantics" do
+    workspace_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-agent-backend-selection-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(), workspace_root: workspace_root)
+
+      issue = %Issue{
+        identifier: "MT-MULTI-BACKEND",
+        title: "Run selected backend",
+        description: "Exercise backend selection",
+        state: "In Progress"
+      }
+
+      claude_runner = fn "claude", _args, opts ->
+        send(self(), {:selected_backend_workspace, :claude_code, Keyword.fetch!(opts, :cd)})
+        {:ok, {Jason.encode!(%{"session_id" => "claude-session", "result" => "done"}), 0}}
+      end
+
+      assert :ok =
+               AgentRunner.run(issue, nil,
+                 agent_backend: "claude_code",
+                 prompt: "backend prompt",
+                 run_command: claude_runner
+               )
+
+      assert_receive {:selected_backend_workspace, :claude_code, claude_workspace}
+      assert claude_workspace == Path.join(workspace_root, "MT-MULTI-BACKEND")
+
+      pi_runner = fn "pi", _args, opts ->
+        send(self(), {:selected_backend_workspace, :pi, Keyword.fetch!(opts, :cd)})
+
+        output =
+          [
+            Jason.encode!(%{"type" => "session", "id" => "pi-session"}),
+            Jason.encode!(%{"type" => "message_end", "message" => %{"role" => "assistant", "content" => "done"}})
+          ]
+          |> Enum.join("\n")
+
+        {:ok, {output, 0}}
+      end
+
+      assert :ok =
+               AgentRunner.run(issue, nil,
+                 agent_backend: "pi",
+                 prompt: "backend prompt",
+                 run_command: pi_runner
+               )
+
+      assert_receive {:selected_backend_workspace, :pi, pi_workspace}
+      assert pi_workspace == Path.join(workspace_root, "MT-MULTI-BACKEND")
+    after
+      File.rm_rf(workspace_root)
+    end
+  end
+
   test "claude code backend reports missing executable" do
     find_executable = fn "claude" -> nil end
 
@@ -90,11 +149,42 @@ defmodule SymphonyElixir.AgentBackendTest do
              ClaudeCode.capability_check(find_executable: find_executable)
   end
 
-  test "claude code backend does not execute work before invocation contract is implemented" do
+  test "claude code backend executes with non-interactive json output" do
+    parent = self()
     issue = %Issue{id: "issue-claude", identifier: "COD-CLAUDE", title: "Claude spike"}
 
-    assert {:error, :claude_code_execution_not_implemented} =
-             ClaudeCode.run("/tmp/workspace", "prompt", issue, [])
+    run_command = fn command, args, opts ->
+      send(parent, {:claude_command, command, args, opts})
+
+      {:ok,
+       {
+         Jason.encode!(%{
+           "session_id" => "claude-session",
+           "result" => "Claude finished"
+         }),
+         0
+       }}
+    end
+
+    assert {:ok, %{session_id: "claude-session", result: "Claude finished"}} =
+             ClaudeCode.run("/tmp/workspace", "prompt", issue,
+               run_command: run_command,
+               on_message: fn message -> send(parent, {:claude_message, message}) end
+             )
+
+    assert_received {:claude_command, "claude", args, opts}
+    assert args == ["--print", "--output-format", "json", "prompt"]
+    assert Keyword.fetch!(opts, :cd) == "/tmp/workspace"
+    assert_received {:claude_message, %{type: :agent_output, backend: :claude_code, output: "Claude finished"}}
+  end
+
+  test "claude code backend reports command failures" do
+    issue = %Issue{id: "issue-claude", identifier: "COD-CLAUDE", title: "Claude spike"}
+
+    run_command = fn "claude", _args, _opts -> {:ok, {"permission denied", 1}} end
+
+    assert {:error, {:claude_code_failed, 1, "permission denied"}} =
+             ClaudeCode.run("/tmp/workspace", "prompt", issue, run_command: run_command)
   end
 
   test "pi backend reports missing executable" do
@@ -111,10 +201,42 @@ defmodule SymphonyElixir.AgentBackendTest do
              Pi.capability_check(find_executable: find_executable)
   end
 
-  test "pi backend does not execute work before invocation contract is implemented" do
+  test "pi backend executes with json event stream output" do
+    parent = self()
     issue = %Issue{id: "issue-pi", identifier: "COD-PI", title: "Pi spike"}
 
-    assert {:error, :pi_execution_not_implemented} =
-             Pi.run("/tmp/workspace", "prompt", issue, [])
+    run_command = fn command, args, opts ->
+      send(parent, {:pi_command, command, args, opts})
+
+      output =
+        [
+          Jason.encode!(%{"type" => "session", "id" => "pi-session"}),
+          Jason.encode!(%{"type" => "message_end", "message" => %{"role" => "assistant", "content" => [%{"type" => "text", "text" => "Pi finished"}]}}),
+          Jason.encode!(%{"type" => "agent_end", "messages" => []})
+        ]
+        |> Enum.join("\n")
+
+      {:ok, {output, 0}}
+    end
+
+    assert {:ok, %{session_id: "pi-session", result: "Pi finished"}} =
+             Pi.run("/tmp/workspace", "prompt", issue,
+               run_command: run_command,
+               on_message: fn message -> send(parent, {:pi_message, message}) end
+             )
+
+    assert_received {:pi_command, "pi", args, opts}
+    assert args == ["--mode", "json", "prompt"]
+    assert Keyword.fetch!(opts, :cd) == "/tmp/workspace"
+    assert_received {:pi_message, %{type: :agent_output, backend: :pi, output: "Pi finished"}}
+  end
+
+  test "pi backend reports command failures" do
+    issue = %Issue{id: "issue-pi", identifier: "COD-PI", title: "Pi spike"}
+
+    run_command = fn "pi", _args, _opts -> {:ok, {"provider missing", 2}} end
+
+    assert {:error, {:pi_failed, 2, "provider missing"}} =
+             Pi.run("/tmp/workspace", "prompt", issue, run_command: run_command)
   end
 end

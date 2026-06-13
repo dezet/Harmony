@@ -1,0 +1,22 @@
+{
+  "artifacts": [
+    {
+      "id": "art-uuid-1",
+      "kind": "screenshot",
+      "metadata": { "label": "Homepage" },
+      "work_run_id": "run-uuid-1",
+      "work_run": {
+        "linear_identifier": "COD-42",
+        "status": "completed",
+        "inserted_at": "2026-06-13T10:00:00Z"
+      }
+    },
+    {
+      "id": "art-uuid-2",
+      "kind": "report",
+      "metadata": {},
+      "work_run_id": null,
+      "work_run": null
+    }
+  ]
+}

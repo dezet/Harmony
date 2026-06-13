@@ -11,9 +11,18 @@ defmodule SymphonyElixirWeb.Endpoint do
     signing_salt: "symphony-session"
   ]
 
-  socket("/live", Phoenix.LiveView.Socket,
+  # Socket for the React client (observability dashboard channel).
+  socket("/socket", SymphonyElixirWeb.UserSocket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
+  )
+
+  # Serves the built React SPA (Vite output) from the root path.
+  plug(Plug.Static,
+    at: "/",
+    from: {:symphony_elixir, "priv/static/app"},
+    gzip: false,
+    only: ~w(assets index.html favicon.svg icons.svg)
   )
 
   plug(Plug.RequestId)

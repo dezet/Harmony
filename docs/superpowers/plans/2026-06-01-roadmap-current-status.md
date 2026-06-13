@@ -1,8 +1,8 @@
 # Harmony Roadmap Current Status
 
-Date: 2026-06-01
+Date: 2026-06-03
 
-Branch / PR: `harmony-roadmap-mvp`, `https://github.com/dezet/Harmony/pull/3`
+Branch / PR: `spec/react-websockets-frontend`
 
 This document is the current status index for the roadmap work. It is based on
 repo facts: source files, tests, recorded evidence, and the roadmap task
@@ -17,8 +17,9 @@ of truth.
   proof video `milestone-04-browser-evidence-gate-v2.webm`.
 - Original roadmap M7 has implementation/runbook coverage, but no repo-recorded
   post-v2 systemd host rollout proof was found.
-- Original roadmap M8 is partially implemented. Claude Code and Pi are
-  capability probes only; execution returns explicit not-implemented errors.
+- Original roadmap M8 is implemented and verified in the current worktree.
+  Claude Code and Pi now have non-interactive CLI execution adapters rather
+  than capability-only stubs.
 - Independent review remains open because the previous subagent review request
   failed with a revoked refresh-token error.
 
@@ -33,8 +34,8 @@ of truth.
 | M5 `@hreview` workflow | Implemented | Covered by tests; no separate final video beyond final UI/API review | Review request source: `elixir/lib/symphony_elixir/work_sources/github_review_request_source.ex:15`; review handoff: `elixir/lib/symphony_elixir/workflows/review_handoff.ex:11`; inline comments: `elixir/lib/symphony_elixir/workflows/inline_review_comments.ex:21`; trigger test: `elixir/test/symphony_elixir/github_review_request_source_test.exs:7`. | Independent review still open. |
 | M6 Browser evidence MVP | Implemented | Covered by e2e M4 browser evidence video | Evidence policy: `elixir/lib/symphony_elixir/evidence/policy.ex:8`; manifest parser and path guard: `elixir/lib/symphony_elixir/evidence/manifest.ex:22`; collector: `elixir/lib/symphony_elixir/evidence/collector.ex:9`; handoff gate: `elixir/lib/symphony_elixir/runtime_policy/handoff.ex:28`; tests: `elixir/test/symphony_elixir/evidence_test.exs:127`; video: `docs/evidence/roadmap-e2e/milestone-04-browser-evidence-gate-v2.webm`. | None known for MVP. |
 | M7 Operations hardening | Implemented as tooling and runbook | No repo-recorded post-v2 host rollout proof found | Sandbox diagnostics: `elixir/lib/symphony_elixir/diagnostics/sandbox.ex:26`; API/dashboard projection: `elixir/lib/symphony_elixir_web/presenter.ex:340`; runbook: `docs/harmony-operations.md:55`; installer: `install-harmony-proof-of-life.sh:50`; systemd unit: `harmony.service:1`; tests: `elixir/test/symphony_elixir/diagnostics_test.exs:6`. | Need an explicit recorded/manual host proof if this must be called rollout-complete. |
-| M8 Platform expansion | Partially implemented | Targeted tests pass for implemented parts; backend execution incomplete | Backend resolver: `elixir/lib/symphony_elixir/agent_backend.ex:13`; Codex adapter: `elixir/lib/symphony_elixir/agent_backends/codex.ex:10`; Project UI: `elixir/lib/symphony_elixir_web/live/projects_live.ex:11`; form UI: `elixir/lib/symphony_elixir_web/live/project_form_live.ex:36`; webhooks: `elixir/lib/symphony_elixir_web/controllers/github_webhook_controller.ex:14`; video artifacts: `elixir/test/symphony_elixir/video_evidence_test.exs:7`; multi-project scheduling test: `elixir/test/symphony_elixir/orchestrator_status_test.exs:1458`. | Claude Code and Pi execution are not implemented: `elixir/lib/symphony_elixir/agent_backends/claude_code.ex:11`, `elixir/lib/symphony_elixir/agent_backends/pi.ex:11`; tests assert this at `elixir/test/symphony_elixir/agent_backend_test.exs:93` and `:114`. |
-| M9 Roadmap e2e video proof | Mostly complete | V2 videos and sidecars are tracked | Task tracker: `docs/superpowers/plans/2026-05-31-09-roadmap-e2e-video-proof.tasks.md`; final browser review: `docs/evidence/roadmap-e2e/final-review-checks.md`; videos: `docs/evidence/roadmap-e2e/*-v2.webm`. | Independent review and release-blocking findings remain open. |
+| M8 Platform expansion | Implemented and verified | Targeted tests and full `make all` pass | Backend resolver: `elixir/lib/symphony_elixir/agent_backend.ex`; Codex adapter: `elixir/lib/symphony_elixir/agent_backends/codex.ex`; Claude Code adapter: `elixir/lib/symphony_elixir/agent_backends/claude_code.ex`; Pi adapter: `elixir/lib/symphony_elixir/agent_backends/pi.ex`; React project UI: `elixir/assets/src/routes/ProjectsPage.tsx`, `elixir/assets/src/routes/ProjectFormPage.tsx`; project API: `elixir/lib/symphony_elixir_web/controllers/project_controller.ex`; webhooks: `elixir/lib/symphony_elixir_web/controllers/github_webhook_controller.ex`; video artifacts: `elixir/test/symphony_elixir/video_evidence_test.exs`; multi-project scheduling test: `elixir/test/symphony_elixir/orchestrator_status_test.exs`. | None known. |
+| M9 Roadmap e2e video proof | Mostly complete | V2 videos and sidecars are tracked | Task tracker: `docs/superpowers/archive/plans/2026-05-31-09-roadmap-e2e-video-proof.tasks.md`; final browser review: `docs/evidence/roadmap-e2e/final-review-checks.md`; videos: `docs/evidence/roadmap-e2e/*-v2.webm`. | Independent review and release-blocking findings remain open. |
 
 ## Verification Notes
 
@@ -46,22 +47,45 @@ Recorded in the task tracker after v2 evidence generation on 2026-05-31:
 - `mix test --seed 0`
 - `make all`
 
-Fresh targeted status check run during the 2026-06-01 documentation update:
+Fresh targeted status check run during the 2026-06-03 M8 update:
 
 ```bash
-MISE_TRUSTED_CONFIG_PATHS=/home/ddziag/projekty/Harmony/elixir/mise.toml \
-  mise exec -- mix test \
+cd elixir
+mix test \
   test/symphony_elixir/evidence_test.exs \
   test/symphony_elixir/video_evidence_test.exs \
   test/symphony_elixir/diagnostics_test.exs \
-  test/symphony_elixir/project_ui_test.exs \
+  test/symphony_elixir/project_api_test.exs \
   test/symphony_elixir/github_webhook_test.exs \
   test/symphony_elixir/inline_review_comments_test.exs \
   test/symphony_elixir/agent_backend_test.exs \
   test/symphony_elixir/project_config_test.exs --seed 0
 ```
 
-Observed result: `34 tests, 0 failures`.
+Observed result: `80 tests, 0 failures`.
+
+React targeted verification:
+
+```bash
+cd elixir/assets
+npm test -- ProjectsPage.test.tsx ProjectFormPage.test.tsx --run
+npm run typecheck
+npm test -- --run
+```
+
+Observed result: route tests `10 tests, 0 failures`; typecheck exited 0; full Vitest
+suite `33 tests, 0 failures`.
+
+Full gate:
+
+```bash
+cd elixir
+make all
+```
+
+Observed result: setup/build/assets/format/lint/coverage/dialyzer exited 0;
+coverage ran `339 tests, 0 failures, 2 skipped`, total coverage `86.17%`;
+Dialyzer reported `Total errors: 0`.
 
 ## Evidence Policy
 

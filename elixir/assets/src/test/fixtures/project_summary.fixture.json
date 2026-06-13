@@ -1,0 +1,70 @@
+{
+  "project": {
+    "id": "proj-uuid-1",
+    "slug": "alpha",
+    "github_owner": "acme",
+    "github_repo": "portal",
+    "github_base_branch": "main",
+    "linear_project_slug": "alpha-linear",
+    "linear_team_key": "COD",
+    "linear_human_review_state": "Human Review",
+    "config_version": 3
+  },
+  "counts": { "running": 1, "retrying": 1, "blocked": 1 },
+  "running": [
+    {
+      "issue_id": "issue-running-1",
+      "issue_identifier": "COD-10",
+      "state": "running",
+      "worker_host": "host1",
+      "workspace_path": "/ws/cod-10",
+      "session_id": "sess-1",
+      "turn_count": 5,
+      "last_event": "turn_end",
+      "last_message": null,
+      "started_at": "2026-06-10T08:00:00Z",
+      "last_event_at": "2026-06-10T09:00:00Z",
+      "tokens": { "input_tokens": 100, "output_tokens": 50, "total_tokens": 150 }
+    }
+  ],
+  "retrying": [
+    {
+      "issue_id": "issue-retry-1",
+      "issue_identifier": "COD-11",
+      "attempt": 2,
+      "due_at": "2026-06-10T10:01:00Z",
+      "error": "some error",
+      "worker_host": "host1",
+      "workspace_path": "/ws/cod-11"
+    }
+  ],
+  "blocked": [
+    {
+      "issue_id": "issue-blocked-1",
+      "issue_identifier": "COD-12",
+      "state": "blocked",
+      "error": "human review required",
+      "worker_host": "host1",
+      "workspace_path": "/ws/cod-12",
+      "session_id": "sess-2",
+      "blocked_at": "2026-06-10T10:00:00Z",
+      "last_event": null,
+      "last_message": null,
+      "last_event_at": null
+    }
+  ],
+  "human_review_prs": [
+    {
+      "id": "pr-uuid-1",
+      "github_owner": "acme",
+      "github_repo": "portal",
+      "github_pr_number": 42,
+      "github_head_sha": "abc123def456",
+      "github_head_ref": "cod-10-feature",
+      "github_base_ref": "main",
+      "linear_identifier": "COD-10",
+      "linear_url": "https://linear.app/acme/issue/COD-10",
+      "metadata": { "ci_status": "pass" }
+    }
+  ]
+}

@@ -223,17 +223,27 @@ codex:
 - If `WORKFLOW.md` is missing or has invalid YAML at startup, Symphony does not boot.
 - If a later reload fails, Symphony keeps running with the last known good workflow and logs the
   reload error until the file is fixed.
-- `server.port` or CLI `--port` enables the optional Phoenix LiveView dashboard and JSON API at
+- `server.port` or CLI `--port` enables the optional web dashboard and JSON API at
   `/`, `/api/v1/state`, `/api/v1/<issue_identifier>`, and `/api/v1/refresh`.
 
 ## Web dashboard
 
-The observability UI now runs on a minimal Phoenix stack:
+The observability UI is a React + TypeScript single-page app served same-origin by Phoenix:
 
-- LiveView for the dashboard at `/`
-- JSON API for operational debugging under `/api/v1/*`
+- React SPA (Vite build) served from `priv/static/app` at `/`, with an `index.html` fallback
+  for client-side routes
+- Real-time dashboard over a Phoenix Channel (`socket("/socket")`, topic
+  `observability:dashboard`) that pushes `state_payload` snapshots into the React Query cache
+- JSON API for reads, project CRUD, and operational debugging under `/api/v1/*`
 - Bandit as the HTTP server
-- Phoenix dependency static assets for the LiveView client bootstrap
+
+Build the SPA before serving it (also part of `make assets` and `make ci`):
+
+```bash
+mise exec -- mix assets.build   # runs `npm run build` in assets/ → priv/static/app
+```
+
+Frontend development with hot-reload runs Vite alongside Phoenix; see `assets/CLAUDE.md`.
 
 ## Project Layout
 

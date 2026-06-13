@@ -12,6 +12,7 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
   alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubPrSource, GithubReviewRequestSource, LinearIssueSource}
+  alias SymphonyElixirWeb.ObservabilityRunPubSub
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
@@ -178,6 +179,7 @@ defmodule SymphonyElixir.Orchestrator do
           |> apply_codex_rate_limits(update)
 
         notify_dashboard()
+        ObservabilityRunPubSub.publish_worker_update(issue_id, updated_running_entry)
         {:noreply, %{state | running: Map.put(running, issue_id, updated_running_entry)}}
     end
   end
@@ -1044,6 +1046,7 @@ defmodule SymphonyElixir.Orchestrator do
     }
 
     record_durable_blocker(issue_id, running_entry, error)
+    ObservabilityRunPubSub.publish_run_status(issue_id, blocked_entry.identifier, "blocked", error)
 
     %{
       state
@@ -1736,6 +1739,7 @@ defmodule SymphonyElixir.Orchestrator do
     error_suffix = if is_binary(error), do: " error=#{error}", else: ""
 
     Logger.warning("Retrying issue_id=#{issue_id} issue_identifier=#{identifier} in #{delay_ms}ms (attempt #{next_attempt})#{error_suffix}")
+    ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "retrying", error)
 
     %{
       state
@@ -1852,6 +1856,20 @@ defmodule SymphonyElixir.Orchestrator do
   defp notify_dashboard do
     StatusDashboard.notify_update()
   end
+
+  defp stop_run_identifiers(%State{} = state, issue_id) do
+    entry = Map.get(state.running, issue_id) || Map.get(state.blocked, issue_id) || %{}
+    identifier = Map.get(entry, :identifier, issue_id)
+    storage_work_run_id = Map.get(entry, :storage_work_run_id)
+    {identifier, storage_work_run_id}
+  end
+
+  defp maybe_persist_stopped_status(storage_work_run_id) when is_binary(storage_work_run_id) do
+    _ = Storage.update_work_run_status(storage_work_run_id, "stopped")
+    :ok
+  end
+
+  defp maybe_persist_stopped_status(_storage_work_run_id), do: :ok
 
   defp handle_active_retry(state, issue, attempt, metadata) do
     if retry_candidate_issue?(issue, terminal_state_set()) and
@@ -2041,6 +2059,36 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  @spec stop_run(String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
+  def stop_run(issue_id) do
+    stop_run(__MODULE__, issue_id)
+  end
+
+  @spec stop_run(GenServer.server(), String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
+  def stop_run(server, issue_id) do
+    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    if Process.whereis(server) do
+      GenServer.call(server, {:stop_run, issue_id})
+    else
+      {:error, :run_not_found}
+    end
+  end
+
+  @spec retry_now(String.t()) :: :ok | {:error, :not_retrying}
+  def retry_now(issue_id) do
+    retry_now(__MODULE__, issue_id)
+  end
+
+  @spec retry_now(GenServer.server(), String.t()) :: :ok | {:error, :not_retrying}
+  def retry_now(server, issue_id) do
+    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    if Process.whereis(server) do
+      GenServer.call(server, {:retry_now, issue_id})
+    else
+      {:error, :not_retrying}
+    end
+  end
+
   @spec snapshot() :: map() | :timeout | :unavailable
   def snapshot, do: snapshot(__MODULE__, 15_000)
 
@@ -2058,7 +2106,67 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  # Operator stop: terminates the current attempt (kills the Elixir task; the
+  # underlying agent OS subprocess may finish its in-flight turn), frees the slot,
+  # marks the run "stopped" (broadcast + durable when storage_work_run_id is known),
+  # and records the issue in `completed`. NOTE: `completed` guards the immediate
+  # call, not future polls — this is a tracker-driven daemon, so if the Linear issue
+  # is still in an active state it can be re-dispatched on a later tick. Truly ending
+  # the work means moving the tracker issue out of an active state. Stop = stop the
+  # current attempt now.
   @impl true
+  def handle_call({:stop_run, issue_id}, _from, state) do
+    cond do
+      Map.has_key?(state.running, issue_id) or Map.has_key?(state.blocked, issue_id) ->
+        {identifier, storage_work_run_id} = stop_run_identifiers(state, issue_id)
+        new_state = terminate_running_issue(state, issue_id, false)
+        new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
+        ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
+        maybe_persist_stopped_status(storage_work_run_id)
+        notify_dashboard()
+        {:reply, :ok, new_state}
+
+      Map.has_key?(state.retry_attempts, issue_id) ->
+        retry_entry = Map.get(state.retry_attempts, issue_id)
+        identifier = Map.get(retry_entry, :identifier, issue_id)
+
+        if is_reference(Map.get(retry_entry, :timer_ref)) do
+          Process.cancel_timer(retry_entry.timer_ref)
+        end
+
+        new_state = release_issue_claim(state, issue_id)
+        new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
+        # No storage_work_run_id on retry entries (the running entry was cleaned up when the run entered retry) — channel/cache-only "stopped".
+        ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
+        notify_dashboard()
+        {:reply, :ok, new_state}
+
+      MapSet.member?(state.completed, issue_id) ->
+        {:reply, {:error, :already_terminal}, state}
+
+      true ->
+        {:reply, {:error, :run_not_found}, state}
+    end
+  end
+
+  def handle_call({:retry_now, issue_id}, _from, state) do
+    case Map.get(state.retry_attempts, issue_id) do
+      nil ->
+        {:reply, {:error, :not_retrying}, state}
+
+      retry_entry ->
+        if is_reference(Map.get(retry_entry, :timer_ref)) do
+          Process.cancel_timer(retry_entry.timer_ref)
+        end
+
+        new_token = make_ref()
+        Process.send_after(self(), {:retry_issue, issue_id, new_token}, 0)
+        updated_entry = %{retry_entry | timer_ref: nil, retry_token: new_token}
+        new_state = %{state | retry_attempts: Map.put(state.retry_attempts, issue_id, updated_entry)}
+        {:reply, :ok, new_state}
+    end
+  end
+
   def handle_call(:snapshot, _from, state) do
     state = refresh_runtime_config(state)
     now = DateTime.utc_now()
