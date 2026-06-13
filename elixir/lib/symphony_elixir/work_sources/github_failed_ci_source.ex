@@ -30,8 +30,8 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
 
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
-    owner = ref.owner || project_value(project, :github_owner)
-    repo = ref.repo || project_value(project, :github_repo)
+    owner = ref.owner || project_value(project, :forge_owner)
+    repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
@@ -80,12 +80,6 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
       type: "ci_fix",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, pr, workflow_run),
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: pr.number,
@@ -128,9 +122,9 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   defp repo_policy(project, pr) do
     case RuntimePolicy.RepoPolicy.authorize_push(%{
            head_repo_full_name: pr.head_repo_full_name,
-           base_repo_full_name: pr.base_repo_full_name || "#{project_value(project, :github_owner)}/#{project_value(project, :github_repo)}",
+           base_repo_full_name: pr.base_repo_full_name || "#{project_value(project, :forge_owner)}/#{project_value(project, :forge_repo)}",
            head_ref: pr.head_ref,
-           base_ref: pr.base_ref || project_value(project, :github_base_branch),
+           base_ref: pr.base_ref || project_value(project, :forge_base_branch),
            protected_branches: protected_branches(project)
          }) do
       :ok -> "direct_push_allowed"
@@ -146,7 +140,7 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
     |> map_get_any(:protected_branches)
     |> case do
       branches when is_list(branches) -> branches
-      _other -> List.wrap(project_value(project, :github_base_branch))
+      _other -> List.wrap(project_value(project, :forge_base_branch))
     end
   end
 

@@ -63,7 +63,18 @@ defmodule SymphonyElixir.ProjectApiTest do
   @tag :db
   test "updates an existing project" do
     :ok = checkout_repo(%{})
-    {:ok, project} = SymphonyElixir.Storage.upsert_project(atomize(@valid))
+    {:ok, project} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        linear_project_slug: "portal-linear",
+        linear_team_key: "COD",
+        linear_human_review_state: "Human Review",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "main",
+        config_version: 1,
+        config: %{"review" => %{"trigger" => "@hreview"}}
+      })
 
     conn = json_put("/api/v1/projects/#{project.id}", Map.put(@valid, "github_base_branch", "develop"))
     assert %{"project" => %{"github_base_branch" => "develop"}} = json_response(conn, 200)
@@ -75,8 +86,6 @@ defmodule SymphonyElixir.ProjectApiTest do
     conn = get(build_conn(), "/api/v1/projects/00000000-0000-0000-0000-000000000000")
     assert json_response(conn, 404)["error"]["code"] == "not_found"
   end
-
-  defp atomize(map), do: Map.new(map, fn {k, v} -> {String.to_atom(k), v} end)
 
   defp start_test_endpoint do
     endpoint_config =

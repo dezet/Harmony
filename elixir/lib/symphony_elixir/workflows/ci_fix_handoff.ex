@@ -27,8 +27,8 @@ defmodule SymphonyElixir.Workflows.CiFixHandoff do
     append_event = Keyword.get(opts, :append_event, &Storage.append_event/1)
     human_review_state = Keyword.get(opts, :human_review_state, @default_human_review_state)
 
-    with :ok <- github_comment.(run.github_owner, run.github_repo, run.github_pr_number, body, []),
-         :ok <- append_work_event(run, append_event, "github_comment_created", %{"github_pr_number" => run.github_pr_number}),
+    with :ok <- github_comment.(run.forge_owner, run.forge_repo, run.forge_pr_number, body, []),
+         :ok <- append_work_event(run, append_event, "github_comment_created", %{"forge_pr_number" => run.forge_pr_number}),
          :ok <- maybe_linear_comment(run, body, linear_comment),
          :ok <- maybe_append_linear_comment_event(run, append_event) do
       RuntimePolicy.Handoff.move_to_human_review(

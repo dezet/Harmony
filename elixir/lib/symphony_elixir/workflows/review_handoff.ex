@@ -21,9 +21,9 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
     append_event = Keyword.get(opts, :append_event, &Storage.append_event/1)
 
     case create_review.(
-           run.github_owner,
-           run.github_repo,
-           run.github_pr_number,
+           run.forge_owner,
+           run.forge_repo,
+           run.forge_pr_number,
            body_with_processed_marker(body, run),
            event: "COMMENT"
          ) do
@@ -57,7 +57,7 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
           key: key,
           scope: "github_review",
           status: "processed",
-          metadata: %{"github_pr_number" => run.github_pr_number}
+          metadata: %{"forge_pr_number" => run.forge_pr_number}
         }
         |> mark.()
         |> normalize_mark_result()
@@ -77,7 +77,7 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
           project_id: project_id,
           work_run_id: run.id,
           type: "github_review_created",
-          payload: %{"github_pr_number" => run.github_pr_number}
+          payload: %{"forge_pr_number" => run.forge_pr_number}
         }
         |> append_event.()
         |> normalize_mark_result()

@@ -7,12 +7,12 @@ defmodule SymphonyElixir.CiFixPromptTest do
   test "builds prompt with PR and failing workflow context" do
     run = %WorkRun{
       type: "ci_fix",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
-      github_head_sha: "abc123",
-      github_head_ref: "fix-cod-5",
-      github_base_ref: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
+      forge_head_sha: "abc123",
+      forge_head_ref: "fix-cod-5",
+      forge_base_ref: "develop",
       payload: %{
         workflow_run: %{id: 123, name: "CI", url: "https://github.com/dezet/portal/actions/runs/123"},
         log_excerpt: "cargo test failed"

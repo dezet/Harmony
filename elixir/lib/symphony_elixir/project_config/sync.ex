@@ -49,9 +49,6 @@ defmodule SymphonyElixir.ProjectConfig.Sync do
       forge_repo: config.forge.repo,
       forge_base_branch: config.forge.base_branch,
       forge_base_url: config.forge.base_url,
-      github_owner: config.forge.owner,
-      github_repo: config.forge.repo,
-      github_base_branch: config.forge.base_branch,
       config_version: config.review.template_version,
       config: config.raw
     }

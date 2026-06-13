@@ -16,8 +16,8 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
         Github.Client.list_open_pull_requests(owner, repo, client_opts)
       end)
 
-    owner = ref.owner || project_value(project, :github_owner)
-    repo = ref.repo || project_value(project, :github_repo)
+    owner = ref.owner || project_value(project, :forge_owner)
+    repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       runs =
@@ -36,12 +36,6 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
 
     persist.(%{
       project_id: project_value(project, :id),
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: pr.number,
@@ -59,12 +53,6 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
       project_slug: project_value(project, :slug),
       type: "github_pr_observed",
       status: "observed",
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: pr.number,

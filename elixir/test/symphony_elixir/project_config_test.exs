@@ -104,21 +104,17 @@ defmodule SymphonyElixir.ProjectConfigTest do
 
     assert {:ok, [project]} = Sync.sync_dir(projects_dir)
     assert project.slug == "portal"
-    assert project.github_base_branch == "develop"
+    assert project.forge_base_branch == "develop"
   end
 
   @tag :db
-  test "sync dual-writes forge_* and github_* columns", %{projects_dir: projects_dir} do
+  test "sync writes forge_* columns", %{projects_dir: projects_dir} do
     write_project_config!(Path.join(projects_dir, "portal.yaml"))
 
     :ok = checkout_repo(%{})
 
     assert {:ok, [project]} = Sync.sync_dir(projects_dir)
-    # legacy github_* columns still populated
-    assert project.github_owner == "dezet"
-    assert project.github_repo == "portal"
-    assert project.github_base_branch == "develop"
-    # new forge_* columns populated
+    # forge_* columns populated
     assert project.forge_type == "github"
     assert project.forge_owner == "dezet"
     assert project.forge_repo == "portal"

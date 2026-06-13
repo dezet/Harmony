@@ -33,8 +33,8 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
 
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
-    owner = ref.owner || project_value(project, :github_owner)
-    repo = ref.repo || project_value(project, :github_repo)
+    owner = ref.owner || project_value(project, :forge_owner)
+    repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
@@ -72,12 +72,6 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
       type: "code_review",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, pr, comment, project),
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: pr.number,

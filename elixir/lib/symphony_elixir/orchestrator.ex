@@ -470,7 +470,7 @@ defmodule SymphonyElixir.Orchestrator do
       LinearIssueSource.fetch_candidates(
         project_id: project_value(project, :id),
         project_slug: project_value(project, :slug),
-        base_branch: project_value(project, :github_base_branch),
+        base_branch: project_value(project, :forge_base_branch),
         config_version: project_value(project, :config_version),
         required_evidence: project_required_evidence(project)
       )
@@ -523,18 +523,12 @@ defmodule SymphonyElixir.Orchestrator do
       type: run.type,
       status: run.status || "queued",
       dedupe_key: run.dedupe_key,
-      github_owner: run.github_owner,
-      github_repo: run.github_repo,
-      github_pr_number: run.github_pr_number,
-      github_head_sha: run.github_head_sha,
-      github_head_ref: run.github_head_ref,
-      github_base_ref: run.github_base_ref,
-      forge_owner: run.forge_owner || run.github_owner,
-      forge_repo: run.forge_repo || run.github_repo,
-      forge_pr_number: run.forge_pr_number || run.github_pr_number,
-      forge_head_sha: run.forge_head_sha || run.github_head_sha,
-      forge_head_ref: run.forge_head_ref || run.github_head_ref,
-      forge_base_ref: run.forge_base_ref || run.github_base_ref,
+      forge_owner: run.forge_owner,
+      forge_repo: run.forge_repo,
+      forge_pr_number: run.forge_pr_number,
+      forge_head_sha: run.forge_head_sha,
+      forge_head_ref: run.forge_head_ref,
+      forge_base_ref: run.forge_base_ref,
       linear_issue_id: run.linear_issue_id,
       linear_identifier: run.linear_identifier,
       linear_url: run.linear_url,
@@ -1115,9 +1109,9 @@ defmodule SymphonyElixir.Orchestrator do
            linear_project_slug: slug,
            linear_team_key: nil,
            linear_human_review_state: "Human Review",
-           github_owner: "legacy",
-           github_repo: slug,
-           github_base_branch: "main",
+           forge_owner: "legacy",
+           forge_repo: slug,
+           forge_base_branch: "main",
            config_version: 1,
            config: %{"source" => "orchestrator_legacy_blocker"}
          }) do
@@ -1258,7 +1252,7 @@ defmodule SymphonyElixir.Orchestrator do
 
     blocked_entry = %{
       issue_id: key,
-      identifier: "CI-PR-#{run.github_pr_number}",
+      identifier: "CI-PR-#{run.forge_pr_number}",
       project_slug: run.project_slug,
       issue: ci_fix_issue(run, key),
       error: reason,
@@ -1287,9 +1281,9 @@ defmodule SymphonyElixir.Orchestrator do
   defp ci_fix_issue(%WorkRun{} = run, key) do
     %Issue{
       id: key,
-      identifier: "CI-PR-#{run.github_pr_number}",
-      title: "Fix failed CI for PR ##{run.github_pr_number}",
-      description: "Failed GitHub Actions repair for #{run.github_owner}/#{run.github_repo}",
+      identifier: "CI-PR-#{run.forge_pr_number}",
+      title: "Fix failed CI for PR ##{run.forge_pr_number}",
+      description: "Failed GitHub Actions repair for #{run.forge_owner}/#{run.forge_repo}",
       state: "In Progress",
       project_id: payload_value(run.payload, :project_id),
       project_slug: run.project_slug,
@@ -1300,9 +1294,9 @@ defmodule SymphonyElixir.Orchestrator do
   defp code_review_issue(%WorkRun{} = run, key) do
     %Issue{
       id: key,
-      identifier: "REVIEW-PR-#{run.github_pr_number}",
-      title: "Review PR ##{run.github_pr_number}",
-      description: "Requested GitHub pull request review for #{run.github_owner}/#{run.github_repo}",
+      identifier: "REVIEW-PR-#{run.forge_pr_number}",
+      title: "Review PR ##{run.forge_pr_number}",
+      description: "Requested GitHub pull request review for #{run.forge_owner}/#{run.forge_repo}",
       state: "In Progress",
       project_id: payload_value(run.payload, :project_id),
       project_slug: run.project_slug,
@@ -1312,7 +1306,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp work_run_key(%WorkRun{dedupe_key: key}) when is_binary(key), do: key
 
-  defp work_run_key(%WorkRun{type: type, github_owner: owner, github_repo: repo, github_pr_number: number}) do
+  defp work_run_key(%WorkRun{type: type, forge_owner: owner, forge_repo: repo, forge_pr_number: number}) do
     "#{type}:#{owner}/#{repo}:#{number}"
   end
 
@@ -1384,9 +1378,9 @@ defmodule SymphonyElixir.Orchestrator do
             target_id: key,
             reason: reason,
             metadata: %{
-              "github_pr_number" => run.github_pr_number,
-              "github_owner" => run.github_owner,
-              "github_repo" => run.github_repo
+              "forge_pr_number" => run.forge_pr_number,
+              "forge_owner" => run.forge_owner,
+              "forge_repo" => run.forge_repo
             }
           })
 

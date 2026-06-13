@@ -14,9 +14,9 @@ defmodule SymphonyElixir.ReviewHandoffTest do
 
     run = %WorkRun{
       dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7
     }
 
     assert :ok =
@@ -43,9 +43,9 @@ defmodule SymphonyElixir.ReviewHandoffTest do
 
     run = %WorkRun{
       dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
       payload: %{project_id: "project-1"}
     }
 
@@ -63,7 +63,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
                        key: "github-review:dezet/portal:7:99:abc123:1",
                        scope: "github_review",
                        status: "processed",
-                       metadata: %{"github_pr_number" => 7}
+                       metadata: %{"forge_pr_number" => 7}
                      }}
   end
 
@@ -80,9 +80,9 @@ defmodule SymphonyElixir.ReviewHandoffTest do
     run = %WorkRun{
       id: "work-run-1",
       dedupe_key: "github-review:dezet/portal:7:99:abc123:1",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
       payload: %{project_id: "project-1"}
     }
 
@@ -98,7 +98,7 @@ defmodule SymphonyElixir.ReviewHandoffTest do
                        project_id: "project-1",
                        work_run_id: "work-run-1",
                        type: "github_review_created",
-                       payload: %{"github_pr_number" => 7}
+                       payload: %{"forge_pr_number" => 7}
                      }}
   end
 end

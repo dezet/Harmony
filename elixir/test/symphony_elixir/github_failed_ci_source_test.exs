@@ -8,9 +8,9 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD",
       config: %{}
     }
@@ -59,7 +59,7 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
 
     assert run.type == "ci_fix"
     assert run.dedupe_key == "github-ci-fix:dezet/portal:7:abc123:123"
-    assert run.github_pr_number == 7
+    assert run.forge_pr_number == 7
     assert run.payload.workflow_run.url == "https://github.com/dezet/portal/actions/runs/123"
     assert run.payload.log_excerpt == "mix test failed\nstacktrace"
   end
@@ -68,9 +68,9 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD",
       config: %{}
     }
@@ -113,9 +113,9 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD",
       config: %{}
     }
@@ -150,9 +150,9 @@ defmodule SymphonyElixir.GithubFailedCiSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD",
       config: %{}
     }

@@ -129,19 +129,19 @@ defmodule SymphonyElixir.RuntimePolicy.ImplementationHandoff do
   end
 
   defp expected_base_ref(project, %WorkRun{} = run) do
-    run.github_base_ref || project_value(project, :github_base_branch)
+    run.forge_base_ref || run.github_base_ref || project_value(project, :forge_base_branch) || project_value(project, :github_base_branch)
   end
 
   defp pr_link_metadata(pr_link) do
     %{
-      "github_pr_number" => project_value(pr_link, :github_pr_number),
-      "github_head_ref" => head_ref(pr_link),
-      "github_base_ref" => base_ref(pr_link)
+      "forge_pr_number" => project_value(pr_link, :forge_pr_number),
+      "forge_head_ref" => head_ref(pr_link),
+      "forge_base_ref" => base_ref(pr_link)
     }
   end
 
-  defp head_ref(pr_link), do: project_value(pr_link, :github_head_ref)
-  defp base_ref(pr_link), do: project_value(pr_link, :github_base_ref)
+  defp head_ref(pr_link), do: project_value(pr_link, :forge_head_ref)
+  defp base_ref(pr_link), do: project_value(pr_link, :forge_base_ref)
 
   defp payload_value(%{} = payload, key), do: Map.get(payload, key) || Map.get(payload, to_string(key))
   defp payload_value(_payload, _key), do: nil

@@ -13,12 +13,6 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
 
   schema "pull_request_links" do
     belongs_to(:project, Project)
-    field(:github_owner, :string)
-    field(:github_repo, :string)
-    field(:github_pr_number, :integer)
-    field(:github_head_sha, :string)
-    field(:github_head_ref, :string)
-    field(:github_base_ref, :string)
     field(:forge_owner, :string)
     field(:forge_repo, :string)
     field(:forge_pr_number, :integer)
@@ -39,12 +33,6 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
     pull_request_link
     |> cast(attrs, [
       :project_id,
-      :github_owner,
-      :github_repo,
-      :github_pr_number,
-      :github_head_sha,
-      :github_head_ref,
-      :github_base_ref,
       :forge_owner,
       :forge_repo,
       :forge_pr_number,
@@ -56,10 +44,10 @@ defmodule SymphonyElixir.Storage.PullRequestLink do
       :linear_url,
       :metadata
     ])
-    |> validate_required([:project_id, :github_owner, :github_repo, :github_pr_number, :metadata])
+    |> validate_required([:project_id, :forge_owner, :forge_repo, :forge_pr_number, :metadata])
     |> assoc_constraint(:project)
-    |> unique_constraint(:github_pr_number,
-      name: :pull_request_links_project_id_github_owner_github_repo_github_pr_number_index
+    |> unique_constraint(:forge_pr_number,
+      name: :pull_request_links_project_id_forge_owner_forge_repo_forge_pr_n
     )
   end
 end
