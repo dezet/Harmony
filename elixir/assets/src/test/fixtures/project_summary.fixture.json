@@ -5,6 +5,8 @@
     "github_owner": "acme",
     "github_repo": "portal",
     "github_base_branch": "main",
+    "forge_secret": "set",
+    "tracker_secret": "unset",
     "linear_project_slug": "alpha-linear",
     "linear_team_key": "COD",
     "linear_human_review_state": "Human Review",

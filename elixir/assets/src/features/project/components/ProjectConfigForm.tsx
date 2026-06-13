@@ -25,6 +25,21 @@ const FIELDS = [
   { name: "linear_human_review_state", label: "Linear human review state" },
 ] as const;
 
+const SECRETS = [
+  {
+    name: "forge_secret",
+    clearName: "clear_forge_secret",
+    label: "Forge token",
+    state: (p?: Project) => p?.forge_secret ?? "unset",
+  },
+  {
+    name: "tracker_secret",
+    clearName: "clear_tracker_secret",
+    label: "Tracker key",
+    state: (p?: Project) => p?.tracker_secret ?? "unset",
+  },
+] as const;
+
 function serverFieldToFormField(field: string): keyof ProjectFormValues {
   if (field === "config") return "config_json";
   return field as keyof ProjectFormValues;
@@ -67,6 +82,10 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         linear_project_slug: project.linear_project_slug ?? "",
         linear_team_key: project.linear_team_key ?? "",
         linear_human_review_state: project.linear_human_review_state ?? "",
+        forge_secret: "",
+        tracker_secret: "",
+        clear_forge_secret: false,
+        clear_tracker_secret: false,
         config_version: project.config_version,
         config_json: JSON.stringify(project.config ?? {}, null, 2),
       });
@@ -109,6 +128,27 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
             <p id={errorId(f.name)} className="text-sm text-destructive">
               {errors[f.name]?.message}
             </p>
+          ) : null}
+        </div>
+      ))}
+
+      {SECRETS.map((s) => (
+        <div key={s.name} className="space-y-1">
+          <Label htmlFor={s.name}>
+            {s.label} — currently: {s.state(project)}
+          </Label>
+          <Input
+            id={s.name}
+            type="password"
+            autoComplete="new-password"
+            placeholder={editing ? "Leave blank to keep current" : ""}
+            {...register(s.name)}
+          />
+          {editing ? (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input type="checkbox" {...register(s.clearName)} />
+              Clear (revert to environment default)
+            </label>
           ) : null}
         </div>
       ))}
