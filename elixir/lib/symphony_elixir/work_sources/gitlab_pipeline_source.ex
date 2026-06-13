@@ -117,13 +117,27 @@ defmodule SymphonyElixir.WorkSources.GitlabPipelineSource do
                "#{project_value(project, :forge_owner)}/#{project_value(project, :forge_repo)}",
            head_ref: mr.head_ref,
            base_ref: mr.base_ref || project_value(project, :forge_base_branch),
-           protected_branches: List.wrap(project_value(project, :forge_base_branch))
+           protected_branches: protected_branches(project)
          }) do
       :ok -> "direct_push_allowed"
       {:error, :fork_pr_requires_repair_branch} -> "repair_branch_required"
       {:error, reason} -> "blocked:#{reason}"
     end
   end
+
+  defp protected_branches(project) do
+    config = project_value(project, :config) || %{}
+
+    config
+    |> map_get_any(:protected_branches)
+    |> case do
+      branches when is_list(branches) -> branches
+      _other -> List.wrap(project_value(project, :forge_base_branch))
+    end
+  end
+
+  defp map_get_any(%{} = map, key), do: Map.get(map, key) || Map.get(map, to_string(key))
+  defp map_get_any(_map, _key), do: nil
 
   defp dedupe_key(owner, repo, mr, pipeline) do
     "gitlab-ci-fix:#{owner}/#{repo}:#{mr.number}:#{mr.head_sha}:#{pipeline.id}"
