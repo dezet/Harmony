@@ -1,5 +1,4 @@
 import { Loader2 } from "lucide-react"
-import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 
 import {
   AlertDialog,
@@ -56,16 +55,12 @@ export function ConfirmDialog({
               {confirmLabel}
             </Button>
           ) : (
-            <AlertDialogPrimitive.Close
-              render={
-                <Button
-                  variant={destructive ? "destructive" : "default"}
-                  onClick={onConfirm}
-                />
-              }
+            <Button
+              variant={destructive ? "destructive" : "default"}
+              onClick={onConfirm}
             >
               {confirmLabel}
-            </AlertDialogPrimitive.Close>
+            </Button>
           )}
         </AlertDialogFooter>
       </AlertDialogContent>

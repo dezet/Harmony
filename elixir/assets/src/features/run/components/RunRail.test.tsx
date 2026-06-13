@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RunRail } from "@/features/run/components/RunRail";
@@ -183,6 +183,27 @@ describe("RunRail", () => {
     await user.click(screen.getByRole("button", { name: "Stop this run" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(stopMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("confirming the dialog closes it via onSettled callback passed to mutate", async () => {
+    // ConfirmDialog no longer auto-closes on confirm (the Close primitive was replaced
+    // with a plain Button). RunRail must pass onSettled: () => setConfirmOpen(false)
+    // to stop.mutate so the dialog closes after the mutation settles.
+    let capturedOnSettled: (() => void) | undefined;
+    stopMutate.mockImplementation((_arg: unknown, opts?: { onSettled?: () => void }) => {
+      capturedOnSettled = opts?.onSettled;
+    });
+
+    const user = userEvent.setup();
+    render(<RunRail detail={fixture} />);
+    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    // mutate was called with an onSettled callback
+    expect(capturedOnSettled).toBeDefined();
+    // simulate the mutation settling — the dialog should close
+    await act(async () => { capturedOnSettled!(); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

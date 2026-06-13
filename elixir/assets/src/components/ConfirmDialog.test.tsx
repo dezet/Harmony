@@ -82,4 +82,15 @@ describe("ConfirmDialog", () => {
     renderDialog({ description: undefined })
     expect(screen.getByText("Delete item")).toBeInTheDocument()
   })
+
+  it("confirm button does NOT auto-close the dialog (onOpenChange not called on confirm)", async () => {
+    // The confirm action should not close the dialog itself — the parent controls
+    // open state via onSettled/onSuccess callbacks on the mutation.
+    const onOpenChange = vi.fn()
+    const onConfirm = vi.fn()
+    renderDialog({ onOpenChange, onConfirm })
+    await userEvent.click(screen.getByRole("button", { name: /confirm/i }))
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
 })

@@ -125,7 +125,7 @@ export function RunRail({ detail }: RunRailProps) {
             confirmLabel="Stop run"
             destructive
             isPending={stop.isPending}
-            onConfirm={() => stop.mutate()}
+            onConfirm={() => stop.mutate(undefined, { onSettled: () => setConfirmOpen(false) })}
           />
         </CardContent>
       </Card>

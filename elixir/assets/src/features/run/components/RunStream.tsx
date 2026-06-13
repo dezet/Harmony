@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StreamItemRow } from "@/features/run/components/StreamItemRow";
@@ -26,13 +27,25 @@ export function RunStream({
   onLoadMore,
 }: RunStreamProps) {
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [query, setQuery] = useState("");
 
   const hasWorkEvents = items.some((i) => i.kind === "work_event");
   const hasLiveEvents = items.some((i) => i.kind === "live_event");
   const hasMixedKinds = hasWorkEvents && hasLiveEvents;
 
-  const visibleItems =
+  const kindFilteredItems =
     filter === "events" ? items.filter((i) => i.kind === "work_event") : items;
+
+  const visibleItems = query.trim()
+    ? kindFilteredItems.filter((item) => {
+        const q = query.toLowerCase();
+        if (item.type.toLowerCase().includes(q)) return true;
+        if (typeof item.payload?.message === "string") {
+          return item.payload.message.toLowerCase().includes(q);
+        }
+        return false;
+      })
+    : kindFilteredItems;
 
   return (
     <Card>
@@ -60,6 +73,15 @@ export function RunStream({
             </div>
           )}
         </div>
+        {items.length > 0 && (
+          <Input
+            aria-label="Search events"
+            placeholder="Search events…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="mt-2 h-7 text-sm"
+          />
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         {error && (
@@ -80,7 +102,11 @@ export function RunStream({
             <Skeleton className="h-8 w-3/4" />
           </div>
         ) : visibleItems.length === 0 && !error ? (
-          <p className="text-sm text-muted-foreground">No events yet.</p>
+          <p className="text-sm text-muted-foreground">
+            {items.length > 0 && query.trim()
+              ? "No events match your search."
+              : "No events yet."}
+          </p>
         ) : (
           <>
             <ul
