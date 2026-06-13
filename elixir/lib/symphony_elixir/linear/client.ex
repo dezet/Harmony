@@ -170,13 +170,49 @@ defmodule SymphonyElixir.Linear.Client do
     end
   end
 
+  @list_projects_query """
+  query SymphonyListProjects {
+    teams {
+      nodes {
+        key
+        projects(first: 250) {
+          nodes { id name slugId }
+        }
+      }
+    }
+  }
+  """
+
+  @spec list_projects(map(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_projects(creds, opts \\ []) when is_map(creds) do
+    opts = Keyword.put_new(opts, :token, Map.get(creds, :token))
+
+    with {:ok, body} <- graphql(@list_projects_query, %{}, opts) do
+      {:ok, normalize_projects(body)}
+    end
+  end
+
+  defp normalize_projects(body) do
+    body
+    |> get_in(["data", "teams", "nodes"])
+    |> List.wrap()
+    |> Enum.flat_map(fn team ->
+      team
+      |> get_in(["projects", "nodes"])
+      |> List.wrap()
+      |> Enum.map(fn p ->
+        %{id: p["id"], name: p["name"], slug: p["slugId"], team_key: team["key"]}
+      end)
+    end)
+  end
+
   @spec graphql(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def graphql(query, variables \\ %{}, opts \\ [])
       when is_binary(query) and is_map(variables) and is_list(opts) do
     payload = build_graphql_payload(query, variables, Keyword.get(opts, :operation_name))
     request_fun = Keyword.get(opts, :request_fun, &post_graphql_request/2)
 
-    with {:ok, headers} <- graphql_headers(),
+    with {:ok, headers} <- graphql_headers(Keyword.get(opts, :token)),
          {:ok, %{status: 200, body: body}} <- request_fun.(payload, headers) do
       {:ok, body}
     else
@@ -416,8 +452,8 @@ defmodule SymphonyElixir.Linear.Client do
     end
   end
 
-  defp graphql_headers do
-    case Config.settings!().tracker.api_key do
+  defp graphql_headers(override_token) do
+    case override_token || Config.settings!().tracker.api_key do
       nil ->
         {:error, :missing_linear_api_token}
 
