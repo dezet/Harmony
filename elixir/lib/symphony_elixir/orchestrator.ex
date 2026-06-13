@@ -2066,6 +2066,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec stop_run(GenServer.server(), String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
   def stop_run(server, issue_id) do
+    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:stop_run, issue_id})
     else
@@ -2080,6 +2081,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec retry_now(GenServer.server(), String.t()) :: :ok | {:error, :not_retrying}
   def retry_now(server, issue_id) do
+    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:retry_now, issue_id})
     else
@@ -2104,6 +2106,14 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  # Operator stop: terminates the current attempt (kills the Elixir task; the
+  # underlying agent OS subprocess may finish its in-flight turn), frees the slot,
+  # marks the run "stopped" (broadcast + durable when storage_work_run_id is known),
+  # and records the issue in `completed`. NOTE: `completed` guards the immediate
+  # call, not future polls — this is a tracker-driven daemon, so if the Linear issue
+  # is still in an active state it can be re-dispatched on a later tick. Truly ending
+  # the work means moving the tracker issue out of an active state. Stop = stop the
+  # current attempt now.
   @impl true
   def handle_call({:stop_run, issue_id}, _from, state) do
     cond do
@@ -2126,6 +2136,7 @@ defmodule SymphonyElixir.Orchestrator do
 
         new_state = release_issue_claim(state, issue_id)
         new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
+        # No storage_work_run_id on retry entries (the running entry was cleaned up when the run entered retry) — channel/cache-only "stopped".
         ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
         notify_dashboard()
         {:reply, :ok, new_state}
