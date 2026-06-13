@@ -46,6 +46,15 @@ defmodule SymphonyElixirWeb.Router do
     get("/api/v1/work_runs", WorkRunController, :index)
     match(:*, "/api/v1/work_runs", WorkRunController, :method_not_allowed)
 
+    # Run action endpoints (stop, retry-now). Declared before the run-detail GETs
+    # so Phoenix matches the more specific sub-paths first. POST won't collide
+    # with the GET run-detail route, but grouping them here keeps the routes
+    # readable and the match(:*) 405 guards correct.
+    post("/api/v1/runs/:identifier/stop", RunActionController, :stop)
+    match(:*, "/api/v1/runs/:identifier/stop", RunActionController, :method_not_allowed)
+    post("/api/v1/runs/:identifier/retry", RunActionController, :retry)
+    match(:*, "/api/v1/runs/:identifier/retry", RunActionController, :method_not_allowed)
+
     # Per-run detail and stream endpoints. Must come before the :issue_identifier
     # catch-all so that /api/v1/runs/:identifier is not captured as an issue identifier.
     get("/api/v1/runs/:identifier", RunDetailController, :show)
