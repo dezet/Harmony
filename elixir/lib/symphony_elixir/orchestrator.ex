@@ -1857,6 +1857,20 @@ defmodule SymphonyElixir.Orchestrator do
     StatusDashboard.notify_update()
   end
 
+  defp stop_run_identifiers(%State{} = state, issue_id) do
+    entry = Map.get(state.running, issue_id) || Map.get(state.blocked, issue_id) || %{}
+    identifier = Map.get(entry, :identifier, issue_id)
+    storage_work_run_id = Map.get(entry, :storage_work_run_id)
+    {identifier, storage_work_run_id}
+  end
+
+  defp maybe_persist_stopped_status(storage_work_run_id) when is_binary(storage_work_run_id) do
+    _ = Storage.update_work_run_status(storage_work_run_id, "stopped")
+    :ok
+  end
+
+  defp maybe_persist_stopped_status(_storage_work_run_id), do: :ok
+
   defp handle_active_retry(state, issue, attempt, metadata) do
     if retry_candidate_issue?(issue, terminal_state_set()) and
          dispatch_slots_available?(issue, state) and
@@ -2045,6 +2059,34 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  @spec stop_run(String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
+  def stop_run(issue_id) do
+    stop_run(__MODULE__, issue_id)
+  end
+
+  @spec stop_run(GenServer.server(), String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
+  def stop_run(server, issue_id) do
+    if Process.whereis(server) do
+      GenServer.call(server, {:stop_run, issue_id})
+    else
+      {:error, :run_not_found}
+    end
+  end
+
+  @spec retry_now(String.t()) :: :ok | {:error, :not_retrying}
+  def retry_now(issue_id) do
+    retry_now(__MODULE__, issue_id)
+  end
+
+  @spec retry_now(GenServer.server(), String.t()) :: :ok | {:error, :not_retrying}
+  def retry_now(server, issue_id) do
+    if Process.whereis(server) do
+      GenServer.call(server, {:retry_now, issue_id})
+    else
+      {:error, :not_retrying}
+    end
+  end
+
   @spec snapshot() :: map() | :timeout | :unavailable
   def snapshot, do: snapshot(__MODULE__, 15_000)
 
@@ -2063,6 +2105,57 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @impl true
+  def handle_call({:stop_run, issue_id}, _from, state) do
+    cond do
+      Map.has_key?(state.running, issue_id) or Map.has_key?(state.blocked, issue_id) ->
+        {identifier, storage_work_run_id} = stop_run_identifiers(state, issue_id)
+        new_state = terminate_running_issue(state, issue_id, false)
+        new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
+        ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
+        maybe_persist_stopped_status(storage_work_run_id)
+        notify_dashboard()
+        {:reply, :ok, new_state}
+
+      Map.has_key?(state.retry_attempts, issue_id) ->
+        retry_entry = Map.get(state.retry_attempts, issue_id)
+        identifier = Map.get(retry_entry, :identifier, issue_id)
+
+        if is_reference(Map.get(retry_entry, :timer_ref)) do
+          Process.cancel_timer(retry_entry.timer_ref)
+        end
+
+        new_state = release_issue_claim(state, issue_id)
+        new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
+        ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
+        notify_dashboard()
+        {:reply, :ok, new_state}
+
+      MapSet.member?(state.completed, issue_id) ->
+        {:reply, {:error, :already_terminal}, state}
+
+      true ->
+        {:reply, {:error, :run_not_found}, state}
+    end
+  end
+
+  def handle_call({:retry_now, issue_id}, _from, state) do
+    case Map.get(state.retry_attempts, issue_id) do
+      nil ->
+        {:reply, {:error, :not_retrying}, state}
+
+      retry_entry ->
+        if is_reference(Map.get(retry_entry, :timer_ref)) do
+          Process.cancel_timer(retry_entry.timer_ref)
+        end
+
+        new_token = make_ref()
+        Process.send_after(self(), {:retry_issue, issue_id, new_token}, 0)
+        updated_entry = %{retry_entry | timer_ref: nil, retry_token: new_token}
+        new_state = %{state | retry_attempts: Map.put(state.retry_attempts, issue_id, updated_entry)}
+        {:reply, :ok, new_state}
+    end
+  end
+
   def handle_call(:snapshot, _from, state) do
     state = refresh_runtime_config(state)
     now = DateTime.utc_now()

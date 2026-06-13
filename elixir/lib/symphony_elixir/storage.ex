@@ -381,6 +381,19 @@ defmodule SymphonyElixir.Storage do
     Repo.get!(Project, id)
   end
 
+  @spec update_work_run_status(binary(), String.t()) :: :ok | {:error, :not_found}
+  def update_work_run_status(work_run_id, status) when is_binary(work_run_id) and is_binary(status) do
+    now = DateTime.utc_now()
+
+    case Repo.update_all(
+           from(r in WorkRun, where: r.id == ^work_run_id),
+           set: [status: status, updated_at: now]
+         ) do
+      {1, _} -> :ok
+      {0, _} -> {:error, :not_found}
+    end
+  end
+
   @spec list_queued_runs() :: [WorkRun.t()]
   def list_queued_runs do
     WorkRun
