@@ -1,7 +1,7 @@
 defmodule SymphonyElixir.ProjectConfigTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.ProjectConfig.{Loader, Sync}
+  alias SymphonyElixir.ProjectConfig.{Loader, Schema, Sync}
 
   setup do
     root = Path.join(System.tmp_dir!(), "harmony-project-config-#{System.unique_integer([:positive])}")
@@ -19,7 +19,80 @@ defmodule SymphonyElixir.ProjectConfigTest do
 
     assert {:ok, [config]} = Loader.load_dir(projects_dir)
     assert config.slug == "portal"
-    assert config.github.owner == "dezet"
+    assert config.forge.owner == "dezet"
+  end
+
+  test "parse/1 accepts a forge: section", _ do
+    raw = %{
+      "slug" => "portal",
+      "linear" => %{
+        "project_slug" => "portal-abc",
+        "team_key" => "COD",
+        "human_review_state" => "Human Review"
+      },
+      "forge" => %{
+        "type" => "github",
+        "owner" => "acme",
+        "repo" => "portal",
+        "base_branch" => "main",
+        "base_url" => "https://github.example.com",
+        "protected_branches" => ["main", "develop"]
+      },
+      "review" => %{"template_version" => 1}
+    }
+
+    assert {:ok, config} = Schema.parse(raw)
+    assert config.forge.type == "github"
+    assert config.forge.owner == "acme"
+    assert config.forge.repo == "portal"
+    assert config.forge.base_branch == "main"
+    assert config.forge.base_url == "https://github.example.com"
+    assert config.forge.protected_branches == ["main", "develop"]
+  end
+
+  test "parse/1 accepts a legacy github: section mapped to forge", _ do
+    raw = %{
+      "slug" => "portal",
+      "linear" => %{
+        "project_slug" => "portal-abc",
+        "team_key" => "COD",
+        "human_review_state" => "Human Review"
+      },
+      "github" => %{
+        "owner" => "acme",
+        "repo" => "portal",
+        "base_branch" => "main",
+        "protected_branches" => ["main"]
+      },
+      "review" => %{"template_version" => 1}
+    }
+
+    assert {:ok, config} = Schema.parse(raw)
+    assert config.forge.type == "github"
+    assert config.forge.owner == "acme"
+    assert config.forge.repo == "portal"
+    assert config.forge.base_branch == "main"
+    assert config.forge.protected_branches == ["main"]
+  end
+
+  test "parse/1 defaults forge type to github when omitted", _ do
+    raw = %{
+      "slug" => "portal",
+      "linear" => %{
+        "project_slug" => "portal-abc",
+        "team_key" => "COD",
+        "human_review_state" => "Human Review"
+      },
+      "forge" => %{
+        "owner" => "acme",
+        "repo" => "portal",
+        "base_branch" => "main"
+      },
+      "review" => %{"template_version" => 1}
+    }
+
+    assert {:ok, config} = Schema.parse(raw)
+    assert config.forge.type == "github"
   end
 
   @tag :db
@@ -32,6 +105,24 @@ defmodule SymphonyElixir.ProjectConfigTest do
     assert {:ok, [project]} = Sync.sync_dir(projects_dir)
     assert project.slug == "portal"
     assert project.github_base_branch == "develop"
+  end
+
+  @tag :db
+  test "sync dual-writes forge_* and github_* columns", %{projects_dir: projects_dir} do
+    write_project_config!(Path.join(projects_dir, "portal.yaml"))
+
+    :ok = checkout_repo(%{})
+
+    assert {:ok, [project]} = Sync.sync_dir(projects_dir)
+    # legacy github_* columns still populated
+    assert project.github_owner == "dezet"
+    assert project.github_repo == "portal"
+    assert project.github_base_branch == "develop"
+    # new forge_* columns populated
+    assert project.forge_type == "github"
+    assert project.forge_owner == "dezet"
+    assert project.forge_repo == "portal"
+    assert project.forge_base_branch == "develop"
   end
 
   @tag :db
