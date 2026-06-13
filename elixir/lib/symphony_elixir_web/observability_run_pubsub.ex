@@ -87,6 +87,54 @@ defmodule SymphonyElixirWeb.ObservabilityRunPubSub do
     broadcast(issue_id, {:run_tokens_updated, payload})
   end
 
+  @doc """
+  Orchestrator convenience: broadcast `event_appended` + `tokens_updated` from
+  a running-entry map that has already been updated by `integrate_codex_update`.
+
+  Reads: `identifier`, `last_codex_event`, `last_codex_message`,
+  `codex_input_tokens`, `codex_output_tokens`, `codex_total_tokens`, `turn_count`.
+  """
+  @spec publish_worker_update(String.t(), map()) :: :ok
+  def publish_worker_update(issue_id, entry) when is_binary(issue_id) and is_map(entry) do
+    identifier = Map.get(entry, :identifier, "")
+    event = Map.get(entry, :last_codex_event)
+    type = if is_atom(event), do: Atom.to_string(event), else: to_string(event || "update")
+
+    message =
+      case Map.get(entry, :last_codex_message) do
+        %{message: msg} when is_binary(msg) and msg != "" -> msg
+        _ -> type
+      end
+
+    broadcast_event_appended(issue_id, %{identifier: identifier, type: type, message: message})
+
+    broadcast_tokens_updated(issue_id, %{
+      identifier: identifier,
+      tokens: %{
+        input_tokens: Map.get(entry, :codex_input_tokens, 0),
+        output_tokens: Map.get(entry, :codex_output_tokens, 0),
+        total_tokens: Map.get(entry, :codex_total_tokens, 0)
+      },
+      turn_count: Map.get(entry, :turn_count, 0)
+    })
+  end
+
+  @doc """
+  Orchestrator convenience: broadcast `status_changed` with a plain status string
+  and optional `last_error`.
+
+  Intended for the blocked and retrying transitions.
+  """
+  @spec publish_run_status(String.t(), String.t(), String.t(), String.t() | nil) :: :ok
+  def publish_run_status(issue_id, identifier, status, last_error)
+      when is_binary(issue_id) and is_binary(status) do
+    broadcast_status_changed(issue_id, %{
+      identifier: identifier || "",
+      status: status,
+      last_error: last_error
+    })
+  end
+
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------

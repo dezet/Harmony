@@ -157,6 +157,115 @@ defmodule SymphonyElixir.RunChannelTest do
   end
 
   # ---------------------------------------------------------------------------
+  # publish_worker_update wrapper (Task E)
+  # ---------------------------------------------------------------------------
+
+  test "publish_worker_update broadcasts event_appended with event name as type" do
+    {:ok, _reply, _socket} = join_run("issue-wu-1")
+
+    entry = %{
+      identifier: "HAR-10",
+      last_codex_event: :session_started,
+      last_codex_message: nil,
+      codex_input_tokens: 50,
+      codex_output_tokens: 100,
+      codex_total_tokens: 150,
+      turn_count: 2
+    }
+
+    SymphonyElixirWeb.ObservabilityRunPubSub.publish_worker_update("issue-wu-1", entry)
+
+    assert_push("event_appended", payload)
+    assert payload.issue_id == "issue-wu-1"
+    assert payload.identifier == "HAR-10"
+    assert payload.item.type == "session_started"
+    assert payload.item.kind == "live_event"
+  end
+
+  test "publish_worker_update broadcasts tokens_updated with entry token fields" do
+    {:ok, _reply, _socket} = join_run("issue-wu-2")
+
+    entry = %{
+      identifier: "HAR-11",
+      last_codex_event: :turn_completed,
+      last_codex_message: nil,
+      codex_input_tokens: 200,
+      codex_output_tokens: 400,
+      codex_total_tokens: 600,
+      turn_count: 7
+    }
+
+    SymphonyElixirWeb.ObservabilityRunPubSub.publish_worker_update("issue-wu-2", entry)
+
+    # consume the event_appended first
+    assert_push("event_appended", _)
+
+    assert_push("tokens_updated", payload)
+    assert payload.issue_id == "issue-wu-2"
+    assert payload.identifier == "HAR-11"
+    assert payload.tokens.input_tokens == 200
+    assert payload.tokens.output_tokens == 400
+    assert payload.tokens.total_tokens == 600
+    assert payload.turn_count == 7
+  end
+
+  test "publish_worker_update uses last_codex_message text as event_appended message when available" do
+    {:ok, _reply, _socket} = join_run("issue-wu-3")
+
+    entry = %{
+      identifier: "HAR-12",
+      last_codex_event: :agent_message,
+      last_codex_message: %{message: "Wrote the tests", event: :agent_message, timestamp: nil},
+      codex_input_tokens: 0,
+      codex_output_tokens: 0,
+      codex_total_tokens: 0,
+      turn_count: 1
+    }
+
+    SymphonyElixirWeb.ObservabilityRunPubSub.publish_worker_update("issue-wu-3", entry)
+
+    assert_push("event_appended", payload)
+    assert payload.item.payload.message == "Wrote the tests"
+  end
+
+  # ---------------------------------------------------------------------------
+  # publish_run_status wrapper (Task E)
+  # ---------------------------------------------------------------------------
+
+  test "publish_run_status broadcasts status_changed with blocked status" do
+    {:ok, _reply, _socket} = join_run("issue-rs-1")
+
+    SymphonyElixirWeb.ObservabilityRunPubSub.publish_run_status(
+      "issue-rs-1",
+      "HAR-20",
+      "blocked",
+      "agent exited: :shutdown"
+    )
+
+    assert_push("status_changed", payload)
+    assert payload.issue_id == "issue-rs-1"
+    assert payload.identifier == "HAR-20"
+    assert payload.status == "blocked"
+    assert payload.last_error == "agent exited: :shutdown"
+    assert is_binary(payload.at)
+  end
+
+  test "publish_run_status broadcasts status_changed with retrying status and nil error" do
+    {:ok, _reply, _socket} = join_run("issue-rs-2")
+
+    SymphonyElixirWeb.ObservabilityRunPubSub.publish_run_status(
+      "issue-rs-2",
+      "HAR-21",
+      "retrying",
+      nil
+    )
+
+    assert_push("status_changed", payload)
+    assert payload.status == "retrying"
+    assert is_nil(payload.last_error)
+  end
+
+  # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
 

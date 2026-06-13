@@ -12,6 +12,7 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
   alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubPrSource, GithubReviewRequestSource, LinearIssueSource}
+  alias SymphonyElixirWeb.ObservabilityRunPubSub
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
@@ -178,6 +179,7 @@ defmodule SymphonyElixir.Orchestrator do
           |> apply_codex_rate_limits(update)
 
         notify_dashboard()
+        ObservabilityRunPubSub.publish_worker_update(issue_id, updated_running_entry)
         {:noreply, %{state | running: Map.put(running, issue_id, updated_running_entry)}}
     end
   end
@@ -1044,6 +1046,7 @@ defmodule SymphonyElixir.Orchestrator do
     }
 
     record_durable_blocker(issue_id, running_entry, error)
+    ObservabilityRunPubSub.publish_run_status(issue_id, blocked_entry.identifier, "blocked", error)
 
     %{
       state
@@ -1736,6 +1739,7 @@ defmodule SymphonyElixir.Orchestrator do
     error_suffix = if is_binary(error), do: " error=#{error}", else: ""
 
     Logger.warning("Retrying issue_id=#{issue_id} issue_identifier=#{identifier} in #{delay_ms}ms (attempt #{next_attempt})#{error_suffix}")
+    ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "retrying", error)
 
     %{
       state
