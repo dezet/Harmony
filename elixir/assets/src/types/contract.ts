@@ -301,6 +301,72 @@ export interface Project {
   updated_at: string;
 }
 
+// ─── Run Detail endpoint (/api/v1/runs/:identifier) ─────────────────────────
+
+export interface RunDetailTokens {
+  input: number;
+  output: number;
+  total: number;
+}
+
+export interface RunDetailProject {
+  id: string | null;
+  slug: string | null;
+  name: string | null;
+}
+
+export interface RunDetailWorkspace {
+  path: string;
+  host: string;
+}
+
+export interface RunArtifact {
+  id: string;
+  kind: string | null;
+  path: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface RunDetail {
+  identifier: string;
+  issue_id: string | null;
+  work_run_id: string | null;
+  status: string;
+  project: RunDetailProject | null;
+  workspace: RunDetailWorkspace | null;
+  session_id: string | null;
+  turn_count: number;
+  started_at: string | null;
+  last_event_at: string | null;
+  last_event: string | null;
+  last_message: string | null;
+  tokens: RunDetailTokens | null;
+  attempts: {
+    restart_count: number | null;
+    current_retry_attempt: number | null;
+  };
+  pull_requests: HumanReviewPR[];
+  artifacts: RunArtifact[];
+  last_error: string | null;
+  stream_cursor: string | null;
+}
+
+export interface RunStreamItem {
+  id: string;
+  kind: "work_event" | "live_event";
+  type: string;
+  at: string;
+  payload: Record<string, unknown> | null;
+}
+
+export interface RunStreamPage {
+  items: RunStreamItem[];
+  meta: {
+    next_cursor: string | null;
+    has_live: boolean;
+  };
+}
+
 // What the project form submits. `config` is an object parsed from the JSON textarea.
 export interface ProjectInput {
   slug: string;

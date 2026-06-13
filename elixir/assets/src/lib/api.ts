@@ -3,6 +3,8 @@ import type {
   Project,
   ProjectInput,
   ProjectSummary,
+  RunDetail,
+  RunStreamPage,
   StatePayload,
   WorkRunFilters,
   WorkRunsPage,
@@ -90,4 +92,17 @@ export function getWorkRuns(
   if (filters.status) params.set("status", filters.status);
   if (cursor) params.set("cursor", cursor);
   return request<WorkRunsPage>(`/work_runs?${params.toString()}`);
+}
+
+export function getRunDetail(identifier: string): Promise<RunDetail> {
+  return request<RunDetail>(`/runs/${encodeURIComponent(identifier)}`);
+}
+
+export function getRunStream(identifier: string, cursor?: string): Promise<RunStreamPage> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const query = params.toString();
+  return request<RunStreamPage>(
+    `/runs/${encodeURIComponent(identifier)}/stream${query ? `?${query}` : ""}`,
+  );
 }

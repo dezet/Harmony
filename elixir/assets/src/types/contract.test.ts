@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import fixture from "@/test/fixtures/state_payload.fixture.json";
 import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
-import type { ProjectSummary, StatePayload, WorkRunsPage } from "@/types/contract";
+import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
+import runStreamPageFixture from "@/test/fixtures/run_stream_page.fixture.json";
+import type {
+  ProjectSummary,
+  RunDetail,
+  RunStreamPage,
+  StatePayload,
+  WorkRunsPage,
+} from "@/types/contract";
 
 function expectKeys(value: object | undefined, keys: string[]) {
   expect(Object.keys(value ?? {}).sort()).toEqual([...keys].sort());
@@ -222,5 +230,80 @@ describe("WorkRunsPage contract fixture", () => {
     expect(page.work_runs[0].inserted_at).toBe("2026-06-13T10:00:02Z");
     expect(page.meta.next_cursor).not.toBeNull();
     expect(page.meta.page_size).toBe(25);
+  });
+});
+
+describe("RunDetail contract fixture", () => {
+  it("type-checks and exposes all fields used by the run detail endpoint", () => {
+    const detail: RunDetail = runDetailFixture;
+
+    expectKeys(detail, [
+      "identifier",
+      "issue_id",
+      "work_run_id",
+      "status",
+      "project",
+      "workspace",
+      "session_id",
+      "turn_count",
+      "started_at",
+      "last_event_at",
+      "last_event",
+      "last_message",
+      "tokens",
+      "attempts",
+      "pull_requests",
+      "artifacts",
+      "last_error",
+      "stream_cursor",
+    ]);
+    expectKeys(detail.project!, ["id", "slug", "name"]);
+    expectKeys(detail.workspace!, ["path", "host"]);
+    expectKeys(detail.tokens!, ["input", "output", "total"]);
+    expectKeys(detail.attempts, ["restart_count", "current_retry_attempt"]);
+    expect(detail.pull_requests).toHaveLength(1);
+    expectKeys(detail.pull_requests[0], [
+      "id",
+      "github_owner",
+      "github_repo",
+      "github_pr_number",
+      "github_head_sha",
+      "github_head_ref",
+      "github_base_ref",
+      "linear_identifier",
+      "linear_url",
+      "metadata",
+    ]);
+    expect(detail.artifacts).toHaveLength(1);
+    expectKeys(detail.artifacts[0], ["id", "kind", "path", "metadata"]);
+    expect(detail.identifier).toBe("COD-10");
+    expect(detail.issue_id).toBe("issue-cod-10");
+    expect(detail.work_run_id).toBe("run-uuid-1");
+    expect(detail.status).toBe("running");
+    expect(detail.project!.slug).toBe("alpha");
+    expect(detail.workspace!.host).toBe("host1");
+    expect(detail.tokens!.total).toBe(280);
+    expect(detail.attempts.restart_count).toBeNull();
+    expect(detail.last_message).toBeNull();
+    expect(detail.last_error).toBeNull();
+    expect(detail.pull_requests[0].github_pr_number).toBe(42);
+    expect(detail.artifacts[0].kind).toBe("screenshot");
+  });
+});
+
+describe("RunStreamPage contract fixture", () => {
+  it("type-checks and exposes all fields used by the run stream endpoint", () => {
+    const page: RunStreamPage = runStreamPageFixture as RunStreamPage;
+
+    expect(page.items).toHaveLength(2);
+    expectKeys(page.items[0], ["id", "kind", "type", "at", "payload"]);
+    expectKeys(page.meta, ["next_cursor", "has_live"]);
+    expect(page.items[0].id).toBe("evt-uuid-1");
+    expect(page.items[0].kind).toBe("work_event");
+    expect(page.items[0].type).toBe("turn_start");
+    expect(page.items[0].at).toBe("2026-06-13T10:00:01Z");
+    expect(page.items[1].payload).toMatchObject({ message: "Turn completed successfully" });
+    expect(page.meta.next_cursor).not.toBeNull();
+    expect(page.meta.has_live).toBe(true);
   });
 });
