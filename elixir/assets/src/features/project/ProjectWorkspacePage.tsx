@@ -1,4 +1,5 @@
 import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,12 @@ export function ProjectWorkspacePage() {
   const activeTab: Tab = isValidTab(tabParam) ? tabParam : "work";
 
   const { data: summary, isLoading, error, refetch } = useProjectSummary(slug!);
+
+  useEffect(() => {
+    if (slug) {
+      document.title = `${slug} — Harmony`;
+    }
+  }, [slug]);
 
   if (isLoading && !summary) {
     return (

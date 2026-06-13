@@ -45,6 +45,7 @@ export function RunStream({
                 variant={filter === "all" ? "secondary" : "outline"}
                 size="xs"
                 onClick={() => setFilter("all")}
+                aria-pressed={filter === "all"}
               >
                 All
               </Button>
@@ -52,6 +53,7 @@ export function RunStream({
                 variant={filter === "events" ? "secondary" : "outline"}
                 size="xs"
                 onClick={() => setFilter("events")}
+                aria-pressed={filter === "events"}
               >
                 Events
               </Button>
@@ -81,7 +83,12 @@ export function RunStream({
           <p className="text-sm text-muted-foreground">No events yet.</p>
         ) : (
           <>
-            <ul className="divide-y divide-border">
+            <ul
+              className="divide-y divide-border"
+              aria-live="polite"
+              aria-atomic="false"
+              aria-label="Run event stream"
+            >
               {visibleItems.map((item) => (
                 <StreamItemRow key={item.id} item={item} />
               ))}

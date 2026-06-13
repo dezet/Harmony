@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/features/dashboard/useDashboard";
@@ -9,6 +10,10 @@ import { RecentActivity } from "@/features/overview/components/RecentActivity";
 
 export function OverviewPage() {
   const { data, isLoading } = useDashboard();
+
+  useEffect(() => {
+    document.title = "Overview — Harmony";
+  }, []);
 
   if (isLoading && !data) {
     return (

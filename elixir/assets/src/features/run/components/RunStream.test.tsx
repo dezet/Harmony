@@ -139,4 +139,25 @@ describe("RunStream", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
     expect(screen.getByText("Stream")).toBeInTheDocument();
   });
+
+  it("the event list has aria-live='polite' and aria-label='Run event stream'", () => {
+    render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
+    const list = screen.getByRole("list", { name: "Run event stream" });
+    expect(list).toHaveAttribute("aria-live", "polite");
+    expect(list).toHaveAttribute("aria-atomic", "false");
+  });
+
+  it("filter buttons expose aria-pressed reflecting active filter", () => {
+    render(<RunStream {...defaultProps} items={MIXED_ITEMS} />);
+    const allBtn = screen.getByRole("button", { name: /^all$/i });
+    const eventsBtn = screen.getByRole("button", { name: /^events$/i });
+    // Default filter is "all"
+    expect(allBtn).toHaveAttribute("aria-pressed", "true");
+    expect(eventsBtn).toHaveAttribute("aria-pressed", "false");
+
+    // Switch to events
+    fireEvent.click(eventsBtn);
+    expect(allBtn).toHaveAttribute("aria-pressed", "false");
+    expect(eventsBtn).toHaveAttribute("aria-pressed", "true");
+  });
 });

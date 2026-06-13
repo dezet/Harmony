@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/features/dashboard/useDashboard";
 import { RateLimits } from "@/features/runtime/components/RateLimits";
@@ -5,6 +6,10 @@ import { RuntimeCard } from "@/features/runtime/components/RuntimeCard";
 
 export function RuntimePage() {
   const { data, isLoading } = useDashboard();
+
+  useEffect(() => {
+    document.title = "Runtime — Harmony";
+  }, []);
 
   if (isLoading && !data) return <Skeleton className="h-48 w-full" />;
 

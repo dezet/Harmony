@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,6 +35,12 @@ export function RunDetailPage() {
   } = useRunStream(identifier!);
 
   useRunChannel(queryClient, detail?.issue_id ?? null, identifier!, handleConnectionError);
+
+  useEffect(() => {
+    if (identifier) {
+      document.title = `${identifier} — Harmony`;
+    }
+  }, [identifier]);
 
   // Loading skeleton
   if (detailLoading && !detail) {

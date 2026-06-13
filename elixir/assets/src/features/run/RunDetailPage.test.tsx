@@ -100,6 +100,13 @@ describe("RunDetailPage", () => {
         `https://github.com/${pr.github_owner}/${pr.github_repo}/pull/${pr.github_pr_number}`,
       );
     });
+
+    it("sets document.title to '<identifier> — Harmony'", async () => {
+      renderAt("/projects/alpha/runs/COD-10");
+      // Wait for the page to load and the effect to fire
+      await screen.findByRole("heading", { level: 1 });
+      expect(document.title).toBe("COD-10 — Harmony");
+    });
   });
 
   describe("404 state", () => {
