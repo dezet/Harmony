@@ -4,6 +4,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
   """
 
   alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.Forge.ProjectCreds
 
   @default_trigger "@hreview"
   @default_template_version 1
@@ -14,12 +15,26 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
-    list_pull_requests = Keyword.get(opts, :list_pull_requests, &Github.Client.list_open_pull_requests/3)
-    list_issue_comments = Keyword.get(opts, :list_issue_comments, &Github.Client.list_issue_comments/4)
+    ref = ProjectCreds.repo_ref(project)
+    client_opts = ProjectCreds.client_opts(project, opts)
+
+    list_pull_requests =
+      Keyword.get(opts, :list_pull_requests, fn owner, repo, _call_opts ->
+        Github.Client.list_open_pull_requests(owner, repo, client_opts)
+      end)
+
+    # list_issue_comments has no direct Forge behaviour equivalent yet.
+    # Keeping it on Github.Client until `list_change_request_comments` is
+    # added to the Forge behaviour in a follow-up task.
+    list_issue_comments =
+      Keyword.get(opts, :list_issue_comments, fn owner, repo, issue_number, _call_opts ->
+        Github.Client.list_issue_comments(owner, repo, issue_number, client_opts)
+      end)
+
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
 
-    owner = project_value(project, :github_owner)
-    repo = project_value(project, :github_repo)
+    owner = ref.owner || project_value(project, :forge_owner)
+    repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
@@ -57,12 +72,12 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
       type: "code_review",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, pr, comment, project),
-      github_owner: owner,
-      github_repo: repo,
-      github_pr_number: pr.number,
-      github_head_sha: pr.head_sha,
-      github_head_ref: pr.head_ref,
-      github_base_ref: pr.base_ref,
+      forge_owner: owner,
+      forge_repo: repo,
+      forge_pr_number: pr.number,
+      forge_head_sha: pr.head_sha,
+      forge_head_ref: pr.head_ref,
+      forge_base_ref: pr.base_ref,
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",

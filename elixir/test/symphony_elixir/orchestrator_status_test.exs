@@ -1098,12 +1098,12 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       type: "ci_fix",
       status: "queued",
       dedupe_key: dedupe_key,
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
-      github_head_sha: "abc123",
-      github_head_ref: "fix-cod-5",
-      github_base_ref: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
+      forge_head_sha: "abc123",
+      forge_head_ref: "fix-cod-5",
+      forge_base_ref: "develop",
       payload: %{
         repo_policy: "direct_push_allowed",
         workflow_run: %{id: 123, name: "CI", url: "https://github.com/dezet/portal/actions/runs/123"},
@@ -1158,12 +1158,12 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       type: "code_review",
       status: "queued",
       dedupe_key: dedupe_key,
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
-      github_head_sha: "abc123",
-      github_head_ref: "feature",
-      github_base_ref: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
+      forge_head_sha: "abc123",
+      forge_head_ref: "feature",
+      forge_base_ref: "develop",
       payload: %{
         project_id: "project-1",
         trigger_comment_id: 99,
@@ -1291,7 +1291,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
 
     parent = self()
-    project = %{id: "project-1", slug: "portal", github_owner: "dezet", github_repo: "portal", github_base_branch: "develop"}
+    project = %{id: "project-1", slug: "portal", forge_owner: "dezet", forge_repo: "portal", forge_base_branch: "develop"}
 
     Application.put_env(:symphony_elixir, :project_fetcher, fn -> [project] end)
     Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn ^project -> {:ok, []} end)
@@ -1393,12 +1393,12 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
       type: "ci_fix",
       status: "queued",
       dedupe_key: dedupe_key,
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_pr_number: 7,
-      github_head_sha: "abc123",
-      github_head_ref: "fix-cod-5",
-      github_base_ref: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_pr_number: 7,
+      forge_head_sha: "abc123",
+      forge_head_ref: "fix-cod-5",
+      forge_base_ref: "develop",
       payload: %{
         project_id: "project-1",
         repo_policy: "repair_branch_required",
@@ -1461,9 +1461,9 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
         linear_project_slug: "portal-linear",
         linear_team_key: "COD",
         linear_human_review_state: "Human Review",
-        github_owner: "dezet",
-        github_repo: "portal",
-        github_base_branch: "develop",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
         config_version: 1,
         config: %{}
       })
@@ -1474,9 +1474,9 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
         linear_project_slug: "admin-linear",
         linear_team_key: "ADM",
         linear_human_review_state: "Human Review",
-        github_owner: "dezet",
-        github_repo: "admin",
-        github_base_branch: "main",
+        forge_owner: "dezet",
+        forge_repo: "admin",
+        forge_base_branch: "main",
         config_version: 1,
         config: %{}
       })
@@ -1512,7 +1512,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
          WorkRun.from_linear_issue(issue,
            project_id: project.id,
            project_slug: project.slug,
-           base_branch: project.github_base_branch
+           base_branch: project.forge_base_branch
          )
        ]}
     end)

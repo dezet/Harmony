@@ -8,9 +8,9 @@ defmodule SymphonyElixir.GithubReviewRequestSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD",
       config: %{"review" => %{"trigger" => "@hreview", "template_version" => 1}}
     }
@@ -44,6 +44,6 @@ defmodule SymphonyElixir.GithubReviewRequestSourceTest do
 
     assert run.type == "code_review"
     assert run.dedupe_key == "github-review:dezet/portal:7:99:abc123:1"
-    assert run.github_pr_number == 7
+    assert run.forge_pr_number == 7
   end
 end

@@ -10,9 +10,9 @@ defmodule SymphonyElixir.GithubWorkSourceTest do
     project = %{
       id: "project-1",
       slug: "portal",
-      github_owner: "dezet",
-      github_repo: "portal",
-      github_base_branch: "develop",
+      forge_owner: "dezet",
+      forge_repo: "portal",
+      forge_base_branch: "develop",
       linear_team_key: "COD"
     }
 
@@ -43,15 +43,15 @@ defmodule SymphonyElixir.GithubWorkSourceTest do
                persist_link: persist_link
              )
 
-    assert candidate.github_pr_number == 7
+    assert candidate.forge_pr_number == 7
     assert candidate.linear_identifier == "COD-5"
 
     assert_received {:persist_link,
                      %{
-                       github_pr_number: 7,
-                       github_head_sha: "abc123",
-                       github_head_ref: "fix-cod-5",
-                       github_base_ref: "develop",
+                       forge_pr_number: 7,
+                       forge_head_sha: "abc123",
+                       forge_head_ref: "fix-cod-5",
+                       forge_base_ref: "develop",
                        linear_identifier: "COD-5"
                      }}
   end
@@ -63,9 +63,9 @@ defmodule SymphonyElixir.GithubWorkSourceTest do
     {:ok, project} =
       SymphonyElixir.Storage.upsert_project(%{
         slug: "portal",
-        github_owner: "dezet",
-        github_repo: "portal",
-        github_base_branch: "develop",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
         linear_project_slug: "portal-linear",
         linear_team_key: "COD",
         linear_human_review_state: "Human Review",
@@ -90,7 +90,7 @@ defmodule SymphonyElixir.GithubWorkSourceTest do
     end
 
     assert {:ok, [candidate]} = GithubPrSource.fetch_candidates(project, list_pull_requests: list_prs)
-    assert candidate.github_pr_number == 7
+    assert candidate.forge_pr_number == 7
     assert candidate.linear_identifier == "COD-5"
   end
 end

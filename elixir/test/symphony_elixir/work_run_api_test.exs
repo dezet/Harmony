@@ -12,9 +12,9 @@ defmodule SymphonyElixir.WorkRunApiTest do
     linear_project_slug: "alpha-linear",
     linear_team_key: "COD",
     linear_human_review_state: "Human Review",
-    github_owner: "acme",
-    github_repo: "portal",
-    github_base_branch: "main",
+    forge_owner: "acme",
+    forge_repo: "portal",
+    forge_base_branch: "main",
     config_version: 1,
     config: %{}
   }
@@ -233,9 +233,9 @@ defmodule SymphonyElixir.WorkRunApiTest do
         linear_project_slug: "beta-linear",
         linear_team_key: "BET",
         linear_human_review_state: "Human Review",
-        github_owner: "acme",
-        github_repo: "beta",
-        github_base_branch: "main",
+        forge_owner: "acme",
+        forge_repo: "beta",
+        forge_base_branch: "main",
         config_version: 1,
         config: %{}
       })
@@ -298,12 +298,12 @@ defmodule SymphonyElixir.WorkRunApiTest do
     run1 = insert_work_run(project.id, %{
       linear_identifier: "COD-1",
       linear_url: "https://linear.app/acme/issue/COD-1",
-      github_owner: "acme",
-      github_repo: "portal",
-      github_pr_number: 10,
-      github_head_sha: "abc123def456",
-      github_head_ref: "cod-1-feature",
-      github_base_ref: "main"
+      forge_owner: "acme",
+      forge_repo: "portal",
+      forge_pr_number: 10,
+      forge_head_sha: "abc123def456",
+      forge_head_ref: "cod-1-feature",
+      forge_base_ref: "main"
     }) |> set_inserted_at(~U[2026-06-13 10:00:02.000000Z])
 
     _run2 = insert_work_run(project.id, %{

@@ -306,6 +306,27 @@ If desired after Phase 4: rename the web API field names `github_* → forge_*` 
 
 ---
 
+## Phase 1 — realized-architecture notes (post-implementation)
+
+Phase 1 shipped (7 tasks + cleanup), backend + frontend suites green, API contract byte-stable.
+Two refinements were discovered during execution and apply to Phases 2–4:
+
+- **Work sources are forge-specific, not forge-neutral.** The normalized `change_request` shape is
+  intentionally slim; GitHub work sources still read via `Github.Client` because `RepoPolicy`
+  (fork detection: `head_repo_full_name`/`base_repo_full_name`) and `LinkResolver` (`title`/`body`)
+  need richer PR fields. This matches Phase 4's design (separate `GitlabMrSource`/`GitlabPipelineSource`).
+  The `Forge` behaviour's production role is the genuinely-shared ops: `create_comment`/`create_review`
+  (handoffs, done) and `list_repositories`/`get_repository` (picker, Phase 3). The
+  `list_change_requests`/`list_pipeline_runs`/`get_pipeline_logs` callbacks are the **GitLab contract
+  surface** (each adapter must implement them) but are not dispatched by GitHub read paths.
+- **Phase 4 needs a `forge_type` dispatch wrapper in the orchestrator.** Work-source fetchers are wired
+  via `Application.get_env`-injectable functions; the production defaults hardcode the `Github*` sources.
+  Phase 4 wraps them to select `Gitlab*` sources when `project.forge_type == "gitlab"`.
+- **Follow-up:** `list_issue_comments` (used by the review-request source to find the trigger keyword)
+  has no `Forge` callback yet — add `list_change_request_comments` to the behaviour + both adapters in
+  Phase 4 when GitLab needs it. `Forge.adapter/1` dispatches to `Forge.Gitlab` which is a Phase 4
+  placeholder (would raise until it exists).
+
 ## Self-review notes
 
 - **Spec coverage:** Forge behaviour (T1), GitHub adapter + base URL (T2), storage refactor (T3–T4, T7), config (T5), repoint (T6), per-project creds (Ph2), picker (Ph3), GitLab (Ph4) — all spec sections map to a task/milestone.

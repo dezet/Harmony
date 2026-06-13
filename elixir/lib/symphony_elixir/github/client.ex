@@ -5,7 +5,9 @@ defmodule SymphonyElixir.Github.Client do
 
   alias SymphonyElixir.Github.{Comment, PullRequest, WorkflowRun}
 
-  @api_root "https://api.github.com"
+  @default_api_root "https://api.github.com"
+
+  defp api_root(opts), do: Keyword.get(opts, :base_url) || @default_api_root
 
   @spec list_open_pull_requests(String.t(), String.t(), keyword()) ::
           {:ok, [PullRequest.t()]} | {:error, term()}
@@ -13,7 +15,7 @@ defmodule SymphonyElixir.Github.Client do
       when is_binary(owner) and is_binary(repo) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = Keyword.get(opts, :token) || System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
-    url = "#{@api_root}/repos/#{owner}/#{repo}/pulls"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/pulls"
 
     with {:ok, response} <-
            request_fun.(
@@ -33,7 +35,7 @@ defmodule SymphonyElixir.Github.Client do
       when is_binary(owner) and is_binary(repo) and is_integer(issue_number) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = github_token(opts)
-    url = "#{@api_root}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
 
     with {:ok, response} <-
            request_fun.(method: :get, url: url, params: [per_page: 100], headers: headers(token)),
@@ -52,7 +54,7 @@ defmodule SymphonyElixir.Github.Client do
       when is_binary(owner) and is_binary(repo) and is_integer(issue_number) and is_binary(body) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = github_token(opts)
-    url = "#{@api_root}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/issues/#{issue_number}/comments"
 
     case request_fun.(method: :post, url: url, json: %{body: body}, headers: headers(token)) do
       {:ok, response} -> expect_status(response, 201)
@@ -68,7 +70,7 @@ defmodule SymphonyElixir.Github.Client do
     token = github_token(opts)
     event = Keyword.get(opts, :event, "COMMENT")
     comments = Keyword.get(opts, :comments, [])
-    url = "#{@api_root}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/pulls/#{pr_number}/reviews"
     payload = review_payload(body, event, comments)
 
     case request_fun.(method: :post, url: url, json: payload, headers: headers(token)) do
@@ -83,7 +85,7 @@ defmodule SymphonyElixir.Github.Client do
       when is_binary(owner) and is_binary(repo) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = github_token(opts)
-    url = "#{@api_root}/repos/#{owner}/#{repo}/actions/runs"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/actions/runs"
 
     params =
       [per_page: 100]
@@ -101,9 +103,41 @@ defmodule SymphonyElixir.Github.Client do
       when is_binary(owner) and is_binary(repo) and is_integer(run_id) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     token = github_token(opts)
-    url = "#{@api_root}/repos/#{owner}/#{repo}/actions/runs/#{run_id}/logs"
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/actions/runs/#{run_id}/logs"
 
     with {:ok, response} <- request_fun.(method: :get, url: url, headers: headers(token), redirect: true),
+         :ok <- expect_status(response, 200) do
+      {:ok, response.body}
+    end
+  end
+
+  @spec list_repos(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_repos(opts \\ []) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+
+    url =
+      case Keyword.get(opts, :org) do
+        nil -> "#{api_root(opts)}/user/repos"
+        org -> "#{api_root(opts)}/orgs/#{org}/repos"
+      end
+
+    with {:ok, response} <-
+           request_fun.(method: :get, url: url, params: [per_page: 100], headers: headers(token)),
+         :ok <- expect_status(response, 200) do
+      {:ok, response.body}
+    end
+  end
+
+  @spec get_repo(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_repo(owner, repo, opts \\ [])
+      when is_binary(owner) and is_binary(repo) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}"
+
+    with {:ok, response} <-
+           request_fun.(method: :get, url: url, headers: headers(token)),
          :ok <- expect_status(response, 200) do
       {:ok, response.body}
     end

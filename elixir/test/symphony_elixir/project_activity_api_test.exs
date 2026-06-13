@@ -23,9 +23,9 @@ defmodule SymphonyElixir.ProjectActivityApiTest do
     linear_project_slug: "alpha-linear",
     linear_team_key: "COD",
     linear_human_review_state: "Human Review",
-    github_owner: "acme",
-    github_repo: "portal",
-    github_base_branch: "main",
+    forge_owner: "acme",
+    forge_repo: "portal",
+    forge_base_branch: "main",
     config_version: 1,
     config: %{}
   }
@@ -172,9 +172,9 @@ defmodule SymphonyElixir.ProjectActivityApiTest do
         linear_project_slug: "beta-linear",
         linear_team_key: "BET",
         linear_human_review_state: "Human Review",
-        github_owner: "acme",
-        github_repo: "beta",
-        github_base_branch: "main",
+        forge_owner: "acme",
+        forge_repo: "beta",
+        forge_base_branch: "main",
         config_version: 1,
         config: %{}
       })

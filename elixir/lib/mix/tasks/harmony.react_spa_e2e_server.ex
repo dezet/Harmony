@@ -75,9 +75,9 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     {:ok, project} =
       Storage.upsert_project(%{
         slug: "react-spa-e2e",
-        github_owner: "harmony-e2e",
-        github_repo: "react-spa-e2e",
-        github_base_branch: "main",
+        forge_owner: "harmony-e2e",
+        forge_repo: "react-spa-e2e",
+        forge_base_branch: "main",
         linear_project_slug: "react-spa-e2e",
         linear_team_key: "COD",
         linear_human_review_state: "Human Review",

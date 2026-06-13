@@ -14,9 +14,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "portal",
           linear_project_slug: "portal-linear",
-          github_owner: "dezet",
-          github_repo: "portal",
-          github_base_branch: "develop",
+          forge_owner: "dezet",
+          forge_repo: "portal",
+          forge_base_branch: "develop",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{"review" => %{"trigger" => "@hreview"}}
@@ -55,9 +55,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "portal-dedupe",
           linear_project_slug: "portal-linear",
-          github_owner: "dezet",
-          github_repo: "portal",
-          github_base_branch: "develop",
+          forge_owner: "dezet",
+          forge_repo: "portal",
+          forge_base_branch: "develop",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -83,9 +83,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "portal-blockers",
           linear_project_slug: "portal-linear",
-          github_owner: "dezet",
-          github_repo: "portal",
-          github_base_branch: "develop",
+          forge_owner: "dezet",
+          forge_repo: "portal",
+          forge_base_branch: "develop",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -106,6 +106,46 @@ defmodule SymphonyElixir.StorageTest do
     end
   end
 
+  describe "forge_* fields on Project" do
+    @tag :db
+    setup :checkout_repo
+
+    @tag :db
+    test "project persists forge_* fields and defaults forge_type to github" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "forge-fields",
+          forge_owner: "o",
+          forge_repo: "r",
+          forge_base_branch: "main",
+          forge_base_url: "https://ghe.example.com",
+          config_version: 1,
+          config: %{}
+        })
+
+      assert project.forge_owner == "o"
+      assert project.forge_repo == "r"
+      assert project.forge_base_branch == "main"
+      assert project.forge_base_url == "https://ghe.example.com"
+      assert project.forge_type == "github"
+    end
+
+    @tag :db
+    test "forge_type defaults to github when omitted" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(%{
+          slug: "forge-default-type",
+          forge_owner: "o",
+          forge_repo: "r",
+          forge_base_branch: "main",
+          config_version: 1,
+          config: %{}
+        })
+
+      assert project.forge_type == "github"
+    end
+  end
+
   describe "list_work_runs_for_project/2" do
     @tag :db
     setup :checkout_repo
@@ -115,9 +155,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "paginate-proj",
           linear_project_slug: "paginate-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -127,9 +167,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "other-proj",
           linear_project_slug: "other-linear",
-          github_owner: "acme",
-          github_repo: "other",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "other",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -270,9 +310,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "ident-proj",
           linear_project_slug: "ident-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -332,9 +372,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "events-proj",
           linear_project_slug: "events-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -487,9 +527,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "pr-link-proj",
           linear_project_slug: "pr-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -498,27 +538,27 @@ defmodule SymphonyElixir.StorageTest do
       {:ok, pr1} =
         SymphonyElixir.Storage.upsert_pull_request_link(%{
           project_id: project.id,
-          github_owner: "acme",
-          github_repo: "widget",
-          github_pr_number: 10,
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_pr_number: 10,
           metadata: %{}
         })
 
       {:ok, pr2} =
         SymphonyElixir.Storage.upsert_pull_request_link(%{
           project_id: project.id,
-          github_owner: "acme",
-          github_repo: "widget",
-          github_pr_number: 20,
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_pr_number: 20,
           metadata: %{}
         })
 
       {:ok, pr3} =
         SymphonyElixir.Storage.upsert_pull_request_link(%{
           project_id: project.id,
-          github_owner: "acme",
-          github_repo: "widget",
-          github_pr_number: 30,
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_pr_number: 30,
           metadata: %{}
         })
 
@@ -552,9 +592,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "pr-proj-a",
           linear_project_slug: "a-linear",
-          github_owner: "acme",
-          github_repo: "alpha",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "alpha",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -564,9 +604,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "pr-proj-b",
           linear_project_slug: "b-linear",
-          github_owner: "acme",
-          github_repo: "beta",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "beta",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -575,18 +615,18 @@ defmodule SymphonyElixir.StorageTest do
       {:ok, _pra} =
         SymphonyElixir.Storage.upsert_pull_request_link(%{
           project_id: project_a.id,
-          github_owner: "acme",
-          github_repo: "alpha",
-          github_pr_number: 1,
+          forge_owner: "acme",
+          forge_repo: "alpha",
+          forge_pr_number: 1,
           metadata: %{}
         })
 
       {:ok, prb} =
         SymphonyElixir.Storage.upsert_pull_request_link(%{
           project_id: project_b.id,
-          github_owner: "acme",
-          github_repo: "beta",
-          github_pr_number: 1,
+          forge_owner: "acme",
+          forge_repo: "beta",
+          forge_pr_number: 1,
           metadata: %{}
         })
 
@@ -606,9 +646,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "artifact-get-proj",
           linear_project_slug: "ag-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -666,9 +706,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "artifacts-for-proj",
           linear_project_slug: "afp-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -678,9 +718,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "other-artifacts-proj",
           linear_project_slug: "oap-linear",
-          github_owner: "acme",
-          github_repo: "other",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "other",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -774,9 +814,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "events-proj-wide",
           linear_project_slug: "epw-linear",
-          github_owner: "acme",
-          github_repo: "widget",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "widget",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}
@@ -786,9 +826,9 @@ defmodule SymphonyElixir.StorageTest do
         SymphonyElixir.Storage.upsert_project(%{
           slug: "other-events-proj",
           linear_project_slug: "oep-linear",
-          github_owner: "acme",
-          github_repo: "other",
-          github_base_branch: "main",
+          forge_owner: "acme",
+          forge_repo: "other",
+          forge_base_branch: "main",
           linear_human_review_state: "Human Review",
           config_version: 1,
           config: %{}

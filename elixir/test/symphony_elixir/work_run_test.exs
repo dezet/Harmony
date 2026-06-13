@@ -30,7 +30,7 @@ defmodule SymphonyElixir.WorkRunTest do
     assert run.type == "implementation"
     assert run.dedupe_key == "linear:issue-1"
     assert run.linear_identifier == "COD-5"
-    assert run.github_base_ref == "develop"
+    assert run.forge_base_ref == "develop"
     assert run.required_evidence == ["browser"]
     assert run.payload.project_id == "storage-project-1"
     assert run.payload.config_version == 4

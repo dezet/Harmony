@@ -133,9 +133,9 @@ defmodule SymphonyElixir.OrchestratorActionsTest do
         linear_project_slug: "stop-test",
         linear_team_key: "ST",
         linear_human_review_state: "Human Review",
-        github_owner: "dezet",
-        github_repo: "stop-test",
-        github_base_branch: "main",
+        forge_owner: "dezet",
+        forge_repo: "stop-test",
+        forge_base_branch: "main",
         config_version: 1,
         config: %{}
       })
@@ -381,9 +381,9 @@ defmodule SymphonyElixir.OrchestratorActionsTest do
         linear_project_slug: "status-update-test",
         linear_team_key: "SU",
         linear_human_review_state: "Human Review",
-        github_owner: "dezet",
-        github_repo: "status-update-test",
-        github_base_branch: "main",
+        forge_owner: "dezet",
+        forge_repo: "status-update-test",
+        forge_base_branch: "main",
         config_version: 1,
         config: %{}
       })

@@ -21,9 +21,11 @@ defmodule SymphonyElixir.Storage do
            :linear_project_slug,
            :linear_team_key,
            :linear_human_review_state,
-           :github_owner,
-           :github_repo,
-           :github_base_branch,
+           :forge_type,
+           :forge_owner,
+           :forge_repo,
+           :forge_base_branch,
+           :forge_base_url,
            :config_version,
            :config,
            :updated_at
@@ -208,12 +210,12 @@ defmodule SymphonyElixir.Storage do
          [
            :type,
            :status,
-           :github_owner,
-           :github_repo,
-           :github_pr_number,
-           :github_head_sha,
-           :github_head_ref,
-           :github_base_ref,
+           :forge_owner,
+           :forge_repo,
+           :forge_pr_number,
+           :forge_head_sha,
+           :forge_head_ref,
+           :forge_base_ref,
            :linear_issue_id,
            :linear_identifier,
            :linear_url,
@@ -352,16 +354,16 @@ defmodule SymphonyElixir.Storage do
       on_conflict:
         {:replace,
          [
-           :github_head_sha,
-           :github_head_ref,
-           :github_base_ref,
+           :forge_head_sha,
+           :forge_head_ref,
+           :forge_base_ref,
            :linear_issue_id,
            :linear_identifier,
            :linear_url,
            :metadata,
            :updated_at
          ]},
-      conflict_target: [:project_id, :github_owner, :github_repo, :github_pr_number],
+      conflict_target: [:project_id, :forge_owner, :forge_repo, :forge_pr_number],
       returning: true
     )
   end
@@ -373,7 +375,7 @@ defmodule SymphonyElixir.Storage do
 
   @spec get_project_by_github(String.t(), String.t()) :: Project.t() | nil
   def get_project_by_github(owner, repo) when is_binary(owner) and is_binary(repo) do
-    Repo.get_by(Project, github_owner: owner, github_repo: repo)
+    Repo.get_by(Project, forge_owner: owner, forge_repo: repo)
   end
 
   @spec get_project!(Ecto.UUID.t()) :: Project.t()
