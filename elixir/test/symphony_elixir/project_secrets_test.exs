@@ -29,6 +29,20 @@ defmodule SymphonyElixir.ProjectSecretsTest do
     end
   end
 
+  describe "presenter never leaks a secret value" do
+    alias SymphonyElixir.Storage.Project
+    alias SymphonyElixirWeb.Presenter
+
+    test "summary exposes set|unset, not the value" do
+      project = %Project{id: "p1", slug: "p", forge_owner: "o", forge_repo: "r", forge_base_branch: "main", forge_secret: "ghp_tok", tracker_secret: nil}
+      snapshot = %{running: [], retrying: [], blocked: []}
+      payload = Presenter.project_summary_payload(project, snapshot, [])
+      refute payload |> inspect() |> String.contains?("ghp_tok")
+      assert get_in(payload, [:project, :forge_secret]) == "set"
+      assert get_in(payload, [:project, :tracker_secret]) == "unset"
+    end
+  end
+
   describe "Storage.update_project_secrets/2" do
     @base %{
       slug: "portal",
