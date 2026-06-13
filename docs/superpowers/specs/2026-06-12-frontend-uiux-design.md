@@ -186,3 +186,21 @@ Each phase ends with a working, useful application:
 - Authentication/multi-tenancy.
 - Replacing the dashboard channel's full-state broadcast (revisit if scale demands it).
 - Live log streaming transport beyond the cursored stream endpoint + run channel events.
+
+## Implementation Status (all five phases delivered 2026-06-13)
+
+All phases are implemented, reviewed, and green (backend 550 tests, frontend 254 tests, 8 e2e).
+Two run-detail sub-features were consciously degraded to match what the backend can honestly
+serve; they are deferred rather than faked:
+
+- **Run stream "logs only" filter.** The backend has no log-serving layer
+  (`logs.codex_session_logs` is hardcoded empty); the stream serves durable `work_events` plus
+  live channel events only. The stream offers an **all / events** kind filter plus **text search**
+  (delivered) — the third "logs only" mode is deferred until a log-reading layer exists.
+- **Run rail attempt history.** The orchestrator tracks only `restart_count` and
+  `current_retry_attempt` (no per-attempt history with timestamps/outcomes). The rail shows the
+  current attempt; a full attempt timeline is deferred pending a backend attempt-history model.
+
+Also deferred (noted in phase plans): per-turn token sparkline (no per-turn token data), hard
+OS-subprocess kill on stop (BEAM can't guarantee it — stop is a documented soft stop), artifact
+list pagination (artifacts are sparse), and `JsonEditor` lazy-loading (build chunk-size advisory).
