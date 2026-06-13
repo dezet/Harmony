@@ -9,6 +9,10 @@ defmodule SymphonyElixir.ForgeTest do
     assert Forge.adapter(%{forge_type: nil}) == SymphonyElixir.Forge.Github
   end
 
+  test "adapter/1 dispatches forge_type \"memory\" to the Memory adapter" do
+    assert Forge.adapter(%{forge_type: "memory"}) == SymphonyElixir.Forge.Memory
+  end
+
   test "Memory adapter records calls and returns seeded results" do
     Forge.Memory.reset()
     Forge.Memory.seed_repositories([%{owner: "o", name: "r", default_branch: "main", url: "u"}])
