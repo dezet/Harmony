@@ -13,6 +13,8 @@ defmodule SymphonyElixir.WorkRun do
     :type,
     :status,
     :dedupe_key,
+    :forge_type,
+    :forge_base_url,
     :forge_owner,
     :forge_repo,
     :forge_pr_number,

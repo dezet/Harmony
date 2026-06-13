@@ -70,6 +70,8 @@ defmodule SymphonyElixir.WorkSources.GitlabPipelineSource do
       type: "ci_fix",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, mr, pipeline),
+      forge_type: "gitlab",
+      forge_base_url: project_value(project, :forge_base_url),
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: mr.number,

@@ -2323,8 +2323,15 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     github_called = :counters.new(1, [])
     gitlab_called = :counters.new(1, [])
 
-    github_fun = fn _project -> :counters.add(github_called, 1, 1); {:ok, []} end
-    gitlab_fun = fn _project -> :counters.add(gitlab_called, 1, 1); {:ok, []} end
+    github_fun = fn _project ->
+      :counters.add(github_called, 1, 1)
+      {:ok, []}
+    end
+
+    gitlab_fun = fn _project ->
+      :counters.add(gitlab_called, 1, 1)
+      {:ok, []}
+    end
 
     dispatch = SymphonyElixir.Orchestrator.__by_forge_type__(github_fun, gitlab_fun)
 

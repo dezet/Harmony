@@ -67,6 +67,8 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewRequestSource do
       type: "code_review",
       status: "queued",
       dedupe_key: dedupe_key(owner, repo, mr, note, project),
+      forge_type: "gitlab",
+      forge_base_url: project_value(project, :forge_base_url),
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: mr.number,

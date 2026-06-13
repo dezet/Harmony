@@ -51,6 +51,8 @@ defmodule SymphonyElixir.WorkSources.GitlabMrSource do
       project_slug: project_value(project, :slug),
       type: "gitlab_mr_observed",
       status: "observed",
+      forge_type: "gitlab",
+      forge_base_url: project_value(project, :forge_base_url),
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: mr.number,

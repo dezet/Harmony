@@ -18,7 +18,6 @@ defmodule SymphonyElixir.Forge do
   @spec adapter(map()) :: module()
   def adapter(project) do
     case Map.get(project, :forge_type) || "github" do
-      # Forge.Gitlab is a Phase 4 placeholder — a project with forge_type "gitlab" would raise UndefinedFunctionError until it exists.
       "gitlab" -> SymphonyElixir.Forge.Gitlab
       _ -> SymphonyElixir.Forge.Github
     end

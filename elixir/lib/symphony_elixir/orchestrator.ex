@@ -11,6 +11,7 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
+
   alias SymphonyElixir.WorkSources.{
     GithubFailedCiSource,
     GithubPrSource,
@@ -20,6 +21,7 @@ defmodule SymphonyElixir.Orchestrator do
     GitlabReviewRequestSource,
     LinearIssueSource
   }
+
   alias SymphonyElixirWeb.ObservabilityRunPubSub
 
   @continuation_retry_delay_ms 1_000
