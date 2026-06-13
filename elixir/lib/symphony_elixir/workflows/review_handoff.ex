@@ -3,13 +3,21 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
   Publishes requested GitHub PR review output.
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.{Forge, Storage, WorkRun}
+  alias SymphonyElixir.Forge.ProjectCreds
 
   @processed_marker "harmony-review-processed"
 
   @spec publish(WorkRun.t(), String.t(), keyword()) :: :ok | {:error, term()}
   def publish(%WorkRun{} = run, body, opts \\ []) when is_binary(body) do
-    create_review = Keyword.get(opts, :create_review, &Github.Client.create_pull_request_review/5)
+    creds = ProjectCreds.creds(run, opts)
+
+    create_review =
+      Keyword.get(opts, :create_review, fn owner, repo, pr_number, review_body, call_opts ->
+        ref = %{owner: owner, repo: repo, base_url: creds.base_url}
+        Forge.Github.create_review(creds, ref, pr_number, review_body, call_opts)
+      end)
+
     append_event = Keyword.get(opts, :append_event, &Storage.append_event/1)
 
     case create_review.(
