@@ -15,6 +15,7 @@ defmodule SymphonyElixir.Forge.Memory do
   # ---------------------------------------------------------------------------
 
   @doc "Start the named Agent (called from test helpers or supervision)."
+  @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(_opts \\ []) do
     Agent.start_link(&initial_state/0, name: @agent)
   end

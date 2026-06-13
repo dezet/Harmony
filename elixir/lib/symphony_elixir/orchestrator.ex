@@ -519,6 +519,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @doc false
+  @spec __by_forge_type__((term() -> term()), (term() -> term())) :: (term() -> term())
   def __by_forge_type__(github_fun, gitlab_fun), do: by_forge_type(github_fun, gitlab_fun)
 
   defp persist_fetched_work_runs(work_runs) when is_list(work_runs) do

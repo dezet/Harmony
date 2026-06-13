@@ -2,8 +2,16 @@ defmodule SymphonyElixir.Gitlab.MergeRequest do
   @moduledoc "Normalized GitLab merge request data used by Harmony work sources."
 
   defstruct [
-    :number, :title, :body, :url, :head_sha, :head_ref, :base_ref,
-    :head_repo_full_name, :base_repo_full_name, :project_id
+    :number,
+    :title,
+    :body,
+    :url,
+    :head_sha,
+    :head_ref,
+    :base_ref,
+    :head_repo_full_name,
+    :base_repo_full_name,
+    :project_id
   ]
 
   @type t :: %__MODULE__{}

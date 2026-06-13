@@ -4,9 +4,16 @@ defmodule SymphonyElixir.Gitlab.StructsTest do
 
   test "MergeRequest.from_api maps iid, branches, sha, fork project ids" do
     raw = %{
-      "iid" => 5, "title" => "Fix", "description" => "ABC-1", "web_url" => "u",
-      "sha" => "deadbeef", "source_branch" => "feature", "target_branch" => "main",
-      "source_project_id" => 42, "target_project_id" => 7, "project_id" => 7
+      "iid" => 5,
+      "title" => "Fix",
+      "description" => "ABC-1",
+      "web_url" => "u",
+      "sha" => "deadbeef",
+      "source_branch" => "feature",
+      "target_branch" => "main",
+      "source_project_id" => 42,
+      "target_project_id" => 7,
+      "project_id" => 7
     }
 
     mr = MergeRequest.from_api(raw)
