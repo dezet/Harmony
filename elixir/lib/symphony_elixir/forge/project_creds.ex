@@ -105,11 +105,22 @@ defmodule SymphonyElixir.Forge.ProjectCreds do
   defp lookup_secret(run) do
     with owner when is_binary(owner) <- map_get(run, :forge_owner),
          repo when is_binary(repo) <- map_get(run, :forge_repo),
-         %{forge_secret: secret} <- SymphonyElixir.Storage.get_project_by_github(owner, repo) do
+         %{forge_secret: secret} <- get_project_by_github(owner, repo) do
       secret
     else
       _ -> nil
     end
+  end
+
+  # The handoff path resolves a run's project from the DB. The per-project secret
+  # is a best-effort enhancement over the global-env token, so if the repo is
+  # unavailable (e.g. no sandbox in a unit test, or a DB outage) we degrade to the
+  # env fallback rather than crashing the handoff.
+  defp get_project_by_github(owner, repo) do
+    SymphonyElixir.Storage.get_project_by_github(owner, repo)
+  rescue
+    DBConnection.OwnershipError -> nil
+    DBConnection.ConnectionError -> nil
   end
 
   defp env_token("gitlab"), do: System.get_env("GITLAB_TOKEN")
