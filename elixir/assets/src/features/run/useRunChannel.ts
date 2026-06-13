@@ -112,11 +112,17 @@ function appendStreamItem(
  * Joins `observability:run:<issueId>` on the shared app socket and applies
  * granular cache patches for the three run channel events. No-op when issueId
  * is null (run has no live orchestrator entry).
+ *
+ * @param onConnectionError - Optional callback fired when the channel join
+ *   receives an "error" or "timeout" response from the server. Use to surface
+ *   a degraded-state notice in the UI (live updates unavailable, REST data
+ *   still valid).
  */
 export function useRunChannel(
   queryClient: QueryClient,
   issueId: string | null,
   identifier: string,
+  onConnectionError?: () => void,
 ): void {
   useEffect(() => {
     if (!issueId) return;
@@ -136,10 +142,13 @@ export function useRunChannel(
       patchTokensUpdated(queryClient, identifier, payload);
     });
 
-    channel.join();
+    channel
+      .join()
+      .receive("error", () => onConnectionError?.())
+      .receive("timeout", () => onConnectionError?.());
 
     return () => {
       channel.leave();
     };
-  }, [queryClient, issueId, identifier]);
+  }, [queryClient, issueId, identifier, onConnectionError]);
 }

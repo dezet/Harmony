@@ -9,12 +9,36 @@ import { useRunChannel } from "@/features/run/useRunChannel";
 
 type ChannelEventHandler = (payload: unknown) => void;
 
+/**
+ * A minimal chainable Push mock. Stores callbacks registered via `.receive()`
+ * so tests can trigger them with `_triggerReceive(event)`.
+ */
+interface FakePush {
+  receive: (event: string, cb: () => void) => FakePush;
+  _triggerReceive: (event: string) => void;
+}
+
+function makeFakePush(): FakePush {
+  const receiveHandlers: Record<string, () => void> = {};
+  const push: FakePush = {
+    receive(event: string, cb: () => void) {
+      receiveHandlers[event] = cb;
+      return push; // chainable
+    },
+    _triggerReceive(event: string) {
+      receiveHandlers[event]?.();
+    },
+  };
+  return push;
+}
+
 interface FakeChannel {
   on: (event: string, cb: ChannelEventHandler) => number;
-  join: () => { receive: () => { receive: () => void } };
+  join: () => FakePush;
   leave: ReturnType<typeof vi.fn>;
   _emit: (event: string, payload: unknown) => void;
   _topic: string;
+  _joinPush: FakePush;
 }
 
 interface FakeSocket {
@@ -28,15 +52,15 @@ let fakeSocket: FakeSocket;
 
 function makeFakeChannel(topic: string): FakeChannel {
   const handlers: Record<string, ChannelEventHandler> = {};
+  const joinPush = makeFakePush();
   return {
     _topic: topic,
+    _joinPush: joinPush,
     on: (event: string, cb: ChannelEventHandler) => {
       handlers[event] = cb;
       return 0;
     },
-    join: () => ({
-      receive: () => ({ receive: () => undefined }),
-    }),
+    join: () => joinPush,
     leave: vi.fn(() => ({ receive: () => undefined })),
     _emit: (event: string, payload: unknown) => {
       handlers[event]?.(payload);
@@ -416,6 +440,47 @@ describe("useRunChannel", () => {
       // Page 1 still has 1 item, page 2 still has 0 (not appended)
       expect(updated?.pages[0].items).toHaveLength(1);
       expect(updated?.pages[1].items).toHaveLength(0);
+    });
+  });
+
+  describe("onConnectionError", () => {
+    it("calls onConnectionError when the join receives 'error'", () => {
+      const qc = new QueryClient();
+      const onConnectionError = vi.fn();
+      renderHook(() => useRunChannel(qc, "issue-abc", IDENTIFIER, onConnectionError));
+
+      const ch = fakeSocket._channels[0];
+      ch._joinPush._triggerReceive("error");
+
+      expect(onConnectionError).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls onConnectionError when the join receives 'timeout'", () => {
+      const qc = new QueryClient();
+      const onConnectionError = vi.fn();
+      renderHook(() => useRunChannel(qc, "issue-abc", IDENTIFIER, onConnectionError));
+
+      const ch = fakeSocket._channels[0];
+      ch._joinPush._triggerReceive("timeout");
+
+      expect(onConnectionError).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onConnectionError when issueId is null (no join)", () => {
+      const qc = new QueryClient();
+      const onConnectionError = vi.fn();
+      renderHook(() => useRunChannel(qc, null, IDENTIFIER, onConnectionError));
+
+      expect(fakeSocket.channel).not.toHaveBeenCalled();
+      expect(onConnectionError).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when no onConnectionError is provided and join errors", () => {
+      const qc = new QueryClient();
+      renderHook(() => useRunChannel(qc, "issue-abc", IDENTIFIER));
+
+      const ch = fakeSocket._channels[0];
+      expect(() => ch._joinPush._triggerReceive("error")).not.toThrow();
     });
   });
 });

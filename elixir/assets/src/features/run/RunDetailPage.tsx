@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,6 +15,8 @@ import { RunRail } from "@/features/run/components/RunRail";
 export function RunDetailPage() {
   const { slug, identifier } = useParams<{ slug: string; identifier: string }>();
   const queryClient = useQueryClient();
+  const [channelFailed, setChannelFailed] = useState(false);
+  const handleConnectionError = useCallback(() => setChannelFailed(true), []);
 
   const {
     data: detail,
@@ -31,7 +34,7 @@ export function RunDetailPage() {
     fetchNextPage,
   } = useRunStream(identifier!);
 
-  useRunChannel(queryClient, detail?.issue_id ?? null, identifier!);
+  useRunChannel(queryClient, detail?.issue_id ?? null, identifier!, handleConnectionError);
 
   // Loading skeleton
   if (detailLoading && !detail) {
@@ -91,14 +94,24 @@ export function RunDetailPage() {
       {/* Two-column layout */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* Left: stream */}
-        <RunStream
-          items={streamItems}
-          isLoading={streamLoading}
-          error={streamError as Error | null}
-          onRetry={() => void streamRefetch()}
-          hasNextPage={hasNextPage}
-          onLoadMore={() => void fetchNextPage()}
-        />
+        <div className="space-y-3">
+          {channelFailed && (
+            <Alert variant="default">
+              <AlertTitle>Live updates unavailable</AlertTitle>
+              <AlertDescription>
+                Showing the latest loaded data; reconnect by refreshing.
+              </AlertDescription>
+            </Alert>
+          )}
+          <RunStream
+            items={streamItems}
+            isLoading={streamLoading}
+            error={streamError as Error | null}
+            onRetry={() => void streamRefetch()}
+            hasNextPage={hasNextPage}
+            onLoadMore={() => void fetchNextPage()}
+          />
+        </div>
 
         {/* Right: rail */}
         <div className="lg:sticky lg:top-6 self-start">
