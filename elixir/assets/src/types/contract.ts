@@ -197,6 +197,23 @@ export interface Durable {
   artifacts?: DurableArtifact[];
 }
 
+export interface RateLimitBucket {
+  used?: number;
+  limit?: number;
+  reset_at?: string;
+  reset_in_ms?: number;
+  [key: string]: unknown;
+}
+
+export interface RateLimitsPayload {
+  limit_id?: string;
+  limit_name?: string;
+  primary?: RateLimitBucket;
+  secondary?: RateLimitBucket;
+  credits?: RateLimitBucket;
+  [key: string]: unknown;
+}
+
 export interface StatePayload {
   generated_at: string;
   counts?: ProjectCounts;
@@ -206,7 +223,7 @@ export interface StatePayload {
   runtime?: Runtime;
   artifacts?: Artifact[];
   codex_totals?: CodexTotals;
-  rate_limits?: unknown;
+  rate_limits?: RateLimitsPayload | null;
   projects?: Array<ProjectRef & { counts: ProjectCounts }>;
   durable?: Durable;
   error?: StateError;

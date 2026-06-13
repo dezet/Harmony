@@ -127,3 +127,15 @@ export function getProjectActivity(slug: string, cursor?: string): Promise<Proje
 export function getArtifactUrl(id: string): string {
   return `${BASE}/artifacts/${encodeURIComponent(id)}`;
 }
+
+export function stopRun(identifier: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/runs/${encodeURIComponent(identifier)}/stop`, {
+    method: "POST",
+  });
+}
+
+export function retryRun(identifier: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/runs/${encodeURIComponent(identifier)}/retry`, {
+    method: "POST",
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, ApiError } from "@/lib/api";
+import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, stopRun, retryRun, ApiError } from "@/lib/api";
 import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
@@ -430,5 +430,157 @@ describe("getArtifactUrl", () => {
 
   it("encodes special characters in the artifact id", () => {
     expect(getArtifactUrl("art/with spaces")).toBe("/api/v1/artifacts/art%2Fwith%20spaces");
+  });
+});
+
+describe("stopRun", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("POSTs to the correct URL and returns status", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "stopped" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await stopRun("COD-10");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const lastCall = fetchMock.mock.lastCall as unknown[];
+    expect(lastCall[0] as string).toBe("/api/v1/runs/COD-10/stop");
+    expect((lastCall[1] as RequestInit).method).toBe("POST");
+    expect(result.status).toBe("stopped");
+  });
+
+  it("encodes special characters in the identifier", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "stopped" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await stopRun("PROJ/42");
+
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/runs/PROJ%2F42/stop");
+  });
+
+  it("throws ApiError on error envelope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { code: "run_not_found", message: "Run not found" } }),
+            { status: 404, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(stopRun("UNKNOWN-99")).rejects.toMatchObject({
+      code: "run_not_found",
+      status: 404,
+    });
+    await expect(stopRun("UNKNOWN-99")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("throws ApiError with already_terminal code on 409", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { code: "already_terminal", message: "Run already completed" } }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(stopRun("COD-10")).rejects.toMatchObject({
+      code: "already_terminal",
+      status: 409,
+    });
+  });
+});
+
+describe("retryRun", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("POSTs to the correct URL and returns status", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "retrying" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await retryRun("COD-10");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const lastCall = fetchMock.mock.lastCall as unknown[];
+    expect(lastCall[0] as string).toBe("/api/v1/runs/COD-10/retry");
+    expect((lastCall[1] as RequestInit).method).toBe("POST");
+    expect(result.status).toBe("retrying");
+  });
+
+  it("encodes special characters in the identifier", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: "retrying" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await retryRun("PROJ/42");
+
+    const url = (fetchMock.mock.lastCall as unknown[])[0] as string;
+    expect(url).toBe("/api/v1/runs/PROJ%2F42/retry");
+  });
+
+  it("throws ApiError on error envelope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { code: "run_not_found", message: "Run not found" } }),
+            { status: 404, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(retryRun("UNKNOWN-99")).rejects.toMatchObject({
+      code: "run_not_found",
+      status: 404,
+    });
+    await expect(retryRun("UNKNOWN-99")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("throws ApiError with not_retrying code on 409", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { code: "not_retrying", message: "Run is not in retrying state" } }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(retryRun("COD-10")).rejects.toMatchObject({
+      code: "not_retrying",
+      status: 409,
+    });
   });
 });
