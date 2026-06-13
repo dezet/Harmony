@@ -6,7 +6,7 @@ defmodule SymphonyElixirWeb.FallbackController do
 
   use Phoenix.Controller, formats: [:json]
 
-  @spec call(Plug.Conn.t(), {:error, Ecto.Changeset.t() | :not_found | :run_not_found | :artifact_not_found | :artifact_path_unsafe | {:artifact_too_large, String.t(), non_neg_integer()}}) :: Plug.Conn.t()
+  @spec call(Plug.Conn.t(), {:error, Ecto.Changeset.t() | :not_found | :run_not_found | :artifact_not_found | :artifact_path_unsafe | {:artifact_too_large, String.t(), non_neg_integer()} | {:config_unavailable, term()}}) :: Plug.Conn.t()
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)
@@ -47,6 +47,12 @@ defmodule SymphonyElixirWeb.FallbackController do
     conn
     |> put_status(413)
     |> json(%{error: %{code: "artifact_too_large", message: "Artifact exceeds the maximum allowed size"}})
+  end
+
+  def call(conn, {:error, {:config_unavailable, _reason}}) do
+    conn
+    |> put_status(:service_unavailable)
+    |> json(%{error: %{code: "config_unavailable", message: "Service configuration is unavailable"}})
   end
 
   defp changeset_errors(changeset) do

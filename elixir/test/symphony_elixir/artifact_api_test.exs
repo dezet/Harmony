@@ -402,6 +402,31 @@ defmodule SymphonyElixir.ArtifactApiTest do
   end
 
   # ---------------------------------------------------------------------------
+  # 503 — FallbackController handles {:error, {:config_unavailable, reason}}
+  #
+  # Approach: FallbackController unit test — calling call/2 directly with the
+  # error tuple is simpler and more reliable than trying to make Config.settings/0
+  # fail in the integration test context (which would require deleting the workflow
+  # file that the test setup just wrote). The unit test directly exercises the
+  # missing clause that was causing the FunctionClauseError → 500 crash.
+  # ---------------------------------------------------------------------------
+
+  test "FallbackController returns 503 JSON envelope for {:error, {:config_unavailable, reason}}" do
+    conn =
+      build_conn()
+      |> Plug.Test.init_test_session(%{})
+      |> Phoenix.Controller.accepts(["json"])
+      |> Map.put(:private, Map.merge(build_conn().private, %{phoenix_format: "json", phoenix_controller: SymphonyElixirWeb.FallbackController, phoenix_action: :call}))
+
+    result = SymphonyElixirWeb.FallbackController.call(conn, {:error, {:config_unavailable, :missing}})
+
+    assert result.status == 503
+    body = Jason.decode!(result.resp_body)
+    assert body["error"]["code"] == "config_unavailable"
+    assert is_binary(body["error"]["message"])
+  end
+
+  # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
 
