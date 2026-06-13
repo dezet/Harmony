@@ -63,7 +63,11 @@
     "total_tokens": 30,
     "seconds_running": 60
   },
-  "rate_limits": { "remaining": 42 },
+  "rate_limits": {
+    "limit_id": "default",
+    "primary": { "used": 1200, "limit": 5000, "reset_in_ms": 3600000 },
+    "secondary": { "used": 30, "limit": 100 }
+  },
   "projects": [
     {
       "id": "project-1",

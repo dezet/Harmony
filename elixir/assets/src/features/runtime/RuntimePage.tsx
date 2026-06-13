@@ -20,11 +20,7 @@ export function RuntimePage() {
 
       <section>
         <h2 className="mb-2 text-lg font-medium">Rate limits</h2>
-        {data?.rate_limits != null ? (
-          <RateLimits value={data.rate_limits} />
-        ) : (
-          <p className="text-muted-foreground">No rate limit data.</p>
-        )}
+        <RateLimits value={data?.rate_limits ?? null} />
       </section>
     </div>
   );
