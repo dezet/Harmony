@@ -35,6 +35,8 @@ const sampleProject: Project = {
   github_owner: "dezet",
   github_repo: "portal",
   github_base_branch: "develop",
+  forge_secret: "set",
+  tracker_secret: "unset",
   linear_project_slug: "portal-linear",
   linear_team_key: "COD",
   linear_human_review_state: "Human Review",
@@ -135,6 +137,44 @@ describe("ProjectConfigForm (edit mode)", () => {
     expect(JSON.parse((updateCall?.[1] as RequestInit)?.body as string)).toMatchObject({
       github_base_branch: "main",
     });
+  });
+
+  it("shows the current secret state and never pre-fills the value", async () => {
+    renderForm({ project: sampleProject });
+
+    expect(await screen.findByText(/Forge token — currently: set/i)).toBeInTheDocument();
+    expect(screen.getByText(/Tracker key — currently: unset/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Forge token/i)).toHaveValue("");
+  });
+
+  it("sends a typed forge_secret and the clear flag in the update body", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ project: sampleProject }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
+
+    await userEvent.type(screen.getByLabelText(/Forge token/i), "ghp_new");
+    // Two clear checkboxes: [0] forge, [1] tracker. Check the tracker one.
+    await userEvent.click(screen.getAllByRole("checkbox")[1]);
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        (input as string).endsWith("/api/v1/projects/project-1") &&
+        (init as RequestInit)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit)?.body as string);
+    expect(body.forge_secret).toBe("ghp_new");
+    expect(body.clear_tracker_secret).toBe(true);
+    expect(body).not.toHaveProperty("clear_forge_secret");
   });
 
   it("maps a server config error onto the JSON field", async () => {

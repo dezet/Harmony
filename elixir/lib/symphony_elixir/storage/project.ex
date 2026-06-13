@@ -19,6 +19,8 @@ defmodule SymphonyElixir.Storage.Project do
     field(:forge_repo, :string)
     field(:forge_base_branch, :string)
     field(:forge_base_url, :string)
+    field(:forge_secret, SymphonyElixir.Encrypted.Binary, redact: true)
+    field(:tracker_secret, SymphonyElixir.Encrypted.Binary, redact: true)
     field(:config_version, :integer, default: 1)
     field(:config, :map, default: %{})
     timestamps(type: :utc_datetime_usec)
@@ -44,5 +46,10 @@ defmodule SymphonyElixir.Storage.Project do
     ])
     |> validate_required([:slug, :forge_owner, :forge_repo, :forge_base_branch, :forge_type, :config_version, :config])
     |> unique_constraint(:slug)
+  end
+
+  @spec secret_changeset(t(), map()) :: Ecto.Changeset.t()
+  def secret_changeset(project, attrs) do
+    cast(project, attrs, [:forge_secret, :tracker_secret], empty_values: [])
   end
 end

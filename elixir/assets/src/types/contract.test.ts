@@ -132,7 +132,8 @@ describe("StatePayload contract fixture", () => {
 
 describe("ProjectSummary contract fixture", () => {
   it("type-checks and exposes all fields used by the summary endpoint", () => {
-    const summary: ProjectSummary = projectSummaryFixture;
+    // JSON imports widen string literals, so narrow the secret-state fields.
+    const summary = projectSummaryFixture as ProjectSummary;
 
     expectKeys(summary.project, [
       "id",
@@ -140,6 +141,8 @@ describe("ProjectSummary contract fixture", () => {
       "github_owner",
       "github_repo",
       "github_base_branch",
+      "forge_secret",
+      "tracker_secret",
       "linear_project_slug",
       "linear_team_key",
       "linear_human_review_state",

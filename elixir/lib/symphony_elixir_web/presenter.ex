@@ -29,6 +29,8 @@ defmodule SymphonyElixirWeb.Presenter do
         github_owner: project.forge_owner,
         github_repo: project.forge_repo,
         github_base_branch: project.forge_base_branch,
+        forge_secret: secret_state(project.forge_secret),
+        tracker_secret: secret_state(project.tracker_secret),
         linear_project_slug: project.linear_project_slug,
         linear_team_key: project.linear_team_key,
         linear_human_review_state: project.linear_human_review_state,
@@ -45,6 +47,9 @@ defmodule SymphonyElixirWeb.Presenter do
       human_review_prs: Enum.map(pull_request_links, &pr_link_payload/1)
     }
   end
+
+  defp secret_state(nil), do: "unset"
+  defp secret_state(_), do: "set"
 
   @doc """
   Builds the paginated work-run list payload.

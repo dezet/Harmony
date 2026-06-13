@@ -17,6 +17,8 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
       forge_owner: "acme",
       forge_repo: "portal",
       forge_base_branch: "main",
+      forge_secret: nil,
+      tracker_secret: nil,
       linear_project_slug: "alpha-linear",
       linear_team_key: "COD",
       linear_human_review_state: "Human Review",

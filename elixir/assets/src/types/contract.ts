@@ -235,12 +235,16 @@ export interface ApiErrorBody {
 
 // ─── Project Summary endpoint (/api/v1/projects/:ref/summary) ───────────────
 
+export type SecretState = "set" | "unset";
+
 export interface SummaryProject {
   id: string;
   slug: string;
   github_owner: string;
   github_repo: string;
   github_base_branch: string;
+  forge_secret: SecretState;
+  tracker_secret: SecretState;
   linear_project_slug: string | null;
   linear_team_key: string | null;
   linear_human_review_state: string | null;
@@ -312,6 +316,8 @@ export interface Project {
   github_owner: string;
   github_repo: string;
   github_base_branch: string;
+  forge_secret: SecretState;
+  tracker_secret: SecretState;
   config_version: number;
   config: Record<string, unknown>;
   inserted_at: string;
@@ -418,4 +424,11 @@ export interface ProjectInput {
   github_base_branch: string;
   config_version: number;
   config: Record<string, unknown>;
+  // Write-only secrets: a non-empty value sets it; the clear flag resets to env
+  // fallback. The API never echoes a value (reads return only `forge_secret`
+  // `"set" | "unset"`).
+  forge_secret?: string;
+  tracker_secret?: string;
+  clear_forge_secret?: boolean;
+  clear_tracker_secret?: boolean;
 }

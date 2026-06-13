@@ -11,6 +11,10 @@ export const projectFormSchema = yup.object({
   linear_project_slug: yup.string().trim().default(""),
   linear_team_key: yup.string().trim().default(""),
   linear_human_review_state: yup.string().trim().default(""),
+  forge_secret: yup.string().default(""),
+  tracker_secret: yup.string().default(""),
+  clear_forge_secret: yup.boolean().default(false),
+  clear_tracker_secret: yup.boolean().default(false),
   config_version: yup
     .number()
     .typeError("Version must be a number")
@@ -33,7 +37,7 @@ export const projectFormSchema = yup.object({
 export type ProjectFormValues = yup.InferType<typeof projectFormSchema>;
 
 export function toProjectInput(values: ProjectFormValues): ProjectInput {
-  return {
+  const input: ProjectInput = {
     slug: values.slug,
     github_owner: values.github_owner,
     github_repo: values.github_repo,
@@ -44,4 +48,13 @@ export function toProjectInput(values: ProjectFormValues): ProjectInput {
     config_version: values.config_version,
     config: JSON.parse(values.config_json || "{}"),
   };
+
+  // Write-only secrets: send a value only when entered; send the clear flag only
+  // when checked. Never round-trip a secret value back from the server.
+  if (values.forge_secret) input.forge_secret = values.forge_secret;
+  if (values.tracker_secret) input.tracker_secret = values.tracker_secret;
+  if (values.clear_forge_secret) input.clear_forge_secret = true;
+  if (values.clear_tracker_secret) input.clear_tracker_secret = true;
+
+  return input;
 }

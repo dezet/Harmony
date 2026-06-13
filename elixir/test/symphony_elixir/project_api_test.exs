@@ -87,6 +87,29 @@ defmodule SymphonyElixir.ProjectApiTest do
     assert json_response(conn, 404)["error"]["code"] == "not_found"
   end
 
+  @tag :db
+  test "create accepts a forge_secret but never echoes it" do
+    :ok = checkout_repo(%{})
+
+    conn = json_post("/api/v1/projects", Map.put(@valid, "forge_secret", "ghp_tok"))
+    body = json_response(conn, 201)
+    refute Map.has_key?(body["project"], "forge_secret_value")
+    assert body["project"]["forge_secret"] == "set"
+    assert body["project"]["tracker_secret"] == "unset"
+    refute body["project"] |> Map.values() |> Enum.member?("ghp_tok")
+  end
+
+  @tag :db
+  test "clear flag removes a stored secret" do
+    :ok = checkout_repo(%{})
+
+    %{"project" => %{"id" => id}} =
+      json_response(json_post("/api/v1/projects", Map.put(@valid, "forge_secret", "ghp_tok")), 201)
+
+    body = json_response(json_put("/api/v1/projects/#{id}", Map.put(@valid, "clear_forge_secret", true)), 200)
+    assert body["project"]["forge_secret"] == "unset"
+  end
+
   defp start_test_endpoint do
     endpoint_config =
       :symphony_elixir
