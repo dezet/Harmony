@@ -132,7 +132,6 @@ export function ProjectWorkspacePage() {
         <ConfigurationTab
           projectId={summary.project.id}
           slug={slug!}
-          active={activeTab === "configuration"}
         />
       )}
     </div>

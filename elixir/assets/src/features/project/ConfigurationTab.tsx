@@ -10,19 +10,18 @@ import { PROJECT_SUMMARY_KEY } from "@/lib/queryClient";
 interface ConfigurationTabProps {
   projectId: string;
   slug: string;
-  active: boolean;
 }
 
-export function ConfigurationTab({ projectId, slug, active }: ConfigurationTabProps) {
+export function ConfigurationTab({ projectId, slug }: ConfigurationTabProps) {
   const queryClient = useQueryClient();
-  const { data: project, isLoading, error, refetch } = useProject(projectId, { enabled: active });
+  const { data: project, isLoading, error, refetch } = useProject(projectId);
 
   function handleSuccess() {
     toast.success("Configuration saved");
     void queryClient.invalidateQueries({ queryKey: PROJECT_SUMMARY_KEY(slug) });
   }
 
-  if (active && isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />

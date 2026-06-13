@@ -60,21 +60,7 @@ function renderTab(props: Parameters<typeof ConfigurationTab>[0], qc = makeQC())
 }
 
 describe("ConfigurationTab", () => {
-  it("does NOT fetch project when active=false", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderTab({ projectId: "proj-1", slug: "alpha", active: false });
-
-    // Give React time to settle
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    // Should render nothing (no project data yet, not active)
-    expect(screen.queryByLabelText("Slug")).not.toBeInTheDocument();
-  });
-
-  it("fetches and renders the project form when active=true", async () => {
+  it("fetches and renders the project form on mount", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -86,7 +72,7 @@ describe("ConfigurationTab", () => {
       ),
     );
 
-    renderTab({ projectId: "proj-1", slug: "alpha", active: true });
+    renderTab({ projectId: "proj-1", slug: "alpha" });
 
     await waitFor(() => expect(screen.getByLabelText("Slug")).toBeInTheDocument());
     expect(screen.getByLabelText("Slug")).toHaveValue("alpha");
@@ -104,7 +90,7 @@ describe("ConfigurationTab", () => {
       ),
     );
 
-    renderTab({ projectId: "proj-1", slug: "alpha", active: true });
+    renderTab({ projectId: "proj-1", slug: "alpha" });
 
     await waitFor(() =>
       expect(screen.getByText(/failed to load configuration/i)).toBeInTheDocument(),
@@ -130,7 +116,7 @@ describe("ConfigurationTab", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderTab({ projectId: "proj-1", slug: "alpha", active: true });
+    renderTab({ projectId: "proj-1", slug: "alpha" });
 
     await waitFor(() => expect(screen.getByLabelText("Slug")).toBeInTheDocument());
 

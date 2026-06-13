@@ -59,3 +59,38 @@ is implemented in `src/features/project/` and renders the Work tab with live dat
 `/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`. The run detail page
 (`/projects/:slug/runs/:identifier`) is implemented in `src/features/run/` and fetches from
 `/api/v1/runs/:identifier` (detail) and `/api/v1/runs/:identifier/stream` (paginated events).
+
+## Project workspace tabs
+
+The project workspace (`/projects/:slug`) has four tabs driven by a `?tab=` search param
+(invalid/missing → "work"):
+
+| Tab | `?tab=` | Component | Data source |
+|-----|---------|-----------|-------------|
+| Work | _(none)_ | `WorkTab` | summary + work_runs |
+| Evidence | `evidence` | `EvidenceTab` | `GET /api/v1/projects/:slug/artifacts` |
+| Activity | `activity` | `ActivityTab` | `GET /api/v1/projects/:slug/activity?cursor=&page_size=` |
+| Configuration | `configuration` | `ConfigurationTab` | `GET /api/v1/projects/:id` (full project) |
+
+**Evidence tab** groups artifacts by `work_run_id`; screenshots render as `<img>` linking to the
+artifact content endpoint; other kinds render as download `<a>` tags.
+
+**Activity tab** uses `useInfiniteQuery` with a keyset cursor; flattened pages feed into
+`StreamItemRow`; a "Load more" button is shown when `next_cursor` is non-null.
+
+**Configuration tab** fetches the full project on mount (lazy-mounted because the workspace header
+only loads the summary, which omits `config`). On save: toast + invalidate the summary cache key.
+
+**JsonEditor** (`src/components/JsonEditor.tsx`): a thin wrapper around `@uiw/react-codemirror` +
+`@codemirror/lang-json`. Used by `ProjectConfigForm` for the `config_json` field. In tests it is
+mocked as a plain `<textarea>` so CodeMirror does not interfere with jsdom.
+
+## New API endpoints (Phase 4)
+
+- `GET /api/v1/projects/:project_ref/artifacts` — list artifacts for a project (no `path` field
+  exposed). Response: `{"artifacts": [{id, kind, metadata, work_run_id, work_run: {...}|null}]}`.
+- `GET /api/v1/projects/:project_ref/activity` — paginated project-wide work-events feed.
+  Accepts `?cursor=` and `?page_size=`. Response: `{"items": [...], "meta": {"next_cursor": ...}}`.
+- `GET /api/v1/artifacts/:id` — serve raw artifact file content. Security: UUID-only untrusted
+  input; path validated against workspace root (403 on escape); 100 MB cap (413); static
+  kind→content-type map (screenshots inline, others attachment). `path` is never in JSON responses.

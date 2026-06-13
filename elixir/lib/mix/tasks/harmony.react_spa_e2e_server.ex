@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
   use Mix.Task
 
   alias __MODULE__.SnapshotOrchestrator
-  alias SymphonyElixir.{HttpServer, Storage}
+  alias SymphonyElixir.{Config, HttpServer, Storage}
 
   @moduledoc """
   Serves the React SPA against a deterministic browser E2E snapshot source.
@@ -115,7 +115,63 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
         })
     end
 
+    seed_e2e_artifact(project, work_run)
+
     :ok
+  end
+
+  # Seeds a screenshot artifact for the COD-1 run so the Evidence tab has data.
+  # The PNG file is written under the configured workspace root so that the
+  # ArtifactController's containment check passes when serving the content.
+  # Idempotent: skips insert if an artifact for this work_run already exists.
+  defp seed_e2e_artifact(project, work_run) do
+    existing = Storage.list_artifacts_for_work_run(work_run.id)
+
+    if existing == [] do
+      artifact_path = build_e2e_artifact_path(project)
+      write_e2e_png!(artifact_path)
+
+      {:ok, _artifact} =
+        Storage.create_artifact(%{
+          project_id: project.id,
+          work_run_id: work_run.id,
+          kind: "screenshot",
+          path: artifact_path,
+          metadata: %{}
+        })
+    end
+
+    :ok
+  end
+
+  # Returns the absolute path for the e2e artifact PNG under the workspace root.
+  # Falls back to a system tmp dir if the workspace root is not configured.
+  defp build_e2e_artifact_path(project) do
+    root =
+      case Config.settings() do
+        {:ok, settings} -> Path.expand(settings.workspace.root)
+        {:error, _} -> Path.join(System.tmp_dir!(), "harmony_e2e_workspaces")
+      end
+
+    dir = Path.join([root, "e2e-#{project.id}", ".harmony", "artifacts"])
+    Path.join(dir, "e2e-screenshot.png")
+  end
+
+  # Writes a minimal valid 1×1 PNG to `path`, creating parent directories.
+  # This is a hardcoded 68-byte 1×1 transparent PNG (no external deps).
+  @minimal_png <<0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+                 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+                 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+                 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+                 0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+                 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
+                 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+                 0x44, 0xAE, 0x42, 0x60, 0x82>>
+
+  defp write_e2e_png!(path) do
+    :ok = File.mkdir_p!(Path.dirname(path))
+    :ok = File.write!(path, @minimal_png)
   end
 
   defp unique_orchestrator_name do
