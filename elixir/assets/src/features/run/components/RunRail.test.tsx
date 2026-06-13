@@ -1,28 +1,68 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RunRail } from "@/features/run/components/RunRail";
 import type { RunDetail } from "@/types/contract";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
 
-// Cast fixture to RunDetail
+// ─── Mock useRunActions ───────────────────────────────────────────────────────
+
+const stopMutate = vi.fn();
+const retryMutate = vi.fn();
+
+vi.mock("@/features/run/useRunActions", () => ({
+  useStopRun: vi.fn(() => ({ mutate: stopMutate, isPending: false })),
+  useRetryRun: vi.fn(() => ({ mutate: retryMutate, isPending: false })),
+}));
+
+// ─── Mock ConfirmDialog ───────────────────────────────────────────────────────
+// AlertDialog uses a portal that doesn't render well in jsdom. Replace with a
+// simple inline element that exposes the same logical interface so button-level
+// assertions remain straightforward.
+
+vi.mock("@/components/ConfirmDialog", () => ({
+  ConfirmDialog: ({
+    open,
+    title,
+    onConfirm,
+    onOpenChange,
+  }: {
+    open: boolean;
+    title: string;
+    onConfirm: () => void;
+    onOpenChange: (v: boolean) => void;
+  }) =>
+    open ? (
+      <div role="dialog" aria-modal="true">
+        <span>{title}</span>
+        <button onClick={onConfirm}>Confirm</button>
+        <button onClick={() => onOpenChange(false)}>Cancel</button>
+      </div>
+    ) : null,
+}));
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
 const fixture = runDetailFixture as RunDetail;
+// fixture.status === "running"
 
-// Variant with null tokens
-const noTokensDetail: RunDetail = {
-  ...fixture,
-  tokens: null,
-};
-
-// Variant with current_retry_attempt set
+const blockedDetail: RunDetail = { ...fixture, status: "blocked" };
 const retryingDetail: RunDetail = {
   ...fixture,
-  attempts: {
-    restart_count: 1,
-    current_retry_attempt: 3,
-  },
+  status: "retrying",
+  attempts: { restart_count: 1, current_retry_attempt: 3 },
 };
+const completedDetail: RunDetail = { ...fixture, status: "completed" };
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("RunRail", () => {
+  // ── Existing content tests (unchanged) ──────────────────────────────────────
+
   it("renders status badge", () => {
     render(<RunRail detail={fixture} />);
     expect(screen.getByText("running")).toBeInTheDocument();
@@ -30,26 +70,23 @@ describe("RunRail", () => {
 
   it("renders turn_count", () => {
     render(<RunRail detail={fixture} />);
-    // fixture has turn_count: 7
     expect(screen.getByText("7")).toBeInTheDocument();
   });
 
   it("renders last_event name", () => {
     render(<RunRail detail={fixture} />);
-    // fixture has last_event: "turn_end"
     expect(screen.getByText("turn_end")).toBeInTheDocument();
   });
 
   it("renders token totals when tokens present", () => {
     render(<RunRail detail={fixture} />);
-    // fixture tokens: input 200, output 80, total 280
     expect(screen.getByText("200")).toBeInTheDocument();
     expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("280")).toBeInTheDocument();
   });
 
   it("renders 'No token data.' when tokens are null", () => {
-    render(<RunRail detail={noTokensDetail} />);
+    render(<RunRail detail={{ ...fixture, tokens: null }} />);
     expect(screen.getByText("No token data.")).toBeInTheDocument();
   });
 
@@ -70,7 +107,6 @@ describe("RunRail", () => {
 
   it("renders artifact kind and path", () => {
     render(<RunRail detail={fixture} />);
-    // fixture artifact: kind "screenshot", path "/artifacts/screen.png"
     expect(screen.getByText("screenshot")).toBeInTheDocument();
     expect(screen.getByText("/artifacts/screen.png")).toBeInTheDocument();
   });
@@ -82,7 +118,6 @@ describe("RunRail", () => {
 
   it("renders workspace path in mono", () => {
     render(<RunRail detail={fixture} />);
-    // fixture workspace.path: "/ws/cod-10"
     expect(screen.getByText("/ws/cod-10")).toBeInTheDocument();
   });
 
@@ -101,17 +136,87 @@ describe("RunRail", () => {
     expect(screen.queryByText(/Attempt #/)).not.toBeInTheDocument();
   });
 
-  it("renders disabled Stop button with title", () => {
+  // ── Stop button ─────────────────────────────────────────────────────────────
+
+  it("Stop button has aria-label 'Stop this run'", () => {
     render(<RunRail detail={fixture} />);
-    const stopBtn = screen.getByRole("button", { name: /stop/i });
-    expect(stopBtn).toBeDisabled();
-    expect(stopBtn).toHaveAttribute("title", "Available soon");
+    expect(
+      screen.getByRole("button", { name: "Stop this run" }),
+    ).toBeInTheDocument();
   });
 
-  it("renders disabled Retry now button with title", () => {
+  it("Stop button is enabled when status is 'running'", () => {
     render(<RunRail detail={fixture} />);
-    const retryBtn = screen.getByRole("button", { name: /retry now/i });
-    expect(retryBtn).toBeDisabled();
-    expect(retryBtn).toHaveAttribute("title", "Available soon");
+    expect(screen.getByRole("button", { name: "Stop this run" })).not.toBeDisabled();
+  });
+
+  it("Stop button is enabled when status is 'blocked'", () => {
+    render(<RunRail detail={blockedDetail} />);
+    expect(screen.getByRole("button", { name: "Stop this run" })).not.toBeDisabled();
+  });
+
+  it("Stop button is disabled for a terminal status", () => {
+    render(<RunRail detail={completedDetail} />);
+    expect(screen.getByRole("button", { name: "Stop this run" })).toBeDisabled();
+  });
+
+  it("clicking Stop button opens the confirm dialog", async () => {
+    const user = userEvent.setup();
+    render(<RunRail detail={fixture} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Stop this run?")).toBeInTheDocument();
+  });
+
+  it("confirming the dialog calls stop.mutate", async () => {
+    const user = userEvent.setup();
+    render(<RunRail detail={fixture} />);
+    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(stopMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancelling the dialog does not call stop.mutate", async () => {
+    const user = userEvent.setup();
+    render(<RunRail detail={fixture} />);
+    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(stopMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  // ── Retry button ─────────────────────────────────────────────────────────────
+
+  it("Retry button has aria-label 'Retry this run now'", () => {
+    render(<RunRail detail={fixture} />);
+    expect(
+      screen.getByRole("button", { name: "Retry this run now" }),
+    ).toBeInTheDocument();
+  });
+
+  it("Retry button is enabled only when status is 'retrying'", () => {
+    render(<RunRail detail={retryingDetail} />);
+    expect(
+      screen.getByRole("button", { name: "Retry this run now" }),
+    ).not.toBeDisabled();
+  });
+
+  it("Retry button is disabled when status is 'running'", () => {
+    render(<RunRail detail={fixture} />);
+    expect(screen.getByRole("button", { name: "Retry this run now" })).toBeDisabled();
+  });
+
+  it("Retry button is disabled for a terminal status", () => {
+    render(<RunRail detail={completedDetail} />);
+    expect(screen.getByRole("button", { name: "Retry this run now" })).toBeDisabled();
+  });
+
+  it("clicking Retry button calls retry.mutate directly (no dialog)", async () => {
+    const user = userEvent.setup();
+    render(<RunRail detail={retryingDetail} />);
+    await user.click(screen.getByRole("button", { name: "Retry this run now" }));
+    expect(retryMutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

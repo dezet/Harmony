@@ -1,8 +1,12 @@
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ElapsedTime } from "@/components/ElapsedTime";
 import { StatusBadge as CIBadge } from "@/components/StatusBadge";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useStopRun, useRetryRun } from "@/features/run/useRunActions";
 import type { RunDetail, HumanReviewPR } from "@/types/contract";
 
 interface PRLinkProps {
@@ -52,6 +56,14 @@ interface RunRailProps {
 }
 
 export function RunRail({ detail }: RunRailProps) {
+  const stop = useStopRun(detail.identifier);
+  const retry = useRetryRun(detail.identifier);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const canStop =
+    detail.status === "running" || detail.status === "blocked";
+  const canRetry = detail.status === "retrying";
+
   return (
     <div className="flex flex-col gap-4">
       {/* Status block */}
@@ -80,13 +92,41 @@ export function RunRail({ detail }: RunRailProps) {
             </div>
           )}
           <div className="flex items-center gap-2 pt-1">
-            <Button variant="outline" size="sm" disabled title="Available soon">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canStop || stop.isPending}
+              aria-label={stop.isPending ? "Stopping run…" : "Stop this run"}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {stop.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
               Stop
             </Button>
-            <Button variant="outline" size="sm" disabled title="Available soon">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canRetry || retry.isPending}
+              aria-label={retry.isPending ? "Retrying run…" : "Retry this run now"}
+              onClick={() => retry.mutate()}
+            >
+              {retry.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
               Retry now
             </Button>
           </div>
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title="Stop this run?"
+            description="This stops the current attempt and frees the slot. The agent may finish its in-flight turn; if the tracker issue is still active it can be re-dispatched on a later poll."
+            confirmLabel="Stop run"
+            destructive
+            isPending={stop.isPending}
+            onConfirm={() => stop.mutate()}
+          />
         </CardContent>
       </Card>
 
