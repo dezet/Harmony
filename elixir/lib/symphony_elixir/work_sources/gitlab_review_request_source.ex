@@ -1,9 +1,7 @@
-defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
-  @moduledoc """
-  Polls open GitHub PRs and emits requested code review work.
-  """
+defmodule SymphonyElixir.WorkSources.GitlabReviewRequestSource do
+  @moduledoc "Polls open GitLab MRs and emits requested code review work from MR notes."
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.{Gitlab, Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
 
   @default_trigger "@hreview"
@@ -16,18 +14,16 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     ref = ProjectCreds.repo_ref(project)
-    client_opts = ProjectCreds.client_opts(project, opts)
+    client_opts = ProjectCreds.gitlab_client_opts(project, opts)
 
-    list_pull_requests =
-      Keyword.get(opts, :list_pull_requests, fn owner, repo, _call_opts ->
-        Github.Client.list_open_pull_requests(owner, repo, client_opts)
+    list_merge_requests =
+      Keyword.get(opts, :list_merge_requests, fn owner, repo, _call_opts ->
+        Gitlab.Client.list_open_merge_requests(owner, repo, client_opts)
       end)
 
-    creds = ProjectCreds.creds(project, opts)
-
-    list_issue_comments =
-      Keyword.get(opts, :list_issue_comments, fn _owner, _repo, issue_number, _call_opts ->
-        SymphonyElixir.Forge.adapter(project).list_change_request_comments(creds, ref, issue_number)
+    list_notes =
+      Keyword.get(opts, :list_notes, fn owner, repo, mr_iid, _call_opts ->
+        Gitlab.Client.list_merge_request_notes(owner, repo, mr_iid, client_opts)
       end)
 
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
@@ -35,18 +31,18 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
     owner = ref.owner || project_value(project, :forge_owner)
     repo = ref.repo || project_value(project, :forge_repo)
 
-    with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
-      prs
-      |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        append_review_candidates(project, owner, repo, list_issue_comments, dedupe_seen?, pr, runs)
+    with {:ok, mrs} <- list_merge_requests.(owner, repo, []) do
+      mrs
+      |> Enum.reduce_while({:ok, []}, fn mr, {:ok, runs} ->
+        append_review_candidates(project, owner, repo, list_notes, dedupe_seen?, mr, runs)
       end)
     end
   end
 
-  defp append_review_candidates(project, owner, repo, list_issue_comments, dedupe_seen?, pr, runs) do
-    case list_issue_comments.(owner, repo, pr.number, []) do
-      {:ok, comments} ->
-        candidates = review_candidates(project, owner, repo, pr, comments, dedupe_seen?)
+  defp append_review_candidates(project, owner, repo, list_notes, dedupe_seen?, mr, runs) do
+    case list_notes.(owner, repo, mr.number, []) do
+      {:ok, notes} ->
+        candidates = review_candidates(project, owner, repo, mr, notes, dedupe_seen?)
         {:cont, {:ok, runs ++ candidates}}
 
       {:error, reason} ->
@@ -54,38 +50,40 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
     end
   end
 
-  defp review_candidates(project, owner, repo, pr, comments, dedupe_seen?) do
-    comments
-    |> Enum.filter(&trigger_comment?(&1, project))
-    |> Enum.reject(fn comment ->
-      dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, pr, comment, project))
+  defp review_candidates(project, owner, repo, mr, notes, dedupe_seen?) do
+    notes
+    |> Enum.filter(&trigger_note?(&1, project))
+    |> Enum.reject(fn note ->
+      dedupe_seen?.(project_value(project, :id), dedupe_key(owner, repo, mr, note, project))
     end)
-    |> Enum.map(&build_run(project, owner, repo, pr, &1))
+    |> Enum.map(&build_run(project, owner, repo, mr, &1))
   end
 
-  defp build_run(project, owner, repo, pr, comment) do
-    link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(project_value(project, :linear_team_key)))
+  defp build_run(project, owner, repo, mr, note) do
+    link = Github.LinkResolver.resolve(mr, team_keys: List.wrap(project_value(project, :linear_team_key)))
 
     %WorkRun{
       project_slug: project_value(project, :slug),
       type: "code_review",
       status: "queued",
-      dedupe_key: dedupe_key(owner, repo, pr, comment, project),
+      dedupe_key: dedupe_key(owner, repo, mr, note, project),
+      forge_type: "gitlab",
+      forge_base_url: project_value(project, :forge_base_url),
       forge_owner: owner,
       forge_repo: repo,
-      forge_pr_number: pr.number,
-      forge_head_sha: pr.head_sha,
-      forge_head_ref: pr.head_ref,
-      forge_base_ref: pr.base_ref,
+      forge_pr_number: mr.number,
+      forge_head_sha: mr.head_sha,
+      forge_head_ref: mr.head_ref,
+      forge_base_ref: mr.base_ref,
       linear_identifier: link && link.identifier,
       linear_url: link && link.url,
       agent_backend: "codex",
       payload: %{
         project_id: project_value(project, :id),
-        pull_request: pr,
-        trigger_comment: comment,
-        trigger_comment_id: comment.id,
-        trigger_comment_author: comment.author,
+        merge_request: mr,
+        trigger_comment: note,
+        trigger_comment_id: note.id,
+        trigger_comment_author: note.author,
         trigger: review_trigger(project),
         template: review_template(project),
         template_version: review_template_version(project)
@@ -93,14 +91,14 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
     }
   end
 
-  defp trigger_comment?(%{body: body}, project) when is_binary(body) do
+  defp trigger_note?(%{body: body}, project) when is_binary(body) do
     String.contains?(body, review_trigger(project))
   end
 
-  defp trigger_comment?(_comment, _project), do: false
+  defp trigger_note?(_note, _project), do: false
 
-  defp dedupe_key(owner, repo, pr, comment, project) do
-    "github-review:#{owner}/#{repo}:#{pr.number}:#{comment.id}:#{pr.head_sha}:#{review_template_version(project)}"
+  defp dedupe_key(owner, repo, mr, note, project) do
+    "gitlab-review:#{owner}/#{repo}:#{mr.number}:#{note.id}:#{mr.head_sha}:#{review_template_version(project)}"
   end
 
   defp review_trigger(project) do

@@ -2318,4 +2318,28 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     end)
     |> elem(1)
   end
+
+  test "work-source fetchers dispatch by project forge_type" do
+    github_called = :counters.new(1, [])
+    gitlab_called = :counters.new(1, [])
+
+    github_fun = fn _project ->
+      :counters.add(github_called, 1, 1)
+      {:ok, []}
+    end
+
+    gitlab_fun = fn _project ->
+      :counters.add(gitlab_called, 1, 1)
+      {:ok, []}
+    end
+
+    dispatch = SymphonyElixir.Orchestrator.__by_forge_type__(github_fun, gitlab_fun)
+
+    assert {:ok, []} = dispatch.(%{forge_type: "github"})
+    assert {:ok, []} = dispatch.(%{forge_type: "gitlab"})
+    assert {:ok, []} = dispatch.(%{forge_type: nil})
+
+    assert :counters.get(github_called, 1) == 2
+    assert :counters.get(gitlab_called, 1) == 1
+  end
 end

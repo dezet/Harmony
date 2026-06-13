@@ -47,14 +47,19 @@ defmodule SymphonyElixir.Forge.ProjectCreds do
   """
   @spec creds(map(), keyword()) :: map()
   def creds(project_or_run, extra \\ []) do
-    token = System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
-    base_url = map_get(project_or_run, :forge_base_url)
-
     %{
-      token: token,
-      base_url: base_url,
+      token: forge_token(project_or_run),
+      base_url: map_get(project_or_run, :forge_base_url),
       request_fun: extra[:request_fun]
     }
+  end
+
+  @spec gitlab_client_opts(map(), keyword()) :: keyword()
+  def gitlab_client_opts(project_or_run, extra \\ []) do
+    []
+    |> put_if(System.get_env("GITLAB_TOKEN"), :token)
+    |> put_if(map_get(project_or_run, :forge_base_url), :base_url)
+    |> put_if(extra[:request_fun], :request_fun)
   end
 
   # ---------------------------------------------------------------------------
@@ -83,6 +88,13 @@ defmodule SymphonyElixir.Forge.ProjectCreds do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp forge_token(project_or_run) do
+    case map_get(project_or_run, :forge_type) do
+      "gitlab" -> System.get_env("GITLAB_TOKEN")
+      _ -> System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
+    end
+  end
 
   defp map_get(map, key) when is_map(map) do
     Map.get(map, key) || Map.get(map, to_string(key))

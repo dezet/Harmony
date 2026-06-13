@@ -60,6 +60,11 @@ defmodule SymphonyElixir.Forge.Github do
     Client.create_pull_request_review(ref.owner, ref.repo, pr_number, body, client_opts(creds) ++ opts)
   end
 
+  @impl true
+  def list_change_request_comments(creds, ref, issue_number) do
+    Client.list_issue_comments(ref.owner, ref.repo, issue_number, client_opts(creds))
+  end
+
   # --- Private helpers ---
 
   defp client_opts(creds) do

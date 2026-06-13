@@ -3,7 +3,7 @@ defmodule SymphonyElixir.Workflows.CiFixHandoff do
   Reports failed CI repair blockers to GitHub and linked Linear issues.
   """
 
-  alias SymphonyElixir.{Forge, RuntimePolicy, Storage, Tracker, WorkRun}
+  alias SymphonyElixir.{RuntimePolicy, Storage, Tracker, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
 
   @default_human_review_state "Human Review"
@@ -19,7 +19,7 @@ defmodule SymphonyElixir.Workflows.CiFixHandoff do
     github_comment =
       Keyword.get(opts, :github_comment, fn owner, repo, issue_number, comment_body, _call_opts ->
         ref = %{owner: owner, repo: repo, base_url: creds.base_url}
-        Forge.Github.create_comment(creds, ref, issue_number, comment_body)
+        SymphonyElixir.Forge.adapter(run).create_comment(creds, ref, issue_number, comment_body)
       end)
 
     linear_comment = Keyword.get(opts, :linear_comment, &Tracker.create_comment/2)

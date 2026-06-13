@@ -15,6 +15,7 @@ defmodule SymphonyElixir.Forge.Memory do
   # ---------------------------------------------------------------------------
 
   @doc "Start the named Agent (called from test helpers or supervision)."
+  @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
   def start_link(_opts \\ []) do
     Agent.start_link(&initial_state/0, name: @agent)
   end
@@ -23,6 +24,7 @@ defmodule SymphonyElixir.Forge.Memory do
     %{
       repositories: [],
       change_requests: [],
+      comments: [],
       calls: []
     }
   end
@@ -50,6 +52,13 @@ defmodule SymphonyElixir.Forge.Memory do
   def seed_change_requests(crs) when is_list(crs) do
     ensure_started()
     Agent.update(@agent, &Map.put(&1, :change_requests, crs))
+  end
+
+  @doc "Seed the comments returned by `list_change_request_comments/3`."
+  @spec seed_comments([map()]) :: :ok
+  def seed_comments(comments) when is_list(comments) do
+    ensure_started()
+    Agent.update(@agent, &Map.put(&1, :comments, comments))
   end
 
   @doc "Return the list of recorded calls as `{function, args}` tuples."
@@ -105,6 +114,12 @@ defmodule SymphonyElixir.Forge.Memory do
   def create_review(creds, repo_ref, pr_id, body, opts) do
     record_call(:create_review, [creds, repo_ref, pr_id, body, opts])
     :ok
+  end
+
+  @impl SymphonyElixir.Forge
+  def list_change_request_comments(creds, repo_ref, change_id) do
+    record_call(:list_change_request_comments, [creds, repo_ref, change_id])
+    {:ok, Agent.get(@agent, & &1.comments)}
   end
 
   # ---------------------------------------------------------------------------

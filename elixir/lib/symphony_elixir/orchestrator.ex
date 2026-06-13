@@ -11,7 +11,17 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
-  alias SymphonyElixir.WorkSources.{GithubFailedCiSource, GithubPrSource, GithubReviewRequestSource, LinearIssueSource}
+
+  alias SymphonyElixir.WorkSources.{
+    GithubFailedCiSource,
+    GithubPrSource,
+    GithubReviewRequestSource,
+    GitlabMrSource,
+    GitlabPipelineSource,
+    GitlabReviewRequestSource,
+    LinearIssueSource
+  }
+
   alias SymphonyElixirWeb.ObservabilityRunPubSub
 
   @continuation_retry_delay_ms 1_000
@@ -478,20 +488,41 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp github_pr_work_source_fetcher do
-    Application.get_env(:symphony_elixir, :github_pr_work_source_fetcher, &GithubPrSource.fetch_candidates/1)
+    Application.get_env(
+      :symphony_elixir,
+      :github_pr_work_source_fetcher,
+      by_forge_type(&GithubPrSource.fetch_candidates/1, &GitlabMrSource.fetch_candidates/1)
+    )
   end
 
   defp github_ci_work_source_fetcher do
-    Application.get_env(:symphony_elixir, :github_ci_work_source_fetcher, &GithubFailedCiSource.fetch_candidates/1)
+    Application.get_env(
+      :symphony_elixir,
+      :github_ci_work_source_fetcher,
+      by_forge_type(&GithubFailedCiSource.fetch_candidates/1, &GitlabPipelineSource.fetch_candidates/1)
+    )
   end
 
   defp github_review_work_source_fetcher do
     Application.get_env(
       :symphony_elixir,
       :github_review_work_source_fetcher,
-      &GithubReviewRequestSource.fetch_candidates/1
+      by_forge_type(&GithubReviewRequestSource.fetch_candidates/1, &GitlabReviewRequestSource.fetch_candidates/1)
     )
   end
+
+  defp by_forge_type(github_fun, gitlab_fun) do
+    fn project ->
+      case project_value(project, :forge_type) do
+        "gitlab" -> gitlab_fun.(project)
+        _ -> github_fun.(project)
+      end
+    end
+  end
+
+  @doc false
+  @spec __by_forge_type__((term() -> term()), (term() -> term())) :: (term() -> term())
+  def __by_forge_type__(github_fun, gitlab_fun), do: by_forge_type(github_fun, gitlab_fun)
 
   defp persist_fetched_work_runs(work_runs) when is_list(work_runs) do
     Enum.reduce_while(work_runs, {:ok, []}, fn work_run, {:ok, acc} ->
