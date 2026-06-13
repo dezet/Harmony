@@ -17,6 +17,20 @@ export function createSocket(): Socket {
   return socket;
 }
 
+// Module-level singleton — one Socket connection for the entire app lifetime.
+let _socket: Socket | null = null;
+
+/**
+ * Returns the app-wide shared Socket, creating and connecting it on first call.
+ * Both the dashboard channel and per-run channels share this single connection.
+ */
+export function getSocket(): Socket {
+  if (!_socket) {
+    _socket = createSocket();
+  }
+  return _socket;
+}
+
 interface HydrateFromChannelOptions {
   onStatus?: (status: DashboardConnectionStatus) => void;
 }
@@ -70,12 +84,9 @@ export function useDashboardChannel(
   onStatus?: (status: DashboardConnectionStatus) => void,
 ): void {
   useEffect(() => {
-    const socket = createSocket();
+    const socket = getSocket();
     const channel = socket.channel("observability:dashboard", {});
     const cleanup = hydrateFromChannel(queryClient, channel, { onStatus });
-    return () => {
-      cleanup();
-      socket.disconnect();
-    };
+    return cleanup;
   }, [queryClient, onStatus]);
 }
