@@ -26,6 +26,7 @@ defmodule SymphonyElixir.Application do
     :ok = SymphonyElixir.LogFile.configure()
 
     children = [
+      SymphonyElixir.Vault,
       SymphonyElixir.Repo,
       {Task, fn -> sync_project_configs() end},
       {Phoenix.PubSub, name: SymphonyElixir.PubSub},
