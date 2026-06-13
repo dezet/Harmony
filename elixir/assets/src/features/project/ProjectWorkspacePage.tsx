@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,12 @@ import { ApiError } from "@/lib/api";
 
 type Tab = "work" | "evidence" | "activity" | "configuration";
 
+const VALID_TABS: readonly Tab[] = ["work", "evidence", "activity", "configuration"];
+
+function isValidTab(value: string | null): value is Tab {
+  return VALID_TABS.includes(value as Tab);
+}
+
 const healthDotClass: Record<string, string> = {
   healthy: "bg-green-500",
   retrying: "bg-yellow-500",
@@ -16,9 +22,38 @@ const healthDotClass: Record<string, string> = {
   idle: "bg-muted-foreground",
 };
 
+function EvidenceStub() {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">Evidence</h2>
+      <p className="text-muted-foreground">Coming soon.</p>
+    </section>
+  );
+}
+
+function ActivityStub() {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">Activity</h2>
+      <p className="text-muted-foreground">Coming soon.</p>
+    </section>
+  );
+}
+
+function ConfigurationStub() {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold">Configuration</h2>
+      <p className="text-muted-foreground">Coming soon.</p>
+    </section>
+  );
+}
+
 export function ProjectWorkspacePage() {
   const { slug } = useParams<{ slug: string }>();
-  const activeTab: Tab = "work";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: Tab = isValidTab(tabParam) ? tabParam : "work";
 
   const { data: summary, isLoading, error, refetch } = useProjectSummary(slug!);
 
@@ -65,12 +100,20 @@ export function ProjectWorkspacePage() {
   const health = projectHealth(summary.counts);
   const { running, retrying, blocked } = summary.counts;
 
-  const tabs: { id: Tab; label: string; disabled: boolean }[] = [
-    { id: "work", label: "Work", disabled: false },
-    { id: "evidence", label: "Evidence", disabled: true },
-    { id: "activity", label: "Activity", disabled: true },
-    { id: "configuration", label: "Configuration", disabled: true },
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "work", label: "Work" },
+    { id: "evidence", label: "Evidence" },
+    { id: "activity", label: "Activity" },
+    { id: "configuration", label: "Configuration" },
   ];
+
+  function handleTabClick(id: Tab) {
+    if (id === "work") {
+      setSearchParams({});
+    } else {
+      setSearchParams({ tab: id });
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -96,9 +139,8 @@ export function ProjectWorkspacePage() {
             key={tab.id}
             variant={activeTab === tab.id ? "secondary" : "ghost"}
             size="sm"
-            disabled={tab.disabled}
-            title={tab.disabled ? "Coming soon" : undefined}
             className="rounded-b-none"
+            onClick={() => handleTabClick(tab.id)}
           >
             {tab.label}
           </Button>
@@ -107,6 +149,9 @@ export function ProjectWorkspacePage() {
 
       {/* Active tab content */}
       {activeTab === "work" && <WorkTab summary={summary} slug={slug!} />}
+      {activeTab === "evidence" && <EvidenceStub />}
+      {activeTab === "activity" && <ActivityStub />}
+      {activeTab === "configuration" && <ConfigurationStub />}
     </div>
   );
 }
