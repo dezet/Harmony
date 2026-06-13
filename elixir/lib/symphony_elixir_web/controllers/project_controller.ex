@@ -15,6 +15,8 @@ defmodule SymphonyElixirWeb.ProjectController do
                 github_owner github_repo github_base_branch forge_type forge_owner
                 forge_repo forge_base_branch forge_base_url config_version config)
 
+  @secret_params ~w(forge_secret tracker_secret clear_forge_secret clear_tracker_secret)
+
   @spec index(Conn.t(), map()) :: Conn.t()
   def index(conn, _params) do
     json(conn, %{projects: Enum.map(Storage.list_projects(), &project_json/1)})
@@ -29,7 +31,8 @@ defmodule SymphonyElixirWeb.ProjectController do
 
   @spec create(Conn.t(), map()) :: Conn.t()
   def create(conn, params) do
-    with {:ok, project} <- Storage.upsert_project(project_attrs(params)) do
+    with {:ok, project} <- Storage.upsert_project(project_attrs(params)),
+         {:ok, project} <- apply_secrets(project, params) do
       conn |> put_status(:created) |> json(%{project: project_json(project)})
     end
   end
@@ -37,8 +40,17 @@ defmodule SymphonyElixirWeb.ProjectController do
   @spec update(Conn.t(), map()) :: Conn.t()
   def update(conn, %{"id" => id} = params) do
     with {:ok, _existing} <- fetch_project(id),
-         {:ok, project} <- Storage.upsert_project(project_attrs(params)) do
+         {:ok, project} <- Storage.upsert_project(project_attrs(params)),
+         {:ok, project} <- apply_secrets(project, params) do
       json(conn, %{project: project_json(project)})
+    end
+  end
+
+  defp apply_secrets(project, params) do
+    if Enum.any?(@secret_params, &Map.has_key?(params, &1)) do
+      Storage.update_project_secrets(project, Map.take(params, @secret_params))
+    else
+      {:ok, project}
     end
   end
 
@@ -79,10 +91,15 @@ defmodule SymphonyElixirWeb.ProjectController do
       github_owner: p.forge_owner,
       github_repo: p.forge_repo,
       github_base_branch: p.forge_base_branch,
+      forge_secret: secret_state(p.forge_secret),
+      tracker_secret: secret_state(p.tracker_secret),
       config_version: p.config_version,
       config: p.config,
       inserted_at: p.inserted_at,
       updated_at: p.updated_at
     }
   end
+
+  defp secret_state(nil), do: "unset"
+  defp secret_state(_), do: "set"
 end
