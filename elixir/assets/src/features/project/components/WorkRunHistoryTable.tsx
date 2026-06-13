@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,17 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
         id: "identifier",
         header: "Identifier",
         accessorFn: (row) => row.linear_identifier ?? "—",
-        cell: ({ getValue }) => {
+        cell: ({ getValue, row: tableRow }) => {
           const v = getValue() as string;
-          return v === "—" ? (
-            <span className="text-muted-foreground">—</span>
+          if (v === "—") return <span className="text-muted-foreground">—</span>;
+          const identifier = tableRow.original.linear_identifier;
+          return identifier ? (
+            <Link
+              to={`/projects/${slug}/runs/${identifier}`}
+              className="font-mono underline underline-offset-2 hover:opacity-80"
+            >
+              {identifier}
+            </Link>
           ) : (
             <span className="font-mono">{v}</span>
           );
@@ -76,7 +84,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
         cell: ({ getValue }) => <ElapsedTime since={getValue() as string} />,
       },
     ],
-    [],
+    [slug],
   );
 
   if (error) {

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ElapsedTime } from "@/components/ElapsedTime";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,18 @@ export function NeedsAttention({ state }: { state: StatePayload }) {
                 <Badge variant={item.kind === "sandbox_warning" ? "outline" : "destructive"}>
                   {kindLabels[item.kind]}
                 </Badge>
-                {item.identifier ? <span className="font-mono">{item.identifier}</span> : null}
+                {item.identifier ? (
+                  item.projectSlug ? (
+                    <Link
+                      to={`/projects/${item.projectSlug}/runs/${item.identifier}`}
+                      className="font-mono underline underline-offset-2 hover:opacity-80"
+                    >
+                      {item.identifier}
+                    </Link>
+                  ) : (
+                    <span className="font-mono">{item.identifier}</span>
+                  )
+                ) : null}
                 {item.projectSlug ? (
                   <span className="text-muted-foreground">{item.projectSlug}</span>
                 ) : null}

@@ -26,6 +26,18 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/projects/alpha").find((c) => c.label === "alpha")?.to).toBe(
       "/projects/alpha",
     );
+    expect(crumbsFor("/projects/alpha/runs/COD-10").map((c) => c.label)).toEqual([
+      "Overview",
+      "Projects",
+      "alpha",
+      "COD-10",
+    ]);
+    expect(crumbsFor("/projects/alpha/runs/COD-10").find((c) => c.label === "alpha")?.to).toBe(
+      "/projects/alpha",
+    );
+    expect(crumbsFor("/projects/alpha/runs/COD-10").find((c) => c.label === "COD-10")?.to).toBe(
+      "/projects/alpha/runs/COD-10",
+    );
   });
 });
 

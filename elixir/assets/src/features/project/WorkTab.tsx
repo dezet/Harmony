@@ -13,8 +13,8 @@ export function WorkTab({ summary, slug }: WorkTabProps) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-3">
-        <RunningColumn rows={summary.running} />
-        <RetryBlockedColumn retrying={summary.retrying} blocked={summary.blocked} />
+        <RunningColumn rows={summary.running} slug={slug} />
+        <RetryBlockedColumn retrying={summary.retrying} blocked={summary.blocked} slug={slug} />
         <HumanReviewColumn prs={summary.human_review_prs} />
       </div>
 

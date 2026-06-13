@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ElapsedTime } from "@/components/ElapsedTime";
@@ -6,9 +7,10 @@ import type { ProjectSummary } from "@/types/contract";
 interface RetryBlockedColumnProps {
   retrying: ProjectSummary["retrying"];
   blocked: ProjectSummary["blocked"];
+  slug: string;
 }
 
-export function RetryBlockedColumn({ retrying, blocked }: RetryBlockedColumnProps) {
+export function RetryBlockedColumn({ retrying, blocked, slug }: RetryBlockedColumnProps) {
   const isEmpty = blocked.length === 0 && retrying.length === 0;
 
   return (
@@ -25,7 +27,12 @@ export function RetryBlockedColumn({ retrying, blocked }: RetryBlockedColumnProp
               <li key={item.issue_id} className="flex flex-col gap-0.5 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="destructive">Blocked</Badge>
-                  <span className="font-mono">{item.issue_identifier}</span>
+                  <Link
+                    to={`/projects/${slug}/runs/${item.issue_identifier}`}
+                    className="font-mono underline underline-offset-2 hover:opacity-80"
+                  >
+                    {item.issue_identifier}
+                  </Link>
                 </div>
                 {item.error && (
                   <span className="text-xs text-muted-foreground truncate">{item.error}</span>
@@ -36,7 +43,12 @@ export function RetryBlockedColumn({ retrying, blocked }: RetryBlockedColumnProp
               <li key={item.issue_id} className="flex flex-col gap-0.5 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">Retry #{item.attempt}</Badge>
-                  <span className="font-mono">{item.issue_identifier}</span>
+                  <Link
+                    to={`/projects/${slug}/runs/${item.issue_identifier}`}
+                    className="font-mono underline underline-offset-2 hover:opacity-80"
+                  >
+                    {item.issue_identifier}
+                  </Link>
                 </div>
                 {item.error && (
                   <span className="text-xs text-muted-foreground truncate">{item.error}</span>

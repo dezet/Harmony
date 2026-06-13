@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ElapsedTime } from "@/components/ElapsedTime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,7 +36,18 @@ export function ActiveRuns({ rows }: { rows: RunningEntry[] }) {
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.session_id ?? row.issue_id}>
-                  <TableCell className="font-mono">{row.issue_identifier}</TableCell>
+                  <TableCell className="font-mono">
+                    {row.project?.slug ? (
+                      <Link
+                        to={`/projects/${row.project.slug}/runs/${row.issue_identifier}`}
+                        className="underline underline-offset-2 hover:opacity-80"
+                      >
+                        {row.issue_identifier}
+                      </Link>
+                    ) : (
+                      row.issue_identifier
+                    )}
+                  </TableCell>
                   <TableCell>{row.project?.slug ?? "—"}</TableCell>
                   <TableCell>{row.state}</TableCell>
                   <TableCell className="font-mono">{row.turn_count}</TableCell>
