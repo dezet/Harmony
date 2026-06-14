@@ -47,6 +47,11 @@ defmodule SymphonyElixir.Tracker.Memory do
     :ok
   end
 
+  @spec list_projects(map()) :: {:ok, [map()]}
+  def list_projects(_creds) do
+    {:ok, Application.get_env(:symphony_elixir, :memory_tracker_projects, [])}
+  end
+
   defp configured_issues do
     Application.get_env(:symphony_elixir, :memory_tracker_issues, [])
   end

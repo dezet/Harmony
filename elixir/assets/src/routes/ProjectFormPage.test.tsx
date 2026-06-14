@@ -70,20 +70,28 @@ describe("ProjectFormPage (create)", () => {
   it("submits and navigates to the list on success", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ project: { id: "1" } }), {
-            status: 201,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (input.toString().endsWith("/api/v1/forge/repositories")) {
+          return new Response(
+            JSON.stringify({
+              repositories: [{ owner: "dezet", name: "portal", default_branch: "main", url: "u" }],
+              truncated: false,
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ project: { id: "1" } }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }),
     );
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.type(screen.getByLabelText("GitHub owner"), "dezet");
-    await userEvent.type(screen.getByLabelText("GitHub repo"), "portal");
-    await userEvent.type(screen.getByLabelText("Base branch"), "main");
+    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await screen.findByRole("option", { name: /dezet\/portal/i });
+    await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(screen.getByText("Projects list")).toBeInTheDocument());
@@ -92,26 +100,34 @@ describe("ProjectFormPage (create)", () => {
   it("maps a server config error onto the JSON textarea field", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (input.toString().endsWith("/api/v1/forge/repositories")) {
+          return new Response(
             JSON.stringify({
-              error: {
-                code: "validation_failed",
-                message: "Validation failed",
-                fields: { config: ["must be a JSON object"] },
-              },
+              repositories: [{ owner: "dezet", name: "portal", default_branch: "main", url: "u" }],
+              truncated: false,
             }),
-            { status: 422, headers: { "content-type": "application/json" } },
-          ),
-      ),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "validation_failed",
+              message: "Validation failed",
+              fields: { config: ["must be a JSON object"] },
+            },
+          }),
+          { status: 422, headers: { "content-type": "application/json" } },
+        );
+      }),
     );
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.type(screen.getByLabelText("GitHub owner"), "dezet");
-    await userEvent.type(screen.getByLabelText("GitHub repo"), "portal");
-    await userEvent.type(screen.getByLabelText("Base branch"), "main");
+    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await screen.findByRole("option", { name: /dezet\/portal/i });
+    await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     expect(await screen.findByText("must be a JSON object")).toBeInTheDocument();
@@ -123,19 +139,28 @@ describe("ProjectFormPage (create)", () => {
   it("disables save while create is pending", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>(() => {
-            // Keep mutation pending so the button state is observable.
-          }),
-      ),
+      vi.fn((input: RequestInfo | URL) => {
+        if (input.toString().endsWith("/api/v1/forge/repositories")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                repositories: [{ owner: "dezet", name: "portal", default_branch: "main", url: "u" }],
+                truncated: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        // Keep the create mutation pending so the button state is observable.
+        return new Promise<Response>(() => {});
+      }),
     );
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.type(screen.getByLabelText("GitHub owner"), "dezet");
-    await userEvent.type(screen.getByLabelText("GitHub repo"), "portal");
-    await userEvent.type(screen.getByLabelText("Base branch"), "main");
+    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await screen.findByRole("option", { name: /dezet\/portal/i });
+    await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeDisabled());
@@ -237,9 +262,6 @@ describe("ProjectFormPage (edit)", () => {
     renderEditForm();
 
     await waitFor(() => expect(screen.getByLabelText("Base branch")).toHaveValue("main"));
-    const baseBranch = screen.getByLabelText("Base branch");
-    await userEvent.clear(baseBranch);
-    await userEvent.type(baseBranch, "develop");
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(screen.getByText("Projects list")).toBeInTheDocument());
@@ -249,7 +271,7 @@ describe("ProjectFormPage (edit)", () => {
     );
     expect(updateCall).toBeDefined();
     expect(JSON.parse(updateCall?.[1]?.body as string)).toMatchObject({
-      github_base_branch: "develop",
+      github_base_branch: "main",
     });
   });
 });
