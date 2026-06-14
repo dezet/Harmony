@@ -68,6 +68,43 @@ defmodule SymphonyElixir.Gitlab.Client do
     end
   end
 
+  @spec list_merge_request_discussions(String.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, [map()]} | {:error, term()}
+  def list_merge_request_discussions(owner, repo, mr_iid, opts \\ []) do
+    get(opts, "/projects/#{project_path(owner, repo)}/merge_requests/#{mr_iid}/discussions",
+      params: [per_page: 100],
+      parse: & &1
+    )
+  end
+
+  @spec reply_to_discussion(String.t(), String.t(), pos_integer(), String.t(), String.t(), keyword()) ::
+          :ok | {:error, term()}
+  def reply_to_discussion(owner, repo, mr_iid, discussion_id, body, opts \\ []) when is_binary(body) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+
+    url =
+      "#{api_root(opts)}/projects/#{project_path(owner, repo)}/merge_requests/#{mr_iid}/discussions/#{discussion_id}/notes"
+
+    case request_fun.(method: :post, url: url, json: %{body: body}, headers: headers(token(opts))) do
+      {:ok, response} -> expect_status(response, [200, 201])
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec resolve_discussion(String.t(), String.t(), pos_integer(), String.t(), keyword()) ::
+          :ok | {:error, term()}
+  def resolve_discussion(owner, repo, mr_iid, discussion_id, opts \\ []) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+
+    url =
+      "#{api_root(opts)}/projects/#{project_path(owner, repo)}/merge_requests/#{mr_iid}/discussions/#{discussion_id}"
+
+    case request_fun.(method: :put, url: url, params: [resolved: true], headers: headers(token(opts))) do
+      {:ok, response} -> expect_status(response, [200, 201])
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # --- shared GET ---
 
   defp get(opts, path, call_opts) do

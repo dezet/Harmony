@@ -14,6 +14,10 @@ defmodule SymphonyElixir.Forge do
   @callback create_review(creds, repo_ref, term(), String.t(), keyword()) :: :ok | {:error, term()}
   @callback list_change_request_comments(creds, repo_ref, term()) ::
               {:ok, [map()]} | {:error, term()}
+  @callback list_review_threads(creds, repo_ref, term()) :: {:ok, [map()]} | {:error, term()}
+  @callback reply_to_review_thread(creds, repo_ref, term(), String.t(), String.t()) ::
+              :ok | {:error, term()}
+  @callback resolve_review_thread(creds, repo_ref, term(), String.t()) :: :ok | {:error, term()}
 
   @spec adapter(map()) :: module()
   def adapter(project) do

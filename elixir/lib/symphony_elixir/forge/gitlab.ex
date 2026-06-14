@@ -72,6 +72,24 @@ defmodule SymphonyElixir.Forge.Gitlab do
     Client.list_merge_request_notes(ref.owner, ref.repo, mr_iid, client_opts(creds))
   end
 
+  @impl true
+  def list_review_threads(creds, ref, change_id) do
+    with {:ok, discussions} <-
+           Client.list_merge_request_discussions(ref.owner, ref.repo, change_id, client_opts(creds)) do
+      {:ok, discussions |> Enum.map(&normalize_discussion/1) |> Enum.reject(&is_nil/1)}
+    end
+  end
+
+  @impl true
+  def reply_to_review_thread(creds, ref, change_id, thread_id, body) do
+    Client.reply_to_discussion(ref.owner, ref.repo, change_id, thread_id, body, client_opts(creds))
+  end
+
+  @impl true
+  def resolve_review_thread(creds, ref, change_id, thread_id) do
+    Client.resolve_discussion(ref.owner, ref.repo, change_id, thread_id, client_opts(creds))
+  end
+
   # --- helpers ---
 
   defp client_opts(creds) do
@@ -83,6 +101,30 @@ defmodule SymphonyElixir.Forge.Gitlab do
 
   defp put_if(opts, nil, _key), do: opts
   defp put_if(opts, value, key), do: Keyword.put(opts, key, value)
+
+  # A "review thread" is a discussion whose first note is resolvable (diff-anchored).
+  defp normalize_discussion(%{"notes" => [first | _] = notes} = discussion) do
+    if first["resolvable"] == true do
+      comments =
+        Enum.map(notes, fn n ->
+          %{id: n["id"], author: get_in(n, ["author", "username"]), body: n["body"], created_at: n["created_at"]}
+        end)
+
+      %{
+        id: discussion["id"],
+        path: get_in(first, ["position", "new_path"]),
+        line: get_in(first, ["position", "new_line"]),
+        resolved: Enum.all?(notes, &(&1["resolved"] == true)),
+        author: get_in(first, ["author", "username"]),
+        comments: comments,
+        last_comment_at: notes |> List.last() |> Map.get("created_at")
+      }
+    else
+      nil
+    end
+  end
+
+  defp normalize_discussion(_), do: nil
 
   defp normalize_repo(body) do
     %{

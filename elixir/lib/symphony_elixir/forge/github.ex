@@ -65,7 +65,76 @@ defmodule SymphonyElixir.Forge.Github do
     Client.list_issue_comments(ref.owner, ref.repo, issue_number, client_opts(creds))
   end
 
+  @list_threads_query """
+  query($owner:String!,$repo:String!,$number:Int!){
+    repository(owner:$owner,name:$repo){
+      pullRequest(number:$number){
+        reviewThreads(first:100){
+          nodes{ id isResolved path line
+            comments(first:100){ nodes{ id author{login} body createdAt } } }
+        }
+      }
+    }
+  }
+  """
+
+  @reply_mutation """
+  mutation($threadId:ID!,$body:String!){
+    addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId,body:$body}){ comment{ id } }
+  }
+  """
+
+  @resolve_mutation """
+  mutation($threadId:ID!){ resolveReviewThread(input:{threadId:$threadId}){ thread{ id } } }
+  """
+
+  @impl true
+  def list_review_threads(creds, ref, change_id) do
+    vars = %{"owner" => ref.owner, "repo" => ref.repo, "number" => change_id}
+
+    with {:ok, data} <- Client.graphql(@list_threads_query, vars, client_opts(creds)) do
+      nodes = get_in(data, ["repository", "pullRequest", "reviewThreads", "nodes"]) || []
+      {:ok, Enum.map(nodes, &normalize_thread/1)}
+    end
+  end
+
+  @impl true
+  def reply_to_review_thread(creds, _ref, _change_id, thread_id, body) do
+    vars = %{"threadId" => thread_id, "body" => body}
+
+    case Client.graphql(@reply_mutation, vars, client_opts(creds)) do
+      {:ok, _data} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @impl true
+  def resolve_review_thread(creds, _ref, _change_id, thread_id) do
+    case Client.graphql(@resolve_mutation, %{"threadId" => thread_id}, client_opts(creds)) do
+      {:ok, _data} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # --- Private helpers ---
+
+  defp normalize_thread(node) do
+    comments =
+      (get_in(node, ["comments", "nodes"]) || [])
+      |> Enum.map(fn c ->
+        %{id: c["id"], author: get_in(c, ["author", "login"]), body: c["body"], created_at: c["createdAt"]}
+      end)
+
+    %{
+      id: node["id"],
+      path: node["path"],
+      line: node["line"],
+      resolved: node["isResolved"] == true,
+      author: comments |> List.first() |> then(&(&1 && &1.author)),
+      comments: comments,
+      last_comment_at: comments |> List.last() |> then(&(&1 && &1.created_at))
+    }
+  end
 
   defp client_opts(creds) do
     []
