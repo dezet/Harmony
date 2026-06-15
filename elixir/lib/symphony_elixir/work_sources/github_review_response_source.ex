@@ -7,6 +7,8 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
   alias SymphonyElixir.{Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
 
+  @max_attempts 3
+
   @spec fetch_candidates(map(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     ref = ProjectCreds.repo_ref(project)
@@ -15,11 +17,10 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
 
     owner = ref.owner || pv(project, :forge_owner)
     repo = ref.repo || pv(project, :forge_repo)
+
     identity =
       Keyword.get(opts, :harmony_identity) ||
-        SymphonyElixir.Review.Identity.resolve(project, creds,
-          current_user: fn c -> SymphonyElixir.Forge.adapter(project).current_user(c) end
-        )
+        SymphonyElixir.Review.Identity.resolve(project, creds, current_user: fn c -> SymphonyElixir.Forge.adapter(project).current_user(c) end)
 
     list_pull_requests =
       Keyword.get(opts, :list_pull_requests, fn o, r, _ ->
@@ -36,11 +37,12 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
       end)
 
     dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
+    attempt_count = Keyword.get(opts, :attempt_count, &Storage.review_attempt_count/2)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
       |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        case candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, identity) do
+        case candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, attempt_count, identity) do
           {:ok, new} -> {:cont, {:ok, runs ++ new}}
           {:error, reason} -> {:halt, {:error, reason}}
         end
@@ -48,7 +50,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     end
   end
 
-  defp candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, identity) do
+  defp candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, attempt_count, identity) do
     link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(pv(project, :linear_team_key)))
 
     if is_nil(link) do
@@ -56,7 +58,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     else
       case list_review_threads.(owner, repo, pr.number) do
         {:ok, threads} ->
-          {:ok, build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, identity)}
+          {:ok, build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, attempt_count, identity)}
 
         {:error, reason} ->
           {:error, reason}
@@ -64,11 +66,17 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     end
   end
 
-  defp build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, identity) do
+  defp build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, attempt_count, identity) do
+    project_id = pv(project, :id)
+
     actionable =
       threads
       |> Enum.filter(&actionable_thread?(&1, identity))
-      |> Enum.reject(fn t -> dedupe_seen?.(pv(project, :id), dedupe_key(owner, repo, pr, t)) end)
+      |> Enum.reject(fn t ->
+        key = dedupe_key(owner, repo, pr, t)
+        dedupe_seen?.(project_id, key) or attempt_count.(project_id, key) >= @max_attempts
+      end)
+      |> Enum.map(fn t -> Map.put(t, :dedupe_key, dedupe_key(owner, repo, pr, t)) end)
 
     if actionable == [] do
       []
@@ -92,7 +100,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
       project_slug: pv(project, :slug),
       type: "address_review",
       status: "queued",
-      dedupe_key: dedupe_key(owner, repo, pr, List.last(threads)),
+      dedupe_key: dedupe_key(owner, repo, pr, List.first(threads)),
       forge_owner: owner,
       forge_repo: repo,
       forge_pr_number: pr.number,

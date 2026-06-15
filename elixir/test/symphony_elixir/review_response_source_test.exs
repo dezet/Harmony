@@ -29,7 +29,8 @@ defmodule SymphonyElixir.ReviewResponseSourceTest do
     opts = [
       list_pull_requests: fn _o, _r, _ -> {:ok, [@pr]} end,
       list_review_threads: fn _o, _r, _n -> {:ok, [@thread]} end,
-      dedupe_seen?: fn _project_id, _key -> false end
+      dedupe_seen?: fn _project_id, _key -> false end,
+      attempt_count: fn _project_id, _key -> 0 end
     ]
 
     assert {:ok, [%WorkRun{} = run]} = GithubReviewResponseSource.fetch_candidates(@project, opts)

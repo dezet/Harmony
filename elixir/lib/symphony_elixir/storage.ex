@@ -284,6 +284,38 @@ defmodule SymphonyElixir.Storage do
   @spec mark_dedupe_claimed(map()) :: {:ok, DedupeKey.t()} | {:error, Ecto.Changeset.t()}
   def mark_dedupe_claimed(attrs) when is_map(attrs), do: upsert_dedupe_status(attrs, "claimed")
 
+  @doc """
+  Reads the per-key review retry attempt count from `DedupeKey.metadata["review_attempts"]`.
+  Defaults to 0 when the key is absent or has no recorded count.
+  """
+  @spec review_attempt_count(binary(), String.t()) :: non_neg_integer()
+  def review_attempt_count(project_id, key) when is_binary(project_id) and is_binary(key) do
+    case Repo.get_by(DedupeKey, project_id: project_id, key: key) do
+      %DedupeKey{metadata: %{"review_attempts" => n}} when is_integer(n) -> n
+      _ -> 0
+    end
+  end
+
+  @doc """
+  Increments the per-key review retry attempt count and returns the new value.
+
+  `mark_dedupe_claimed/1` REPLACES (does not merge) `metadata` on upsert, so the
+  full count is read first and written back as the complete metadata map.
+  """
+  @spec increment_review_attempt(binary(), String.t()) :: {:ok, non_neg_integer()}
+  def increment_review_attempt(project_id, key) when is_binary(project_id) and is_binary(key) do
+    n = review_attempt_count(project_id, key) + 1
+
+    mark_dedupe_claimed(%{
+      project_id: project_id,
+      key: key,
+      scope: "review_response",
+      metadata: %{"review_attempts" => n}
+    })
+
+    {:ok, n}
+  end
+
   @spec mark_dedupe_processed(map()) :: {:ok, DedupeKey.t()} | {:error, Ecto.Changeset.t()}
   def mark_dedupe_processed(attrs) when is_map(attrs) do
     upsert_dedupe_status(attrs, "processed")

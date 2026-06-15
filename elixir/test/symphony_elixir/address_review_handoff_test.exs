@@ -71,7 +71,8 @@ defmodule SymphonyElixir.AddressReviewHandoffTest do
         :ok
       end,
       append_event: fn _ -> :ok end,
-      mark_dedupe_processed: fn _ -> :ok end
+      mark_dedupe_processed: fn _ -> :ok end,
+      increment_review_attempt: fn _pid, _key -> {:ok, 1} end
     ]
 
     assert :ok = AddressReviewHandoff.publish(run, @body_guarded, opts)
