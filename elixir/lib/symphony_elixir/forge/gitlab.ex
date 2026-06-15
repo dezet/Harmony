@@ -90,6 +90,15 @@ defmodule SymphonyElixir.Forge.Gitlab do
     Client.resolve_discussion(ref.owner, ref.repo, change_id, thread_id, client_opts(creds))
   end
 
+  @impl true
+  def current_user(creds) do
+    case Client.get_authenticated_user(client_opts(creds)) do
+      {:ok, %{"username" => username}} when is_binary(username) -> {:ok, username}
+      {:ok, _} -> {:error, :no_username}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # --- helpers ---
 
   defp client_opts(creds) do

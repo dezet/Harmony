@@ -105,6 +105,11 @@ defmodule SymphonyElixir.Gitlab.Client do
     end
   end
 
+  @spec get_authenticated_user(keyword()) :: {:ok, map()} | {:error, term()}
+  def get_authenticated_user(opts \\ []) do
+    get(opts, "/user", parse: & &1)
+  end
+
   # --- shared GET ---
 
   defp get(opts, path, call_opts) do

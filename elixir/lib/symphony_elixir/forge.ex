@@ -18,6 +18,7 @@ defmodule SymphonyElixir.Forge do
   @callback reply_to_review_thread(creds, repo_ref, term(), String.t(), String.t()) ::
               :ok | {:error, term()}
   @callback resolve_review_thread(creds, repo_ref, term(), String.t()) :: :ok | {:error, term()}
+  @callback current_user(creds) :: {:ok, String.t()} | {:error, term()}
 
   @spec adapter(map()) :: module()
   def adapter(project) do

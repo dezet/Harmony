@@ -26,6 +26,7 @@ defmodule SymphonyElixir.Forge.Memory do
       change_requests: [],
       comments: [],
       review_threads: [],
+      current_user: nil,
       calls: []
     }
   end
@@ -67,6 +68,13 @@ defmodule SymphonyElixir.Forge.Memory do
   def seed_review_threads(threads) when is_list(threads) do
     ensure_started()
     Agent.update(@agent, &Map.put(&1, :review_threads, threads))
+  end
+
+  @doc "Seed the login returned by `current_user/1`."
+  @spec seed_current_user(String.t() | nil) :: :ok
+  def seed_current_user(login) do
+    ensure_started()
+    Agent.update(@agent, &Map.put(&1, :current_user, login))
   end
 
   @doc "Return the list of recorded calls as `{function, args}` tuples."
@@ -146,6 +154,12 @@ defmodule SymphonyElixir.Forge.Memory do
   def resolve_review_thread(creds, repo_ref, change_id, thread_id) do
     record_call(:resolve_review_thread, [creds, repo_ref, change_id, thread_id])
     :ok
+  end
+
+  @impl SymphonyElixir.Forge
+  def current_user(creds) do
+    record_call(:current_user, [creds])
+    {:ok, Agent.get(@agent, & &1.current_user)}
   end
 
   # ---------------------------------------------------------------------------

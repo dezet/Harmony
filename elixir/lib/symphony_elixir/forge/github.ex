@@ -116,6 +116,15 @@ defmodule SymphonyElixir.Forge.Github do
     end
   end
 
+  @impl true
+  def current_user(creds) do
+    case Client.get_authenticated_user(client_opts(creds)) do
+      {:ok, %{"login" => login}} when is_binary(login) -> {:ok, login}
+      {:ok, _} -> {:error, :no_login}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # --- Private helpers ---
 
   defp normalize_thread(node) do
