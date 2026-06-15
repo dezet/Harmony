@@ -90,7 +90,14 @@ defmodule SymphonyElixir.Workflows.AddressReviewHandoff do
     end
   end
 
-  defp finalize_thread(_d, _threads, _files_changed, _run, _ref, _reply, _opts, _project_id), do: :ok
+  # Defensive: a payload with no project_id can't be finalized (no dedupe key to
+  # mark/increment), so replies would re-send on every poll. Sources always set
+  # project_id, so this is a no-op guard rather than a real path; we surface it.
+  defp finalize_thread(_d, _threads, _files_changed, %WorkRun{} = run, _ref, _reply, _opts, _project_id) do
+    require Logger
+    Logger.warning("address_review finalize skipped: missing project_id (run pr=#{inspect(run.forge_pr_number)})")
+    :ok
+  end
 
   # A thread is addressed when the agent marked it resolved AND actually edited the
   # file it is anchored to (path from the run payload, resolved from the decision).

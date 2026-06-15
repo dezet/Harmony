@@ -36,13 +36,13 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
         )
       end)
 
-    dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
+    dedupe_status = Keyword.get(opts, :dedupe_status, &Storage.dedupe_status/2)
     attempt_count = Keyword.get(opts, :attempt_count, &Storage.review_attempt_count/2)
 
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
       prs
       |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        case candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, attempt_count, identity) do
+        case candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_status, attempt_count, identity) do
           {:ok, new} -> {:cont, {:ok, runs ++ new}}
           {:error, reason} -> {:halt, {:error, reason}}
         end
@@ -50,7 +50,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     end
   end
 
-  defp candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_seen?, attempt_count, identity) do
+  defp candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_status, attempt_count, identity) do
     link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(pv(project, :linear_team_key)))
 
     if is_nil(link) do
@@ -58,7 +58,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     else
       case list_review_threads.(owner, repo, pr.number) do
         {:ok, threads} ->
-          {:ok, build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, attempt_count, identity)}
+          {:ok, build_runs(project, owner, repo, pr, link, threads, dedupe_status, attempt_count, identity)}
 
         {:error, reason} ->
           {:error, reason}
@@ -66,15 +66,18 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     end
   end
 
-  defp build_runs(project, owner, repo, pr, link, threads, dedupe_seen?, attempt_count, identity) do
+  defp build_runs(project, owner, repo, pr, link, threads, dedupe_status, attempt_count, identity) do
     project_id = pv(project, :id)
 
     actionable =
       threads
       |> Enum.filter(&actionable_thread?(&1, identity))
       |> Enum.reject(fn t ->
+        # Skip a thread only when its key is terminal: processed (resolved/capped)
+        # or already at the attempt cap. A mid-retry "claimed" row must NOT skip it,
+        # or attempts 2..N would never run.
         key = dedupe_key(owner, repo, pr, t)
-        dedupe_seen?.(project_id, key) or attempt_count.(project_id, key) >= @max_attempts
+        dedupe_status.(project_id, key) == "processed" or attempt_count.(project_id, key) >= @max_attempts
       end)
       |> Enum.map(fn t -> Map.put(t, :dedupe_key, dedupe_key(owner, repo, pr, t)) end)
 
