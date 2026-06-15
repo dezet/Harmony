@@ -19,9 +19,10 @@ defmodule SymphonyElixir.Workflows.AddressReviewPrompt do
 
     When done, output a single JSON object as the last line, exactly this shape:
 
-    {"threads": [{"thread_id": "<id>", "reply": "<short reply to the reviewer>", "resolved": true}]}
+    {"threads": [{"thread_id": "<id>", "reply": "<short reply to the reviewer>", "resolved": true}], "files_changed": ["<path>", ...]}
 
-    Set "resolved" to true only for threads you actually addressed in this change.
+    Resolve a thread only if you actually changed the file it is anchored to; list every
+    file you edited in "files_changed".
     Reply concisely, referencing what you changed.
     """
   end

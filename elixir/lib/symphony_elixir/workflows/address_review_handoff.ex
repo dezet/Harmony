@@ -22,18 +22,20 @@ defmodule SymphonyElixir.Workflows.AddressReviewHandoff do
         SymphonyElixir.Forge.adapter(run).resolve_review_thread(creds, r, change_id, thread_id)
       end)
 
-    with {:ok, decisions} <- parse_decisions(body),
-         :ok <- apply_decisions(decisions, ref, run.forge_pr_number, reply, resolve) do
+    with {:ok, decisions, files_changed} <- parse_decisions(body),
+         paths = thread_paths(run),
+         :ok <-
+           apply_decisions(decisions, paths, files_changed, ref, run.forge_pr_number, reply, resolve) do
       _ = append_work_event(run, opts)
       _ = mark_processed(run, opts)
       :ok
     end
   end
 
-  defp apply_decisions(decisions, ref, change_id, reply, resolve) do
+  defp apply_decisions(decisions, paths, files_changed, ref, change_id, reply, resolve) do
     Enum.reduce_while(decisions, :ok, fn d, :ok ->
       with :ok <- reply.(ref, change_id, d.thread_id, d.reply),
-           :ok <- maybe_resolve(d, ref, change_id, resolve) do
+           :ok <- maybe_resolve(d, paths, files_changed, ref, change_id, resolve) do
         {:cont, :ok}
       else
         {:error, reason} -> {:halt, {:error, reason}}
@@ -41,17 +43,34 @@ defmodule SymphonyElixir.Workflows.AddressReviewHandoff do
     end)
   end
 
-  defp maybe_resolve(%{resolved: true, thread_id: id}, ref, change_id, resolve),
-    do: resolve.(ref, change_id, id)
+  defp maybe_resolve(%{resolved: true, thread_id: id}, paths, files_changed, ref, change_id, resolve) do
+    path = Map.get(paths, id)
 
-  defp maybe_resolve(_decision, _ref, _change_id, _resolve), do: :ok
+    if path && path in files_changed,
+      do: resolve.(ref, change_id, id),
+      else: :ok
+  end
+
+  defp maybe_resolve(_decision, _paths, _files_changed, _ref, _change_id, _resolve), do: :ok
+
+  # Map each run thread's id → anchored path (entries may have string or atom keys).
+  defp thread_paths(%WorkRun{payload: payload}) do
+    case pv(payload, "threads") do
+      threads when is_list(threads) ->
+        Map.new(threads, fn t -> {pv(t, :id), pv(t, :path)} end)
+
+      _ ->
+        %{}
+    end
+  end
 
   # Parse the last JSON object in the body matching {"threads":[...]}.
   defp parse_decisions(body) do
     with [_ | _] = matches <- Regex.scan(~r/\{.*"threads".*\}/s, body),
          json <- matches |> List.last() |> List.first(),
-         {:ok, %{"threads" => threads}} when is_list(threads) <- Jason.decode(json) do
-      {:ok, Enum.map(threads, &normalize_decision/1)}
+         {:ok, %{"threads" => threads} = decoded} when is_list(threads) <- Jason.decode(json) do
+      files = Map.get(decoded, "files_changed", [])
+      {:ok, Enum.map(threads, &normalize_decision/1), (is_list(files) && files) || []}
     else
       _ -> {:error, :no_structured_output}
     end
