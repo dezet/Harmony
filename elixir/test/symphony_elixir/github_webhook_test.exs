@@ -87,6 +87,42 @@ defmodule SymphonyElixir.GithubWebhookTest do
     assert event.payload["repository"]["name"] == "portal"
   end
 
+  @tag :db
+  test "accepts a pull_request_review_comment event and requests refresh" do
+    :ok = checkout_repo(%{})
+
+    {:ok, project} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        linear_project_slug: "portal-linear",
+        linear_team_key: "COD",
+        linear_human_review_state: "Human Review",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
+        config_version: 1,
+        config: %{}
+      })
+
+    payload = webhook_payload("portal")
+    body = Jason.encode!(payload)
+
+    conn =
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("x-github-event", "pull_request_review_comment")
+      |> put_req_header("x-github-delivery", "delivery-2")
+      |> put_req_header("x-hub-signature-256", signature(body))
+      |> post("/api/v1/github/webhook", body)
+
+    assert json_response(conn, 202)["status"] == "accepted"
+    assert_receive :refresh_requested
+
+    [event] = SymphonyElixir.Repo.all(SymphonyElixir.Storage.WorkEvent)
+    assert event.project_id == project.id
+    assert event.type == "github_webhook:pull_request_review_comment"
+  end
+
   defp webhook_payload(repo) do
     %{
       "action" => "opened",
