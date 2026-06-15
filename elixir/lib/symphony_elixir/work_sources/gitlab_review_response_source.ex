@@ -4,8 +4,6 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
   alias SymphonyElixir.{Gitlab, Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
 
-  @default_identity "harmony"
-
   @spec fetch_candidates(map(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
     ref = ProjectCreds.repo_ref(project)
@@ -14,7 +12,11 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
 
     owner = ref.owner || pv(project, :forge_owner)
     repo = ref.repo || pv(project, :forge_repo)
-    identity = Keyword.get(opts, :harmony_identity, @default_identity)
+    identity =
+      Keyword.get(opts, :harmony_identity) ||
+        SymphonyElixir.Review.Identity.resolve(project, creds,
+          current_user: fn c -> SymphonyElixir.Forge.adapter(project).current_user(c) end
+        )
 
     list_merge_requests =
       Keyword.get(opts, :list_pull_requests, fn o, r, _ ->
