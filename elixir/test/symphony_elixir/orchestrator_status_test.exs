@@ -1297,6 +1297,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn ^project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn ^project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn ^project -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :review_response_work_source_fetcher, fn ^project -> {:ok, []} end)
 
     Application.put_env(:symphony_elixir, :github_pr_work_source_fetcher, fn ^project ->
       send(parent, :github_pr_source_polled)
@@ -1503,6 +1504,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     Application.put_env(:symphony_elixir, :github_pr_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _project -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _project -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :review_response_work_source_fetcher, fn _project -> {:ok, []} end)
 
     Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
       issue = Map.fetch!(issues_by_slug, project.slug)

@@ -48,6 +48,7 @@ defmodule SymphonyElixir.GitlabEndToEndTest do
 
     Application.put_env(:symphony_elixir, :github_ci_work_source_fetcher, fn _ -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :github_review_work_source_fetcher, fn _ -> {:ok, []} end)
+    Application.put_env(:symphony_elixir, :review_response_work_source_fetcher, fn _ -> {:ok, []} end)
     Application.put_env(:symphony_elixir, :linear_work_source_fetcher, fn _ -> {:ok, []} end)
 
     orchestrator_name = Module.concat(__MODULE__, :GitlabEndToEndOrchestrator)

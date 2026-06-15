@@ -143,6 +143,36 @@ defmodule SymphonyElixir.Github.Client do
     end
   end
 
+  @doc "POST a GraphQL query/mutation. Returns the decoded `\"data\"` map."
+  @spec graphql(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def graphql(query, variables, opts \\ []) when is_binary(query) and is_map(variables) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    body = Jason.encode!(%{query: query, variables: variables})
+
+    req =
+      Req.new(
+        method: :post,
+        url: graphql_url(opts),
+        headers: [{"content-type", "application/json"} | headers(token)],
+        body: body
+      )
+
+    case request_fun.(req) do
+      {:ok, %{status: 200, body: %{"data" => data}}} when is_map(data) -> {:ok, data}
+      {:ok, %{status: status, body: body}} -> {:error, {:github_graphql_status, status, body}}
+      {:error, reason} -> {:error, {:github_graphql_request, reason}}
+    end
+  end
+
+  # github.com → https://api.github.com/graphql; Enterprise base_url host → {host}/api/graphql.
+  defp graphql_url(opts) do
+    case Keyword.get(opts, :base_url) do
+      nil -> "https://api.github.com/graphql"
+      base -> base |> String.replace_suffix("/api/v3", "") |> Kernel.<>("/api/graphql")
+    end
+  end
+
   defp github_token(opts), do: Keyword.get(opts, :token) || System.get_env("GITHUB_TOKEN") || System.get_env("GH_TOKEN")
 
   defp review_payload(body, event, comments) when is_list(comments) and comments != [] do

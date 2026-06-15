@@ -25,6 +25,7 @@ defmodule SymphonyElixir.Forge.Memory do
       repositories: [],
       change_requests: [],
       comments: [],
+      review_threads: [],
       calls: []
     }
   end
@@ -59,6 +60,13 @@ defmodule SymphonyElixir.Forge.Memory do
   def seed_comments(comments) when is_list(comments) do
     ensure_started()
     Agent.update(@agent, &Map.put(&1, :comments, comments))
+  end
+
+  @doc "Seed the threads returned by `list_review_threads/3`."
+  @spec seed_review_threads([map()]) :: :ok
+  def seed_review_threads(threads) when is_list(threads) do
+    ensure_started()
+    Agent.update(@agent, &Map.put(&1, :review_threads, threads))
   end
 
   @doc "Return the list of recorded calls as `{function, args}` tuples."
@@ -122,12 +130,31 @@ defmodule SymphonyElixir.Forge.Memory do
     {:ok, Agent.get(@agent, & &1.comments)}
   end
 
+  @impl SymphonyElixir.Forge
+  def list_review_threads(creds, repo_ref, change_id) do
+    record_call(:list_review_threads, [creds, repo_ref, change_id])
+    {:ok, Agent.get(@agent, & &1.review_threads)}
+  end
+
+  @impl SymphonyElixir.Forge
+  def reply_to_review_thread(creds, repo_ref, change_id, thread_id, body) do
+    record_call(:reply_to_review_thread, [creds, repo_ref, change_id, thread_id, body])
+    :ok
+  end
+
+  @impl SymphonyElixir.Forge
+  def resolve_review_thread(creds, repo_ref, change_id, thread_id) do
+    record_call(:resolve_review_thread, [creds, repo_ref, change_id, thread_id])
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
 
   defp record_call(fun, args) do
     ensure_started()
+
     Agent.update(@agent, fn state ->
       Map.update!(state, :calls, &[{fun, args} | &1])
     end)

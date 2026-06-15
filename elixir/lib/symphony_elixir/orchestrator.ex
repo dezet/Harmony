@@ -16,9 +16,11 @@ defmodule SymphonyElixir.Orchestrator do
     GithubFailedCiSource,
     GithubPrSource,
     GithubReviewRequestSource,
+    GithubReviewResponseSource,
     GitlabMrSource,
     GitlabPipelineSource,
     GitlabReviewRequestSource,
+    GitlabReviewResponseSource,
     LinearIssueSource
   }
 
@@ -209,7 +211,7 @@ defmodule SymphonyElixir.Orchestrator do
 
   def handle_info({:finalize_code_review, issue_id}, %{running: running} = state) do
     case Map.get(running, issue_id) do
-      %{work_run: %WorkRun{type: "code_review"}} = running_entry ->
+      %{work_run: %WorkRun{type: type}} = running_entry when type in ["code_review", "address_review"] ->
         state = %{state | running: Map.delete(running, issue_id)}
         state = finalize_code_review_run(state, issue_id, running_entry, running_entry_session_id(running_entry))
 
@@ -233,7 +235,7 @@ defmodule SymphonyElixir.Orchestrator do
       input_required_blocker?(running_entry) ->
         block_input_required_agent_down(state, issue_id, running_entry, session_id, :normal)
 
-      code_review_run?(running_entry) ->
+      review_finalize_run?(running_entry) ->
         complete_code_review_run(state, issue_id, running_entry, session_id)
 
       implementation_work_run?(running_entry) ->
@@ -292,7 +294,7 @@ defmodule SymphonyElixir.Orchestrator do
       Logger.warning("Agent task blocked for issue_id=#{issue_id} issue_identifier=#{running_entry.identifier} session_id=#{session_id}: #{error}")
       block_issue_from_entry(state, issue_id, running_entry, error)
     else
-      case publish_code_review(Map.fetch!(running_entry, :work_run), body) do
+      case publish_review_run(Map.fetch!(running_entry, :work_run), body) do
         :ok ->
           Logger.info("Published code review for issue_id=#{issue_id} session_id=#{session_id}")
           complete_issue(state, issue_id)
@@ -305,7 +307,17 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp publish_code_review(%WorkRun{} = run, body) when is_binary(body) do
+  defp publish_review_run(%WorkRun{type: "address_review"} = run, body) when is_binary(body) do
+    address_review_handoff().(run, body, [])
+  rescue
+    exception ->
+      {:error, Exception.message(exception)}
+  catch
+    kind, reason ->
+      {:error, {kind, reason}}
+  end
+
+  defp publish_review_run(%WorkRun{} = run, body) when is_binary(body) do
     review_handoff().(run, body, [])
   rescue
     exception ->
@@ -328,8 +340,8 @@ defmodule SymphonyElixir.Orchestrator do
     })
   end
 
-  defp code_review_run?(%{work_run: %WorkRun{type: "code_review"}}), do: true
-  defp code_review_run?(_running_entry), do: false
+  defp review_finalize_run?(%{work_run: %WorkRun{type: type}}) when type in ["code_review", "address_review"], do: true
+  defp review_finalize_run?(_running_entry), do: false
 
   defp implementation_work_run?(%{work_run: %WorkRun{type: "implementation", id: id}})
        when is_binary(id) and id != "",
@@ -460,8 +472,9 @@ defmodule SymphonyElixir.Orchestrator do
     with {:ok, pr_observations} <- fetch_project_runs(projects, github_pr_work_source_fetcher()),
          {:ok, linear_runs} <- fetch_project_runs(projects, linear_work_source_fetcher()),
          {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
-         {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()) do
-      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs)
+         {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()),
+         {:ok, review_response_runs} <- fetch_project_runs(projects, review_response_work_source_fetcher()) do
+      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs ++ review_response_runs)
     end
   end
 
@@ -508,6 +521,15 @@ defmodule SymphonyElixir.Orchestrator do
       :symphony_elixir,
       :github_review_work_source_fetcher,
       by_forge_type(&GithubReviewRequestSource.fetch_candidates/1, &GitlabReviewRequestSource.fetch_candidates/1)
+    )
+  end
+
+  @doc false
+  def review_response_work_source_fetcher do
+    Application.get_env(
+      :symphony_elixir,
+      :review_response_work_source_fetcher,
+      by_forge_type(&GithubReviewResponseSource.fetch_candidates/1, &GitlabReviewResponseSource.fetch_candidates/1)
     )
   end
 
@@ -1169,6 +1191,9 @@ defmodule SymphonyElixir.Orchestrator do
       %WorkRun{type: "code_review"} = run, state_acc ->
         maybe_dispatch_code_review_run(state_acc, run)
 
+      %WorkRun{type: "address_review"} = run, state_acc ->
+        maybe_dispatch_code_review_run(state_acc, run)
+
       _other, state_acc ->
         state_acc
     end)
@@ -1254,7 +1279,7 @@ defmodule SymphonyElixir.Orchestrator do
   defp dispatch_code_review_run(%State{} = state, %WorkRun{} = run, key) do
     recipient = self()
     issue = code_review_issue(run, key)
-    prompt = ReviewPrompt.build(run)
+    prompt = review_run_prompt(run)
 
     case select_worker_host(state, nil) do
       :no_worker_capacity ->
@@ -1273,6 +1298,11 @@ defmodule SymphonyElixir.Orchestrator do
         )
     end
   end
+
+  defp review_run_prompt(%WorkRun{type: "address_review"} = run),
+    do: SymphonyElixir.Workflows.AddressReviewPrompt.build(run)
+
+  defp review_run_prompt(%WorkRun{} = run), do: ReviewPrompt.build(run)
 
   defp block_ci_fix_run(%State{} = state, %WorkRun{} = run, key) do
     reason = "failed ci repair is not safe to dispatch: #{Map.get(run.payload, :repo_policy) || "unknown"}"
@@ -1718,6 +1748,14 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp review_handoff do
     Application.get_env(:symphony_elixir, :review_handoff_fun, &ReviewHandoff.publish/3)
+  end
+
+  defp address_review_handoff do
+    Application.get_env(
+      :symphony_elixir,
+      :address_review_handoff_fun,
+      &SymphonyElixir.Workflows.AddressReviewHandoff.publish/3
+    )
   end
 
   defp revalidate_issue_for_dispatch(%Issue{id: issue_id}, issue_fetcher, terminal_states)
