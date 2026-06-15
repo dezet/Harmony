@@ -35,6 +35,8 @@ const sampleProject: Project = {
   github_owner: "dezet",
   github_repo: "portal",
   github_base_branch: "develop",
+  forge_type: "github",
+  forge_base_url: null,
   forge_secret: "set",
   tracker_secret: "unset",
   linear_project_slug: "portal-linear",
@@ -64,24 +66,31 @@ describe("ProjectConfigForm (create mode)", () => {
     expect(await screen.findByText(/slug is required/i)).toBeInTheDocument();
   });
 
-  it("calls create API and onSuccess on successful submit", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ project: { id: "new-project" } }), {
-            status: 201,
-            headers: { "content-type": "application/json" },
+  it("calls create API and onSuccess after picking a repository", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.endsWith("/api/v1/forge/repositories")) {
+        return new Response(
+          JSON.stringify({
+            repositories: [{ owner: "dezet", name: "portal", default_branch: "main", url: "u" }],
+            truncated: false,
           }),
-      ),
-    );
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ project: { id: "new-project" } }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const onSuccess = vi.fn();
     renderForm({ onSuccess });
 
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.type(screen.getByLabelText("GitHub owner"), "dezet");
-    await userEvent.type(screen.getByLabelText("GitHub repo"), "portal");
-    await userEvent.type(screen.getByLabelText("Base branch"), "main");
+    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await screen.findByRole("option", { name: /dezet\/portal/i });
+    await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
@@ -121,9 +130,6 @@ describe("ProjectConfigForm (edit mode)", () => {
 
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    const baseBranch = screen.getByLabelText("Base branch");
-    await userEvent.clear(baseBranch);
-    await userEvent.type(baseBranch, "main");
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
@@ -135,7 +141,8 @@ describe("ProjectConfigForm (edit mode)", () => {
     );
     expect(updateCall).toBeDefined();
     expect(JSON.parse((updateCall?.[1] as RequestInit)?.body as string)).toMatchObject({
-      github_base_branch: "main",
+      github_base_branch: "develop",
+      forge_type: "github",
     });
   });
 
@@ -175,6 +182,38 @@ describe("ProjectConfigForm (edit mode)", () => {
     expect(body.forge_secret).toBe("ghp_new");
     expect(body.clear_tracker_secret).toBe(true);
     expect(body).not.toHaveProperty("clear_forge_secret");
+  });
+
+  it("opens the repo picker, fetches, and auto-fills owner/repo/branch on select", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.endsWith("/api/v1/forge/repositories")) {
+        return new Response(
+          JSON.stringify({
+            repositories: [{ owner: "acme", name: "api", default_branch: "trunk", url: "u" }],
+            truncated: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      void init;
+      return new Response(JSON.stringify({ project: sampleProject }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
+
+    await userEvent.click(screen.getByRole("button", { name: /repository/i }));
+    await screen.findByRole("option", { name: /acme\/api/i });
+    await userEvent.click(screen.getByRole("option", { name: /acme\/api/i }));
+
+    expect(screen.getByLabelText("GitHub owner")).toHaveValue("acme");
+    expect(screen.getByLabelText("GitHub repo")).toHaveValue("api");
+    expect(screen.getByLabelText("Base branch")).toHaveValue("trunk");
   });
 
   it("maps a server config error onto the JSON field", async () => {

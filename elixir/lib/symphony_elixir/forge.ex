@@ -19,6 +19,7 @@ defmodule SymphonyElixir.Forge do
   def adapter(project) do
     case Map.get(project, :forge_type) || "github" do
       "gitlab" -> SymphonyElixir.Forge.Gitlab
+      "memory" -> SymphonyElixir.Forge.Memory
       _ -> SymphonyElixir.Forge.Github
     end
   end

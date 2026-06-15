@@ -91,6 +91,8 @@ defmodule SymphonyElixirWeb.ProjectController do
       github_owner: p.forge_owner,
       github_repo: p.forge_repo,
       github_base_branch: p.forge_base_branch,
+      forge_type: p.forge_type,
+      forge_base_url: p.forge_base_url,
       forge_secret: secret_state(p.forge_secret),
       tracker_secret: secret_state(p.tracker_secret),
       config_version: p.config_version,

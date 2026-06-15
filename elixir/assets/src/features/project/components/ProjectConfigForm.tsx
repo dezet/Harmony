@@ -13,15 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { JsonEditor } from "@/components/JsonEditor";
+import { Combobox, type ComboboxItem } from "@/components/Combobox";
+import { useForgeRepositories, useTrackerProjects } from "@/features/projects/usePickers";
 import type { Project } from "@/types/contract";
 
 const FIELDS = [
   { name: "slug", label: "Slug" },
-  { name: "github_owner", label: "GitHub owner" },
-  { name: "github_repo", label: "GitHub repo" },
-  { name: "github_base_branch", label: "Base branch" },
-  { name: "linear_project_slug", label: "Linear project slug" },
-  { name: "linear_team_key", label: "Linear team key" },
   { name: "linear_human_review_state", label: "Linear human review state" },
 ] as const;
 
@@ -59,18 +56,30 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
   const createMut = useCreateProject();
   const updateMut = useUpdateProject(project?.id ?? "");
   const isSaving = createMut.isPending || updateMut.isPending;
+  const repos = useForgeRepositories();
+  const projects = useTrackerProjects();
 
   const {
     register,
     handleSubmit,
     reset,
     setError,
+    setValue,
+    watch,
     control,
     formState: { errors, isSubmitting },
   } = useForm<ProjectFormValues>({
     resolver: yupResolver(projectFormSchema),
-    defaultValues: { config_version: 1, config_json: "{}" },
+    defaultValues: { config_version: 1, config_json: "{}", forge_type: "github" },
   });
+
+  const forgeType = watch("forge_type") ?? "github";
+  const forgeBaseUrl = watch("forge_base_url") ?? "";
+  const forgeToken = watch("forge_secret") ?? "";
+  const trackerToken = watch("tracker_secret") ?? "";
+  const owner = watch("github_owner");
+  const repo = watch("github_repo");
+  const linearSlug = watch("linear_project_slug");
 
   useEffect(() => {
     if (project) {
@@ -79,6 +88,8 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         github_owner: project.github_owner,
         github_repo: project.github_repo,
         github_base_branch: project.github_base_branch,
+        forge_type: project.forge_type ?? "github",
+        forge_base_url: project.forge_base_url ?? "",
         linear_project_slug: project.linear_project_slug ?? "",
         linear_team_key: project.linear_team_key ?? "",
         linear_human_review_state: project.linear_human_review_state ?? "",
@@ -152,6 +163,71 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
           ) : null}
         </div>
       ))}
+
+      <div className="space-y-1">
+        <Label htmlFor="forge_type">Forge</Label>
+        <select id="forge_type" className="block w-full rounded-md border p-2" {...register("forge_type")}>
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+        </select>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="forge_base_url">Forge base URL (self-host, optional)</Label>
+        <Input id="forge_base_url" {...register("forge_base_url")} />
+      </div>
+
+      <div className="space-y-1">
+        <Label>Repository</Label>
+        <Combobox
+          label="Repository"
+          value={owner && repo ? { value: `${owner}/${repo}`, label: `${owner}/${repo}` } : null}
+          items={(repos.data?.repositories ?? []).map((r) => ({
+            value: `${r.owner}/${r.name}`,
+            label: `${r.owner}/${r.name}`,
+          }))}
+          loading={repos.isPending}
+          error={repos.isError ? "Could not list repositories — check the token and retry." : null}
+          onOpen={() =>
+            repos.mutate({ forge_type: forgeType, base_url: forgeBaseUrl || null, token: forgeToken || null })
+          }
+          onSelect={(item: ComboboxItem) => {
+            const r = (repos.data?.repositories ?? []).find((x) => `${x.owner}/${x.name}` === item.value);
+            if (r) {
+              setValue("github_owner", r.owner, { shouldDirty: true });
+              setValue("github_repo", r.name, { shouldDirty: true });
+              setValue("github_base_branch", r.default_branch, { shouldDirty: true });
+            }
+          }}
+        />
+        <Input aria-label="GitHub owner" {...register("github_owner")} readOnly />
+        <Input aria-label="GitHub repo" {...register("github_repo")} readOnly />
+        <Input aria-label="Base branch" {...register("github_base_branch")} readOnly />
+      </div>
+
+      <div className="space-y-1">
+        <Label>Linear project</Label>
+        <Combobox
+          label="Linear project"
+          value={linearSlug ? { value: linearSlug, label: linearSlug } : null}
+          items={(projects.data?.projects ?? []).map((p) => ({
+            value: p.slug,
+            label: `${p.name} (${p.team_key})`,
+          }))}
+          loading={projects.isPending}
+          error={projects.isError ? "Could not list projects — check the token and retry." : null}
+          onOpen={() => projects.mutate({ token: trackerToken || null, base_url: null })}
+          onSelect={(item: ComboboxItem) => {
+            const p = (projects.data?.projects ?? []).find((x) => x.slug === item.value);
+            if (p) {
+              setValue("linear_project_slug", p.slug, { shouldDirty: true });
+              setValue("linear_team_key", p.team_key, { shouldDirty: true });
+            }
+          }}
+        />
+        <Input aria-label="Linear project slug" {...register("linear_project_slug")} readOnly />
+        <input type="hidden" {...register("linear_team_key")} />
+      </div>
 
       <div className="space-y-1">
         <Label htmlFor="config_version">Config version</Label>

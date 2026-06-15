@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  ForgeRepositoriesRequest,
+  ForgeRepositoriesResponse,
   Project,
   ProjectActivityPage,
   ProjectArtifactsPage,
@@ -8,6 +10,8 @@ import type {
   RunDetail,
   RunStreamPage,
   StatePayload,
+  TrackerProjectsRequest,
+  TrackerProjectsResponse,
   WorkRunFilters,
   WorkRunsPage,
 } from "@/types/contract";
@@ -72,6 +76,24 @@ export function createProject(input: ProjectInput): Promise<Project> {
     method: "POST",
     body: JSON.stringify(input),
   }).then((r) => r.project);
+}
+
+export function listForgeRepositories(
+  body: ForgeRepositoriesRequest,
+): Promise<ForgeRepositoriesResponse> {
+  return request<ForgeRepositoriesResponse>("/forge/repositories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function listTrackerProjects(
+  body: TrackerProjectsRequest,
+): Promise<TrackerProjectsResponse> {
+  return request<TrackerProjectsResponse>("/tracker/projects", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function updateProject(id: string, input: ProjectInput): Promise<Project> {
