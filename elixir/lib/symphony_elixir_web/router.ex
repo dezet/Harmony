@@ -18,6 +18,8 @@ defmodule SymphonyElixirWeb.Router do
     match(:*, "/api/v1/refresh", ObservabilityApiController, :method_not_allowed)
     post("/api/v1/github/webhook", GithubWebhookController, :create)
     match(:*, "/api/v1/github/webhook", ObservabilityApiController, :method_not_allowed)
+    post("/api/v1/gitlab/webhook", GitlabWebhookController, :create)
+    match(:*, "/api/v1/gitlab/webhook", ObservabilityApiController, :method_not_allowed)
 
     # Project CRUD. Declared before the :issue_identifier catch-all so that
     # GET /api/v1/projects is not captured as an issue identifier.

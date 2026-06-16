@@ -4,7 +4,7 @@ A living view of where Harmony is and the major directions under consideration. 
 live in `docs/superpowers/specs/`, task breakdowns in `docs/superpowers/plans/`, and the decisions
 behind hard-to-reverse choices in `docs/adr/`.
 
-_Last updated: 2026-06-14._
+_Last updated: 2026-06-15._
 
 ## Where we are
 
@@ -40,32 +40,14 @@ What the backend does today, grounded in the modules that implement it:
 | **(b) Pipeline/CI babysitting** — watch a CR's CI, dispatch a fix on failure | ✅ **Yes (GitHub + GitLab)** | `work_sources/github_failed_ci_source.ex` (Actions) and `work_sources/gitlab_pipeline_source.ex` (pipelines) detect failures, dedupe, check push policy (fork/protected → block), dispatch a `ci_fix` run with logs; `workflows/ci_fix_handoff.ex` posts a blocker + Linear transition. |
 | **(d) Comment-triggered code review** | ✅ **Yes (GitHub + GitLab)** | `github_review_request_source.ex` / `gitlab_review_request_source.ex` poll PR/MR comments for a keyword (default `@hreview`, per-project `review.trigger`/`review.template`), dispatch a `code_review` run; `workflows/review_handoff.ex` publishes it. Substring match; polled (~one cycle of latency). |
 | **Project picker** — choose repo + Linear project from a list | ✅ **Yes** | `Forge.list_repositories`/`get_repository` + `Tracker.list_projects` (Linear GraphQL); stateless token-in-body endpoints; searchable comboboxes in the Configuration tab. |
-| **(a) Interactive CR-review babysitting** — read reviewer threads, reply, resolve, verify feedback addressed | ❌ **No** | Can publish a review once (`create_review`). Does not read incoming review threads, reply, resolve, or verify follow-up. Webhooks lack the review-comment events. This is a **new capability**, not a refactor. |
+| **(a) Interactive CR-review babysitting** — read reviewer threads, reply, resolve, verify feedback addressed | ✅ **Yes (GitHub + GitLab)** | `Forge.{list,reply_to,resolve}_review_thread` + the `address_review` work source/run/handoff read unresolved reviewer threads, fix them in code, reply, and resolve. Per-project bot identity (config → forge whoami → default). A3 guard: resolve only threads whose anchored file the agent actually changed, with a per-thread retry cap (3) then a "needs human" note. B3: GitHub review webhook events + a GitLab webhook controller (`X-Gitlab-Token`) nudge the poller. Open hardening: git-truth `files_changed` (today the agent self-reports). |
 
 ## Initiatives under consideration
 
-### 1. Interactive CR-review babysitting (capability a) — recommended next
+### 1. Logs / run-transcript layer + attempt-history timeline (Phase 6) — recommended next
 
-**Why next:** with the multi-forge platform shipped, this is the **biggest missing product
-capability** — and the one the rest of the infrastructure was building toward. Today Harmony can
-publish a review once; it cannot follow a conversation.
-
-**Approach:** read review/discussion threads and feed them to the agent; reply to and resolve
-threads; a "verify the feedback was addressed in later commits" loop. Trigger via the forge's
-review-comment webhook events (GitHub `pull_request_review_comment`, GitLab MR note events) with a
-polled fallback.
-
-**Forge-agnostic from the start.** Unlike when this was first scoped, the `Forge` behaviour now
-exists — so design the thread read/reply/resolve operations as new `Forge` callbacks with a common
-normalized shape (GitHub review threads ↔ GitLab MR discussion threads), rather than GitHub-only with
-a GitLab bolt-on later. New surface area: review-comment webhooks, thread read/reply/resolve, a
-verification loop. No data-model refactor.
-
-**Size:** Medium.
-
-### 2. Logs / run-transcript layer + attempt-history timeline (Phase 6)
-
-**Why:** an operator-observability gap, not a missing agent capability — schedule after (a).
+**Why:** with capability (a) shipped, this is now the **biggest open gap** — an operator-observability
+one. The agent's abilities are strong; the window into what it did is weak.
 
 **Approach:** a run-stream **"logs only" filter** + a durable run transcript (no log-serving layer
 today); a full **attempt-history timeline** (the orchestrator tracks only
@@ -75,9 +57,15 @@ today); a full **attempt-history timeline** (the orchestrator tracks only
 
 ## Recommended sequencing
 
-1. **Interactive review babysitting (a)** — biggest missing product capability; design it
-   forge-agnostic on top of the new `Forge` abstraction.
-2. **Logs / run-transcript + attempt-history (Phase 6)** — operator observability; follows (a).
+1. **Logs / run-transcript + attempt-history (Phase 6)** — operator observability; now the biggest
+   open gap with capability (a) shipped. ADRs 0002/0003 already draft the design.
+
+## Recently shipped — interactive review (capability a)
+
+Read reviewer threads → fix in code → reply → resolve, across GitHub and GitLab, built on the `Forge`
+abstraction. Shipped in two cuts: v1 (read + reply/resolve, polling) and the follow-ups (per-project
+bot identity, the A3 resolve guard + retry cap, B3 webhook nudges for both forges). Remaining
+hardening: git-truth `files_changed` instead of the agent's self-reported list.
 
 ## Cross-cutting themes
 

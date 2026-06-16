@@ -9,7 +9,13 @@ defmodule SymphonyElixirWeb.GithubWebhookController do
   alias SymphonyElixir.Storage
   alias SymphonyElixirWeb.{Endpoint, Presenter}
 
-  @supported_events MapSet.new(["pull_request", "issue_comment", "workflow_run"])
+  @supported_events MapSet.new([
+                      "pull_request",
+                      "issue_comment",
+                      "workflow_run",
+                      "pull_request_review",
+                      "pull_request_review_comment"
+                    ])
 
   @spec create(Conn.t(), map()) :: Conn.t()
   def create(conn, params) do

@@ -22,5 +22,6 @@ defmodule SymphonyElixir.AddressReviewPromptTest do
     assert prompt =~ "rename foo"
     assert prompt =~ "thread_id"
     assert prompt =~ "resolved"
+    assert prompt =~ "files_changed"
   end
 end

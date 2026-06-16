@@ -29,7 +29,8 @@ defmodule SymphonyElixir.ReviewResponseSourceTest do
     opts = [
       list_pull_requests: fn _o, _r, _ -> {:ok, [@pr]} end,
       list_review_threads: fn _o, _r, _n -> {:ok, [@thread]} end,
-      dedupe_seen?: fn _project_id, _key -> false end
+      dedupe_status: fn _project_id, _key -> nil end,
+      attempt_count: fn _project_id, _key -> 0 end
     ]
 
     assert {:ok, [%WorkRun{} = run]} = GithubReviewResponseSource.fetch_candidates(@project, opts)
@@ -45,7 +46,7 @@ defmodule SymphonyElixir.ReviewResponseSourceTest do
     opts = [
       list_pull_requests: fn _o, _r, _ -> {:ok, [@pr]} end,
       list_review_threads: fn _o, _r, _n -> {:ok, [own]} end,
-      dedupe_seen?: fn _project_id, _key -> false end,
+      dedupe_status: fn _project_id, _key -> nil end,
       harmony_identity: "harmony[bot]"
     ]
 

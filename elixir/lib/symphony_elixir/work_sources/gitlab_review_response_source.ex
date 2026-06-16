@@ -4,7 +4,7 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
   alias SymphonyElixir.{Gitlab, Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
 
-  @default_identity "harmony"
+  @max_attempts 3
 
   @spec fetch_candidates(map(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do
@@ -14,7 +14,10 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
 
     owner = ref.owner || pv(project, :forge_owner)
     repo = ref.repo || pv(project, :forge_repo)
-    identity = Keyword.get(opts, :harmony_identity, @default_identity)
+
+    identity =
+      Keyword.get(opts, :harmony_identity) ||
+        SymphonyElixir.Review.Identity.resolve(project, creds, current_user: fn c -> SymphonyElixir.Forge.adapter(project).current_user(c) end)
 
     list_merge_requests =
       Keyword.get(opts, :list_pull_requests, fn o, r, _ ->
@@ -30,12 +33,13 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
         )
       end)
 
-    dedupe_seen? = Keyword.get(opts, :dedupe_seen?, &Storage.dedupe_seen?/2)
+    dedupe_status = Keyword.get(opts, :dedupe_status, &Storage.dedupe_status/2)
+    attempt_count = Keyword.get(opts, :attempt_count, &Storage.review_attempt_count/2)
 
     with {:ok, mrs} <- list_merge_requests.(owner, repo, []) do
       mrs
       |> Enum.reduce_while({:ok, []}, fn mr, {:ok, runs} ->
-        case candidates_for_mr(project, owner, repo, mr, list_review_threads, dedupe_seen?, identity) do
+        case candidates_for_mr(project, owner, repo, mr, list_review_threads, dedupe_status, attempt_count, identity) do
           {:ok, new} -> {:cont, {:ok, runs ++ new}}
           {:error, reason} -> {:halt, {:error, reason}}
         end
@@ -43,24 +47,36 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
     end
   end
 
-  defp candidates_for_mr(project, owner, repo, mr, list_review_threads, dedupe_seen?, identity) do
+  defp candidates_for_mr(project, owner, repo, mr, list_review_threads, dedupe_status, attempt_count, identity) do
     link = Github.LinkResolver.resolve(mr, team_keys: List.wrap(pv(project, :linear_team_key)))
 
     if is_nil(link) do
       {:ok, []}
     else
       case list_review_threads.(owner, repo, mr.number) do
-        {:ok, threads} -> {:ok, build_runs(project, owner, repo, mr, link, threads, dedupe_seen?, identity)}
-        {:error, reason} -> {:error, reason}
+        {:ok, threads} ->
+          {:ok, build_runs(project, owner, repo, mr, link, threads, dedupe_status, attempt_count, identity)}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
   end
 
-  defp build_runs(project, owner, repo, mr, link, threads, dedupe_seen?, identity) do
+  defp build_runs(project, owner, repo, mr, link, threads, dedupe_status, attempt_count, identity) do
+    project_id = pv(project, :id)
+
     actionable =
       threads
       |> Enum.filter(&actionable_thread?(&1, identity))
-      |> Enum.reject(fn t -> dedupe_seen?.(pv(project, :id), dedupe_key(owner, repo, mr, t)) end)
+      |> Enum.reject(fn t ->
+        # Skip a thread only when its key is terminal: processed (resolved/capped)
+        # or already at the attempt cap. A mid-retry "claimed" row must NOT skip it,
+        # or attempts 2..N would never run.
+        key = dedupe_key(owner, repo, mr, t)
+        dedupe_status.(project_id, key) == "processed" or attempt_count.(project_id, key) >= @max_attempts
+      end)
+      |> Enum.map(fn t -> Map.put(t, :dedupe_key, dedupe_key(owner, repo, mr, t)) end)
 
     if actionable == [], do: [], else: [build_run(project, owner, repo, mr, link, actionable)]
   end
@@ -77,7 +93,7 @@ defmodule SymphonyElixir.WorkSources.GitlabReviewResponseSource do
       project_slug: pv(project, :slug),
       type: "address_review",
       status: "queued",
-      dedupe_key: dedupe_key(owner, repo, mr, List.last(threads)),
+      dedupe_key: dedupe_key(owner, repo, mr, List.first(threads)),
       forge_type: "gitlab",
       forge_base_url: pv(project, :forge_base_url),
       forge_owner: owner,

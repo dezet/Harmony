@@ -143,6 +143,19 @@ defmodule SymphonyElixir.Github.Client do
     end
   end
 
+  @spec get_authenticated_user(keyword()) :: {:ok, map()} | {:error, term()}
+  def get_authenticated_user(opts \\ []) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{api_root(opts)}/user"
+
+    with {:ok, response} <-
+           request_fun.(method: :get, url: url, headers: headers(token)),
+         :ok <- expect_status(response, 200) do
+      {:ok, response.body}
+    end
+  end
+
   @doc "POST a GraphQL query/mutation. Returns the decoded `\"data\"` map."
   @spec graphql(String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def graphql(query, variables, opts \\ []) when is_binary(query) and is_map(variables) do
