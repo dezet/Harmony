@@ -178,3 +178,37 @@ automated — YAGNI):
 - Production container images / multi-stage release builds.
 - Automated tests for the shell script itself.
 - A root-level `./dev` wrapper (optional follow-up only).
+
+## Implementation notes (deviations found during build)
+
+These were discovered while integrating against the real app and live-verified
+on podman 5.8.2 (rootless) on CachyOS. They refine the design above:
+
+- **Lazy engine detection.** Engine detection must NOT run at script load — the
+  backend container runs `harmony.sh __backend-boot` where no podman/docker
+  exists. `engine()` resolves and memoizes lazily, only when `compose()` is
+  actually called.
+- **`CLOAK_KEY` is mandatory.** `SymphonyElixir.Vault` reads `CLOAK_KEY` at boot
+  in every env (fail-fast, no default). The CLI generates a stable, gitignored
+  dev key (`.dev-cloak-key`) and injects it into both the container and host
+  flows, honoring an operator-set `CLOAK_KEY`. Without this the app crashes on
+  boot. This was the original `dev.sh`'s implicit dependency on the operator's
+  shell env.
+- **`MIX_HOME`/`HEX_HOME` → the deps volume.** Under `keep-id` the container
+  runs as the host uid and cannot write `$HOME=/root`, so hex/mix state would
+  leak into the bind-mounted source. Both are pointed at `/app/deps/.*` (a named
+  volume) and hex/rebar are installed at boot.
+- **Full-mode entry is Vite (`:5173`), not the backend root.** In full mode the
+  SPA is served by Vite with HMR; Phoenix serves only the API/socket, so
+  `GET :4010/` is not a `200`. Readiness is checked via `GET :4010/api/v1/state`.
+- **Backend hot reload = auto-restart on save.** This OTP app has no Phoenix
+  code-reloader configured, and its work runs in long-lived GenServers where a
+  module swap wouldn't suffice. `cmd_backend_boot` watches `lib/` + `config/`
+  with `inotifywait` (debounced) and restarts the app on `.ex/.exs` changes.
+  Host mode has no watcher (manual restart).
+- **`--profile full` is injected centrally** in `compose()` because
+  podman-compose does not see profiled services on `exec`/`migrate` unless the
+  profile flag is present.
+- **Host mode** was implemented and its routing/preflight verified, but a full
+  host boot was not exercised on the build machine (no working host Elixir/npm).
+  Container mode is the end-to-end-verified path.
