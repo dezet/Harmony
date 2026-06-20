@@ -16,5 +16,44 @@ services:
       timeout: 5s
       retries: 12
 
+  backend:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIX_ENV: dev
+      HARMONY_DATABASE_HOST: postgres
+      HARMONY_DATABASE_PORT: "5432"
+      HARMONY_PORT: "${HARMONY_PORT:-4010}"
+    volumes:
+      - ./:/app
+      - harmony_deps:/app/deps
+      - harmony_build:/app/_build
+    ports:
+      - "${HARMONY_PORT:-4010}:4010"
+
+  frontend:
+    profiles: ["full"]
+    image: docker.io/library/node:22-alpine
+    working_dir: /app/assets
+    depends_on:
+      - backend
+    environment:
+      HARMONY_BACKEND_HOST: backend
+      HARMONY_PORT: "4010"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./assets:/app/assets
+      - harmony_node_modules:/app/assets/node_modules
+    ports:
+      - "5173:5173"
+
 volumes:
   harmony_postgres_data:
+  harmony_deps:
+  harmony_build:
+  harmony_node_modules:
