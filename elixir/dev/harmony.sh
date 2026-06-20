@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# Harmony dev CLI — one command for the whole container environment.
+#
+#   ./dev/harmony.sh up            # default: whole stack in containers + hot reload
+#   ./dev/harmony.sh up --host     # legacy host flow (backend+vite on host)
+#   ./dev/harmony.sh down | rebuild | reset | logs | status | restart
+#   ./dev/harmony.sh migrate | test | iex | psql | exec <svc> <cmd...>
+#
+# Engine: auto-detects podman → docker; override with ENGINE=docker.
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+PORT="${HARMONY_PORT:-4010}"
+DB_PORT="${HARMONY_DATABASE_PORT:-5432}"
+VITE_PORT=5173
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+PODMAN_OVERRIDE="$PROJECT_DIR/dev/docker-compose.podman.yml"
+WORKFLOW_FILE="$PROJECT_DIR/.dev-workflow.md"
+
+log() { printf '\033[1;36m[harmony]\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m[harmony] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# retry <max> <cmd...> — re-run until success or attempts exhausted.
+retry() {
+  local max="$1"; shift; local n=1
+  until "$@"; do
+    [ "$n" -ge "$max" ] && return 1
+    n=$((n + 1)); sleep 2
+  done
+}
+
+# port_in_use <port> — true if something already accepts connections there.
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+# detect_engine — ENGINE override, else podman, else docker.
+detect_engine() {
+  if [ -n "${ENGINE:-}" ]; then printf '%s' "$ENGINE"; return; fi
+  command -v podman >/dev/null 2>&1 && { printf 'podman'; return; }
+  command -v docker >/dev/null 2>&1 && { printf 'docker'; return; }
+  die "no container engine found — install podman or docker (or set ENGINE=)."
+}
+ENGINE="$(detect_engine)"
+
+# compose <args...> — engine-correct compose, with the podman override when needed.
+compose() {
+  local files=(-f "$COMPOSE_FILE")
+  [ "$ENGINE" = "podman" ] && files+=(-f "$PODMAN_OVERRIDE")
+  if "$ENGINE" compose version >/dev/null 2>&1; then
+    "$ENGINE" compose "${files[@]}" "$@"
+  elif command -v "${ENGINE}-compose" >/dev/null 2>&1; then
+    "${ENGINE}-compose" "${files[@]}" "$@"
+  else
+    die "no compose provider for '$ENGINE' — install '$ENGINE compose' or '${ENGINE}-compose'."
+  fi
+}
+
+usage() {
+  cat <<EOF
+Harmony dev CLI (engine: $ENGINE)
+
+  up [--host] [-d]   bring up the stack (default: full, containers + hot reload)
+  down               stop the stack (keeps volumes/DB)
+  restart [svc]      restart a service, or the whole stack
+  rebuild [svc]      rebuild container image(s); volumes/DB untouched
+  reset              DESTROY volumes (DB + deps + _build + node_modules); asks first
+  logs [svc]         follow logs
+  status             list services
+  migrate            run ecto migrations (dev + test) in the backend container
+  test [--fe]        mix test in backend (--fe → npm test in frontend)
+  iex                IEx shell in the backend container
+  psql               psql into the postgres container
+  exec <svc> <cmd…>  run a command in a service
+  help               this message
+EOF
+}
+
+main() {
+  local cmd="${1:-up}"; shift || true
+  case "$cmd" in
+    up)              cmd_up "$@" ;;
+    down)            compose --profile full down ;;
+    restart)         compose --profile full restart "$@" ;;
+    rebuild)         cmd_rebuild "$@" ;;
+    reset)           cmd_reset "$@" ;;
+    logs)            compose --profile full logs -f "$@" ;;
+    status)          compose --profile full ps ;;
+    migrate)         cmd_migrate ;;
+    test)            cmd_test "$@" ;;
+    iex)             compose exec backend iex -S mix run --no-start ;;
+    psql)            compose exec postgres psql -U postgres harmony_dev ;;
+    exec)            compose exec "$@" ;;
+    __backend-boot)  cmd_backend_boot ;;
+    help|-h|--help)  usage ;;
+    *)               die "unknown command: $cmd (try: ./dev/harmony.sh help)" ;;
+  esac
+}
+
+main "$@"
