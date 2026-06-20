@@ -217,19 +217,31 @@ preflight_full() {
   return 0
 }
 
+# print_banner [full|host] — the post-boot summary. The SPA is always served by
+# Vite (:$VITE_PORT); the backend (:$PORT) serves API + socket. Only the backend
+# reload story and the stop hint differ between modes.
 print_banner() {
+  local mode="${1:-full}" title reload stop
+  if [ "$mode" = "host" ]; then
+    title="Harmony (host) is up"
+    reload="Edit backend (.ex) → Ctrl+C, then ./dev/harmony.sh up --host."
+    stop="Stop: Ctrl+C (stops backend + Vite)."
+  else
+    title="Harmony (full / containers) is up"
+    reload="Edit backend (.ex) → it recompiles and auto-restarts (~seconds)."
+    stop="Logs: ./dev/harmony.sh logs   Stop: ./dev/harmony.sh down"
+  fi
   cat <<EOF
 
-  ┌─ Harmony (full / containers) is up ──────────
+  ┌─ $title
   │  App (open this)  →  http://localhost:$VITE_PORT/   (Vite, HMR)
   │  JSON API         →  http://localhost:$PORT/api/v1/
   │  Socket           →  ws://localhost:$PORT/socket
   │
-  │  In full mode the SPA is served by Vite (:$VITE_PORT); the backend
-  │  (:$PORT) serves API + socket. Edit frontend → instant HMR. Edit
-  │  backend (.ex) → it recompiles and auto-restarts (~seconds).
+  │  Edit frontend → instant HMR.
+  │  $reload
   │
-  │  Logs: ./dev/harmony.sh logs   Stop: ./dev/harmony.sh down
+  │  $stop
   └──────────────────────────────────────────────
 
 EOF
@@ -295,6 +307,74 @@ cmd_test() {
   else
     compose exec backend mix test
   fi
+}
+
+# cmd_up_host — legacy host flow: Postgres in a container, backend + Vite on the
+# host via mise/npm. Fast, no image builds. One Ctrl+C tears down both. Like the
+# container path it auto-provides a dev CLOAK_KEY, so no manual export is needed.
+# Note: host mode has no source watcher — backend changes need a manual restart.
+cmd_up_host() {
+  command -v mise >/dev/null 2>&1 || die "mise not found — needed for host mode (manages Erlang/Elixir)."
+  command -v npm  >/dev/null 2>&1 || die "npm not found — install Node.js for host mode."
+  port_in_use "$PORT" && die "Port $PORT is in use. Stop it or set HARMONY_PORT=<free>."
+
+  local MIX=(mise exec -- mix)
+
+  pg_ready() {
+    compose exec -T postgres pg_isready -q >/dev/null 2>&1 && return 0
+    command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -p "$DB_PORT" -q >/dev/null 2>&1 && return 0
+    return 1
+  }
+
+  if pg_ready; then
+    log "Postgres already reachable on :$DB_PORT."
+  else
+    log "Starting Postgres (container)…"
+    compose up -d postgres >/dev/null 2>&1 || die "Could not start Postgres."
+    log "Waiting for Postgres…"
+    for _ in $(seq 1 30); do pg_ready && break; sleep 1; done
+    pg_ready || die "Postgres did not become ready in time."
+  fi
+
+  export CLOAK_KEY="$(dev_cloak_key)"
+
+  log "Ensuring databases + migrating (dev + test)…"
+  retry 15 env "${MIX[@]}" ecto.create
+  retry 15 env MIX_ENV=test "${MIX[@]}" ecto.create
+  "${MIX[@]}" ecto.migrate
+  MIX_ENV=test "${MIX[@]}" ecto.migrate
+
+  if [ ! -d assets/node_modules ]; then
+    log "Installing frontend deps…"
+    "${MIX[@]}" assets.setup
+  fi
+  log "Building the SPA…"
+  "${MIX[@]}" assets.build
+
+  write_dev_workflow "127.0.0.1"
+
+  set -m  # job control: each background job gets its own process group.
+  local BACKEND_PID="" VITE_PID=""
+  stop_group() { [ -n "$1" ] && kill -TERM -"$1" >/dev/null 2>&1 || true; }
+  cleanup() {
+    trap - INT TERM EXIT
+    log "Shutting down…"
+    stop_group "$VITE_PID"; stop_group "$BACKEND_PID"
+    wait >/dev/null 2>&1 || true
+  }
+  trap cleanup INT TERM EXIT
+
+  log "Booting backend on :$PORT…"
+  mise exec -- mix run --no-start --no-halt \
+    -e "SymphonyElixir.Workflow.set_workflow_file_path(\"$WORKFLOW_FILE\"); {:ok, _} = Application.ensure_all_started(:symphony_elixir)" &
+  BACKEND_PID=$!
+
+  log "Booting Vite HMR on :$VITE_PORT…"
+  ( cd assets && HARMONY_PORT="$PORT" npm run dev ) &
+  VITE_PID=$!
+
+  print_banner host
+  wait -n "$BACKEND_PID" "$VITE_PID" 2>/dev/null || wait
 }
 
 main "$@"
