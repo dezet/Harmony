@@ -150,8 +150,36 @@ Harmony local dev server — memory tracker, no issues, no dispatch.
 EOF
 }
 
+# start_app — boot the BEAM in the background, in its own process group so a
+# restart can signal the whole tree (elixir → erl → beam.smp). Sets APP_PID.
+APP_PID=""
+start_app() {
+  mix run --no-start --no-halt \
+    -e "SymphonyElixir.Workflow.set_workflow_file_path(\"$WORKFLOW_FILE\"); {:ok, _} = Application.ensure_all_started(:symphony_elixir)" &
+  APP_PID=$!
+}
+
+# stop_app — terminate the running app's whole process group, then reap it.
+stop_app() {
+  [ -n "$APP_PID" ] || return 0
+  kill -TERM -"$APP_PID" 2>/dev/null || kill -TERM "$APP_PID" 2>/dev/null || true
+  wait "$APP_PID" 2>/dev/null || true
+  APP_PID=""
+}
+
+# wait_for_source_change — block until a .ex/.exs file under lib/ or config/
+# changes, then debounce by draining further events until ~1s of quiet. Filtering
+# to .exs? avoids spurious restarts from editor temp files; recompile output lands
+# in the _build volume (outside lib/config), so it never self-triggers.
+wait_for_source_change() {
+  local watch=(-q -r -e modify,create,delete,move --include '\.exs?$' lib config)
+  inotifywait "${watch[@]}" >/dev/null 2>&1 || true
+  while inotifywait -t 1 "${watch[@]}" >/dev/null 2>&1; do :; done
+}
+
 # cmd_backend_boot — backend container entrypoint. Runs in-container: mix direct,
-# binds 0.0.0.0 so the published port is reachable from the host.
+# binds 0.0.0.0 so the published port is reachable from the host. Auto-restarts
+# the app on backend source changes (idiomatic hot reload for an OTP app).
 cmd_backend_boot() {
   # Install hex/rebar into MIX_HOME (a named volume) — the image's build-time
   # copy lives under /root, unreadable once keep-id maps us to the host uid.
@@ -166,9 +194,16 @@ cmd_backend_boot() {
   mix ecto.migrate
   MIX_ENV=test mix ecto.migrate
   write_dev_workflow "0.0.0.0"
-  log "Booting Phoenix on 0.0.0.0:$PORT…"
-  exec mix run --no-start --no-halt \
-    -e "SymphonyElixir.Workflow.set_workflow_file_path(\"$WORKFLOW_FILE\"); {:ok, _} = Application.ensure_all_started(:symphony_elixir)"
+
+  set -m  # job control: background jobs get their own process group for clean kill
+  trap 'log "Shutting down backend…"; stop_app; exit 0' TERM INT
+  while true; do
+    log "Booting Phoenix on 0.0.0.0:$PORT (auto-restart on .ex/.exs change)…"
+    start_app
+    wait_for_source_change
+    log "Backend source changed — restarting…"
+    stop_app
+  done
 }
 
 # preflight_full — fail fast with a clear hint before bringing the stack up.
@@ -188,7 +223,7 @@ print_banner() {
   │
   │  In full mode the SPA is served by Vite (:$VITE_PORT); the backend
   │  (:$PORT) serves API + socket. Edit frontend → instant HMR. Edit
-  │  backend (.ex) → ./dev/harmony.sh restart backend.
+  │  backend (.ex) → it recompiles and auto-restarts (~seconds).
   │
   │  Logs: ./dev/harmony.sh logs   Stop: ./dev/harmony.sh down
   └──────────────────────────────────────────────
