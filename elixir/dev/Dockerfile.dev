@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+# Backend dev image. Source is bind-mounted at runtime; deps/_build are named
+# volumes. The container boots via the dev CLI's hidden __backend-boot subcommand.
+ARG ELIXIR_IMAGE=docker.io/library/elixir:1.19-otp-28
+FROM ${ELIXIR_IMAGE}
+
+# Set early so it is in scope for every subsequent RUN (e.g. future mix steps).
+ENV MIX_ENV=dev
+
+# inotify-tools: Phoenix/file_system code reload on Linux.
+# git: some mix deps fetch from git. postgresql-client: psql for debugging.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends inotify-tools git postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN mix local.hex --force && mix local.rebar --force
+
+WORKDIR /app
+
+CMD ["bash", "dev/harmony.sh", "__backend-boot"]
