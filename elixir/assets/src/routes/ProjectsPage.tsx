@@ -8,7 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function ProjectListHeader() {
@@ -30,10 +32,10 @@ export function ProjectsPage() {
     return (
       <div className="space-y-4">
         <ProjectListHeader />
-        <div role="alert" className="rounded-md border border-destructive/40 p-4">
-          <h2 className="font-medium">Could not load projects</h2>
-          <p className="text-sm text-muted-foreground">{message}</p>
-        </div>
+        <Alert variant="destructive">
+          <AlertTitle>Could not load projects</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -45,12 +47,14 @@ export function ProjectsPage() {
       {isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : projects.length === 0 ? (
-        <div className="rounded-md border p-6">
-          <h2 className="font-medium">No projects configured</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create a project to map Harmony to a GitHub repository and Linear project.
-          </p>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>No projects configured</CardTitle>
+            <CardDescription>
+              Create a project to map Harmony to a GitHub repository and Linear project.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       ) : (
         <Table>
           <TableHeader>

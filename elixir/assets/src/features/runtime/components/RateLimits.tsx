@@ -1,4 +1,5 @@
 import type { RateLimitBucket, RateLimitsPayload } from "@/types/contract";
+import { Progress } from "@/components/ui/progress";
 import { formatDuration, secondsUntil } from "@/lib/format";
 import { useNow } from "@/lib/useNow";
 
@@ -47,7 +48,6 @@ function BucketRow({
     typeof bucket.used === "number" && typeof bucket.limit === "number";
 
   if (hasProgress) {
-    const pct = Math.min(100, (bucket.used! / bucket.limit!) * 100);
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between text-sm">
@@ -57,19 +57,7 @@ function BucketRow({
             <ResetLabel bucket={bucket} />
           </span>
         </div>
-        <div
-          role="progressbar"
-          aria-label={`${name} usage`}
-          aria-valuenow={bucket.used}
-          aria-valuemin={0}
-          aria-valuemax={bucket.limit}
-          className="h-2 w-full rounded-full bg-muted overflow-hidden"
-        >
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        <Progress value={bucket.used!} max={bucket.limit!} aria-label={`${name} usage`} />
       </div>
     );
   }

@@ -89,7 +89,7 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -125,7 +125,7 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -158,7 +158,7 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));

@@ -133,17 +133,17 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Tab bar: Work enabled, Evidence enabled (no longer disabled)
-    const workTab = screen.getByRole("button", { name: /^work$/i });
+    const workTab = screen.getByRole("tab", { name: /^work$/i });
     expect(workTab).toBeInTheDocument();
     expect(workTab).not.toBeDisabled();
 
-    const evidenceTab = screen.getByRole("button", { name: /^evidence$/i });
+    const evidenceTab = screen.getByRole("tab", { name: /^evidence$/i });
     expect(evidenceTab).not.toBeDisabled();
 
-    const activityTab = screen.getByRole("button", { name: /^activity$/i });
+    const activityTab = screen.getByRole("tab", { name: /^activity$/i });
     expect(activityTab).not.toBeDisabled();
 
-    const configTab = screen.getByRole("button", { name: /^configuration$/i });
+    const configTab = screen.getByRole("tab", { name: /^configuration$/i });
     expect(configTab).not.toBeDisabled();
 
     // Three column headings (Work tab content)
@@ -191,7 +191,7 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByRole("heading", { name: summaryFixture.project.slug })).toBeInTheDocument(),
     );
 
-    const evidenceTab = screen.getByRole("button", { name: /^evidence$/i });
+    const evidenceTab = screen.getByRole("tab", { name: /^evidence$/i });
     await user.click(evidenceTab);
 
     // Location display should now include ?tab=evidence
@@ -213,7 +213,7 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Click Work tab
-    const workTab = screen.getByRole("button", { name: /^work$/i });
+    const workTab = screen.getByRole("tab", { name: /^work$/i });
     await user.click(workTab);
 
     // Location should no longer have ?tab=
