@@ -29,6 +29,15 @@ services:
       HARMONY_DATABASE_HOST: postgres
       HARMONY_DATABASE_PORT: "5432"
       HARMONY_PORT: "${HARMONY_PORT:-4010}"
+      # SymphonyElixir.Vault reads CLOAK_KEY at boot (fail-fast in every env).
+      # dev/harmony.sh exports a stable dev key before `up`; raw `compose up`
+      # without it will fail to boot — run the stack via the CLI.
+      CLOAK_KEY: ${CLOAK_KEY:-}
+      # Keep hex/mix state inside the deps named volume, NOT the source bind
+      # mount. Under rootless podman + keep-id the container runs as the host
+      # uid and cannot write $HOME=/root, so hex would otherwise leak into /app.
+      MIX_HOME: /app/deps/.mix
+      HEX_HOME: /app/deps/.hex
     volumes:
       - ./:/app
       - harmony_deps:/app/deps

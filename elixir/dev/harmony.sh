@@ -19,6 +19,7 @@ VITE_PORT=5173
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
 PODMAN_OVERRIDE="$PROJECT_DIR/dev/docker-compose.podman.yml"
 WORKFLOW_FILE="$PROJECT_DIR/.dev-workflow.md"
+CLOAK_KEY_FILE="$PROJECT_DIR/.dev-cloak-key"
 
 log() { printf '\033[1;36m[harmony]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[harmony] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -35,6 +36,18 @@ retry() {
 # port_in_use <port> — true if something already accepts connections there.
 port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
+# dev_cloak_key — a stable local CLOAK_KEY for the dev environment. The Vault
+# (SymphonyElixir.Vault) reads CLOAK_KEY at boot in EVERY env (fail-fast, no
+# default). Honors an operator-set CLOAK_KEY; otherwise generates one once and
+# persists it (gitignored) so the dev database stays readable across restarts.
+dev_cloak_key() {
+  if [ -n "${CLOAK_KEY:-}" ]; then printf '%s' "$CLOAK_KEY"; return; fi
+  if [ -s "$CLOAK_KEY_FILE" ]; then cat "$CLOAK_KEY_FILE"; return; fi
+  local key; key="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+  printf '%s' "$key" > "$CLOAK_KEY_FILE"
+  printf '%s' "$key"
+}
+
 # detect_engine — ENGINE override, else podman, else docker.
 detect_engine() {
   if [ -n "${ENGINE:-}" ]; then printf '%s' "$ENGINE"; return; fi
@@ -42,24 +55,33 @@ detect_engine() {
   command -v docker >/dev/null 2>&1 && { printf 'docker'; return; }
   die "no container engine found — install podman or docker (or set ENGINE=)."
 }
-ENGINE="$(detect_engine)"
+
+# engine — resolve the container engine lazily and memoize into ENGINE.
+# Detection is deferred (NOT run at load time) so in-container subcommands like
+# __backend-boot, which run where no podman/docker exists, never trigger it.
+engine() {
+  [ -n "${ENGINE:-}" ] || ENGINE="$(detect_engine)"
+  printf '%s' "$ENGINE"
+}
 
 # compose <args...> — engine-correct compose, with the podman override when needed.
 compose() {
+  local eng; eng="$(engine)"
   local files=(-f "$COMPOSE_FILE")
-  [ "$ENGINE" = "podman" ] && files+=(-f "$PODMAN_OVERRIDE")
-  if "$ENGINE" compose version >/dev/null 2>&1; then
-    "$ENGINE" compose "${files[@]}" "$@"
-  elif command -v "${ENGINE}-compose" >/dev/null 2>&1; then
-    "${ENGINE}-compose" "${files[@]}" "$@"
+  [ "$eng" = "podman" ] && files+=(-f "$PODMAN_OVERRIDE")
+  if "$eng" compose version >/dev/null 2>&1; then
+    "$eng" compose "${files[@]}" "$@"
+  elif command -v "${eng}-compose" >/dev/null 2>&1; then
+    "${eng}-compose" "${files[@]}" "$@"
   else
-    die "no compose provider for '$ENGINE' — install '$ENGINE compose' or '${ENGINE}-compose'."
+    die "no compose provider for '$eng' — install '$eng compose' or '${eng}-compose'."
   fi
 }
 
 usage() {
+  local eng="${ENGINE:-$(detect_engine 2>/dev/null || true)}"
   cat <<EOF
-Harmony dev CLI (engine: $ENGINE)
+Harmony dev CLI (engine: ${eng:-none})
 
   up [--host] [-d]   bring up the stack (default: full, containers + hot reload)
   down               stop the stack (keeps volumes/DB)
@@ -131,6 +153,11 @@ EOF
 # cmd_backend_boot — backend container entrypoint. Runs in-container: mix direct,
 # binds 0.0.0.0 so the published port is reachable from the host.
 cmd_backend_boot() {
+  # Install hex/rebar into MIX_HOME (a named volume) — the image's build-time
+  # copy lives under /root, unreadable once keep-id maps us to the host uid.
+  log "Ensuring hex + rebar…"
+  mix local.hex --force >/dev/null
+  mix local.rebar --force >/dev/null
   log "Fetching deps…"
   mix deps.get
   log "Ensuring databases + migrating (dev + test)…"
@@ -142,6 +169,60 @@ cmd_backend_boot() {
   log "Booting Phoenix on 0.0.0.0:$PORT…"
   exec mix run --no-start --no-halt \
     -e "SymphonyElixir.Workflow.set_workflow_file_path(\"$WORKFLOW_FILE\"); {:ok, _} = Application.ensure_all_started(:symphony_elixir)"
+}
+
+# preflight_full — fail fast with a clear hint before bringing the stack up.
+preflight_full() {
+  port_in_use "$PORT"      && die "Port $PORT (backend) is in use. Stop it or set HARMONY_PORT=<free>."
+  port_in_use "$VITE_PORT" && die "Port $VITE_PORT (vite) is in use. Stop whatever holds it."
+  return 0
+}
+
+print_banner() {
+  cat <<EOF
+
+  ┌─ Harmony (full / containers) is up ──────────
+  │  App (open this)  →  http://localhost:$VITE_PORT/   (Vite, HMR)
+  │  JSON API         →  http://localhost:$PORT/api/v1/
+  │  Socket           →  ws://localhost:$PORT/socket
+  │
+  │  In full mode the SPA is served by Vite (:$VITE_PORT); the backend
+  │  (:$PORT) serves API + socket. Edit frontend → instant HMR. Edit
+  │  backend (.ex) → ./dev/harmony.sh restart backend.
+  │
+  │  Logs: ./dev/harmony.sh logs   Stop: ./dev/harmony.sh down
+  └──────────────────────────────────────────────
+
+EOF
+}
+
+# cmd_up [--host] [-d]
+cmd_up() {
+  local detached=0 host_mode=0
+  for a in "$@"; do
+    case "$a" in
+      --host) host_mode=1 ;;
+      -d|--detach) detached=1 ;;
+      *) die "up: unknown flag '$a'" ;;
+    esac
+  done
+
+  if [ "$host_mode" = 1 ]; then
+    cmd_up_host        # implemented in a later task
+    return
+  fi
+
+  preflight_full
+  export CLOAK_KEY="$(dev_cloak_key)"
+  if [ "$detached" = 1 ]; then
+    log "Starting full stack (detached)…"
+    compose --profile full up -d
+    print_banner
+  else
+    log "Starting full stack (Ctrl+C to stop)…"
+    print_banner
+    compose --profile full up
+  fi
 }
 
 main "$@"
