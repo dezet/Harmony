@@ -64,10 +64,14 @@ engine() {
   printf '%s' "$ENGINE"
 }
 
-# compose <args...> — engine-correct compose, with the podman override when needed.
+# compose <args...> — engine-correct compose, with the podman override when
+# needed. Always selects the `full` profile so profiled services (backend,
+# frontend) are visible to every subcommand — notably `exec`, which podman-compose
+# otherwise reports as a missing service. Naming a service (e.g. `up postgres`)
+# still scopes the action to that one service.
 compose() {
   local eng; eng="$(engine)"
-  local files=(-f "$COMPOSE_FILE")
+  local files=(--profile full -f "$COMPOSE_FILE")
   [ "$eng" = "podman" ] && files+=(-f "$PODMAN_OVERRIDE")
   if "$eng" compose version >/dev/null 2>&1; then
     "$eng" compose "${files[@]}" "$@"
@@ -103,12 +107,12 @@ main() {
   local cmd="${1:-up}"; shift || true
   case "$cmd" in
     up)              cmd_up "$@" ;;
-    down)            compose --profile full down ;;
-    restart)         compose --profile full restart "$@" ;;
+    down)            compose down ;;
+    restart)         compose restart "$@" ;;
     rebuild)         cmd_rebuild "$@" ;;
     reset)           cmd_reset "$@" ;;
-    logs)            compose --profile full logs -f "$@" ;;
-    status)          compose --profile full ps ;;
+    logs)            compose logs -f "$@" ;;
+    status)          compose ps ;;
     migrate)         cmd_migrate ;;
     test)            cmd_test "$@" ;;
     iex)             compose exec backend iex -S mix run --no-start ;;
@@ -251,12 +255,45 @@ cmd_up() {
   export CLOAK_KEY="$(dev_cloak_key)"
   if [ "$detached" = 1 ]; then
     log "Starting full stack (detached)…"
-    compose --profile full up -d
+    compose up -d
     print_banner
   else
     log "Starting full stack (Ctrl+C to stop)…"
     print_banner
-    compose --profile full up
+    compose up
+  fi
+}
+
+# cmd_rebuild [svc] — rebuild image(s) from scratch. DB + deps/_build volumes kept.
+cmd_rebuild() {
+  log "Rebuilding image(s)${1:+ for $1} (no cache)…"
+  compose build --no-cache "$@"
+  log "Done. Run './dev/harmony.sh up' to start the rebuilt stack."
+}
+
+# cmd_reset — destroy ALL named volumes (DB, deps, _build, node_modules). Destructive.
+cmd_reset() {
+  printf '\033[1;31m[harmony]\033[0m This DELETES the database and all build caches (deps, _build, node_modules).\n'
+  read -r -p "Type 'reset' to confirm: " reply
+  [ "$reply" = "reset" ] || die "Aborted."
+  log "Stopping stack and removing volumes…"
+  compose down -v
+  log "Clean slate. Next './dev/harmony.sh up' re-creates the DB and recompiles."
+}
+
+# cmd_migrate — run migrations for dev + test in the backend container.
+cmd_migrate() {
+  log "Migrating dev + test databases…"
+  compose exec backend mix ecto.migrate
+  compose exec backend env MIX_ENV=test mix ecto.migrate
+}
+
+# cmd_test [--fe] — backend mix test, or frontend npm test with --fe.
+cmd_test() {
+  if [ "${1:-}" = "--fe" ]; then
+    compose exec frontend npm test
+  else
+    compose exec backend mix test
   fi
 }
 
