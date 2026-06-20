@@ -28,7 +28,11 @@ services:
       MIX_ENV: dev
       HARMONY_DATABASE_HOST: postgres
       HARMONY_DATABASE_PORT: "5432"
-      HARMONY_PORT: "${HARMONY_PORT:-4010}"
+      # The backend ALWAYS binds 4010 inside the container; HARMONY_PORT only
+      # changes the host-published port via the `ports` mapping below. Keeping
+      # the in-container port fixed lets the frontend reach `backend:4010` over
+      # the compose network regardless of which host port you chose.
+      HARMONY_PORT: "4010"
       # SymphonyElixir.Vault reads CLOAK_KEY at boot (fail-fast in every env).
       # dev/harmony.sh exports a stable dev key before `up`; raw `compose up`
       # without it will fail to boot — run the stack via the CLI.

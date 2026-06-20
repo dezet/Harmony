@@ -44,7 +44,7 @@ dev_cloak_key() {
   if [ -n "${CLOAK_KEY:-}" ]; then printf '%s' "$CLOAK_KEY"; return; fi
   if [ -s "$CLOAK_KEY_FILE" ]; then cat "$CLOAK_KEY_FILE"; return; fi
   local key; key="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
-  printf '%s' "$key" > "$CLOAK_KEY_FILE"
+  (umask 077; printf '%s' "$key" > "$CLOAK_KEY_FILE")  # 0600 — it's a key
   printf '%s' "$key"
 }
 

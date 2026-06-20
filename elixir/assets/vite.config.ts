@@ -7,7 +7,7 @@ import path from "node:path";
 // (containerised) mode dev/harmony.sh sets HARMONY_BACKEND_HOST=backend so Vite
 // reaches the backend container by its compose service name.
 const backendHost = process.env.HARMONY_BACKEND_HOST ?? "localhost";
-const backendPort = process.env.HARMONY_PORT ?? "4000";
+const backendPort = process.env.HARMONY_PORT ?? "4010";
 const backendTarget = `http://${backendHost}:${backendPort}`;
 
 // The SPA is served by Phoenix from priv/static/app at the root path.
