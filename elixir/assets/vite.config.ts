@@ -3,6 +3,13 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
+// Backend target for the dev proxy. In host mode this is localhost; in full
+// (containerised) mode dev/harmony.sh sets HARMONY_BACKEND_HOST=backend so Vite
+// reaches the backend container by its compose service name.
+const backendHost = process.env.HARMONY_BACKEND_HOST ?? "localhost";
+const backendPort = process.env.HARMONY_PORT ?? "4010";
+const backendTarget = `http://${backendHost}:${backendPort}`;
+
 // The SPA is served by Phoenix from priv/static/app at the root path.
 // (Phase 3 cutover flipped `base` from "/app/" to "/".)
 export default defineConfig({
@@ -16,13 +23,14 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: true,
     proxy: {
       "/api": {
-        target: `http://localhost:${process.env.HARMONY_PORT ?? "4000"}`,
+        target: backendTarget,
         changeOrigin: true,
       },
       "/socket": {
-        target: `http://localhost:${process.env.HARMONY_PORT ?? "4000"}`,
+        target: backendTarget,
         ws: true,
         changeOrigin: true,
       },

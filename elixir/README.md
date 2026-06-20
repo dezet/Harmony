@@ -74,6 +74,47 @@ For the dedicated `harmony` system user proof-of-life runtime, use the controlle
 runbook in [`docs/harmony-operations.md`](../docs/harmony-operations.md). The service should be
 started manually and enabled only after stable proof-of-life runs.
 
+## Local development (`dev/harmony.sh`)
+
+The dev CLI runs the whole stack with one command. By default it runs **everything in
+containers with hot reload** (Postgres + backend + Vite), auto-detecting podman or docker:
+
+```bash
+./dev/harmony.sh up         # whole stack in containers; Ctrl+C stops it (-d to detach)
+./dev/harmony.sh down       # stop the stack (keeps the database)
+./dev/harmony.sh logs       # follow logs (optionally: logs backend | frontend | postgres)
+./dev/harmony.sh status     # list services
+./dev/harmony.sh rebuild    # rebuild image(s) after a Dockerfile/deps change (volumes kept)
+./dev/harmony.sh reset      # wipe the database + build caches (asks for confirmation)
+./dev/harmony.sh migrate    # run ecto migrations (dev + test) in the backend container
+./dev/harmony.sh test       # mix test in the backend container (--fe → npm test in frontend)
+./dev/harmony.sh iex        # IEx shell in the backend container
+./dev/harmony.sh psql       # psql into the postgres container
+./dev/harmony.sh exec <svc> <cmd…>   # run any command in a service
+./dev/harmony.sh help       # full command list
+```
+
+Once it's up, **open http://localhost:5173/** — in full mode the SPA is served by Vite (with
+HMR), and the backend on http://localhost:4010/ serves the JSON API (`/api/v1/`) and the socket
+(`/socket`). Editing a frontend file hot-reloads instantly; editing a backend `.ex` file
+recompiles and auto-restarts the app in a couple of seconds.
+
+No manual setup is needed: the CLI generates a memory-tracker dev workflow (no Linear/Codex) and
+provides a stable, gitignored `CLOAK_KEY` automatically. Set your own `CLOAK_KEY` in the
+environment to override it.
+
+Knobs: `ENGINE=docker` forces the engine; `HARMONY_PORT` changes the backend port (default 4010).
+
+Prefer running the backend and Vite **on your host** (no image builds — needs `mise` + Node):
+
+```bash
+./dev/harmony.sh up --host
+```
+
+This boots Postgres in a container and runs the backend + Vite on the host. In host mode the
+backend has no source watcher — restart it with Ctrl+C and `./dev/harmony.sh up --host` after
+backend changes.
+
 ## Configuration
 
 Pass a custom workflow file path to `./bin/symphony` when starting the service:

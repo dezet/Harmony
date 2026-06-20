@@ -16,5 +16,57 @@ services:
       timeout: 5s
       retries: 12
 
+  backend:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: dev/Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIX_ENV: dev
+      HARMONY_DATABASE_HOST: postgres
+      HARMONY_DATABASE_PORT: "5432"
+      # The backend ALWAYS binds 4010 inside the container; HARMONY_PORT only
+      # changes the host-published port via the `ports` mapping below. Keeping
+      # the in-container port fixed lets the frontend reach `backend:4010` over
+      # the compose network regardless of which host port you chose.
+      HARMONY_PORT: "4010"
+      # SymphonyElixir.Vault reads CLOAK_KEY at boot (fail-fast in every env).
+      # dev/harmony.sh exports a stable dev key before `up`; raw `compose up`
+      # without it will fail to boot — run the stack via the CLI.
+      CLOAK_KEY: ${CLOAK_KEY:-}
+      # Keep hex/mix state inside the deps named volume, NOT the source bind
+      # mount. Under rootless podman + keep-id the container runs as the host
+      # uid and cannot write $HOME=/root, so hex would otherwise leak into /app.
+      MIX_HOME: /app/deps/.mix
+      HEX_HOME: /app/deps/.hex
+    volumes:
+      - ./:/app
+      - harmony_deps:/app/deps
+      - harmony_build:/app/_build
+    ports:
+      - "${HARMONY_PORT:-4010}:4010"
+
+  frontend:
+    profiles: ["full"]
+    image: docker.io/library/node:22-alpine
+    working_dir: /app/assets
+    depends_on:
+      - backend
+    environment:
+      HARMONY_BACKEND_HOST: backend
+      HARMONY_PORT: "4010"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./assets:/app/assets
+      - harmony_node_modules:/app/assets/node_modules
+    ports:
+      - "5173:5173"
+
 volumes:
   harmony_postgres_data:
+  harmony_deps:
+  harmony_build:
+  harmony_node_modules:

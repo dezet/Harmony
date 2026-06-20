@@ -1,0 +1,7 @@
+# Podman-only overrides, layered by dev/harmony.sh when ENGINE=podman.
+# Keeps the base docker-compose.yml docker-compatible.
+services:
+  backend:
+    userns_mode: keep-id
+  frontend:
+    userns_mode: keep-id
