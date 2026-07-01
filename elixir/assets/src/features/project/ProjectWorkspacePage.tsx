@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectSummary } from "@/features/project/useProjectSummary";
 import { WorkTab } from "@/features/project/WorkTab";
 import { ConfigurationTab } from "@/features/project/ConfigurationTab";
@@ -20,9 +21,9 @@ function isValidTab(value: string | null): value is Tab {
 }
 
 const healthDotClass: Record<string, string> = {
-  healthy: "bg-green-500",
-  retrying: "bg-yellow-500",
-  blocked: "bg-red-500",
+  healthy: "bg-emerald-500",
+  retrying: "bg-amber-500",
+  blocked: "bg-destructive",
   idle: "bg-muted-foreground",
 };
 
@@ -91,7 +92,7 @@ export function ProjectWorkspacePage() {
     { id: "configuration", label: "Configuration" },
   ];
 
-  function handleTabClick(id: Tab) {
+  function handleTabChange(id: Tab) {
     if (id === "work") {
       setSearchParams({});
     } else {
@@ -116,31 +117,28 @@ export function ProjectWorkspacePage() {
         </p>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b pb-px">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.id}
-            variant={activeTab === tab.id ? "secondary" : "ghost"}
-            size="sm"
-            className="rounded-b-none"
-            onClick={() => handleTabClick(tab.id)}
-          >
-            {tab.label}
-          </Button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={(value) => handleTabChange(value as Tab)}>
+        <TabsList>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {/* Active tab content */}
-      {activeTab === "work" && <WorkTab summary={summary} slug={slug!} />}
-      {activeTab === "evidence" && <EvidenceTab slug={slug!} />}
-      {activeTab === "activity" && <ActivityTab slug={slug!} />}
-      {activeTab === "configuration" && (
-        <ConfigurationTab
-          projectId={summary.project.id}
-          slug={slug!}
-        />
-      )}
+        <TabsContent value="work">
+          <WorkTab summary={summary} slug={slug!} />
+        </TabsContent>
+        <TabsContent value="evidence">
+          <EvidenceTab slug={slug!} />
+        </TabsContent>
+        <TabsContent value="activity">
+          <ActivityTab slug={slug!} />
+        </TabsContent>
+        <TabsContent value="configuration">
+          <ConfigurationTab projectId={summary.project.id} slug={slug!} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

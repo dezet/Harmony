@@ -47,7 +47,7 @@ export function StreamItemRow({ item }: { item: RunStreamItem }) {
   const kindLabel = item.kind === "live_event" ? "live" : "event";
 
   return (
-    <li className="flex flex-col gap-0.5 py-1 text-sm border-b border-border last:border-b-0">
+    <li className="flex flex-col gap-0.5 py-1 text-sm">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-mono text-xs text-muted-foreground">{item.at}</span>
         <Badge variant={kindBadgeVariant}>{kindLabel}</Badge>

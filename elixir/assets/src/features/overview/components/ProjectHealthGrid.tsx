@@ -7,7 +7,7 @@ import type { ProjectCounts, ProjectRef } from "@/types/contract";
 const healthStyles: Record<ProjectHealth, string> = {
   healthy: "bg-emerald-500",
   retrying: "bg-amber-500",
-  blocked: "bg-red-500",
+  blocked: "bg-destructive",
   idle: "bg-muted-foreground/40",
 };
 

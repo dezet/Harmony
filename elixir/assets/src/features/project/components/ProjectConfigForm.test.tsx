@@ -88,7 +88,7 @@ describe("ProjectConfigForm (create mode)", () => {
     renderForm({ onSuccess });
 
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("button", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -155,8 +155,8 @@ describe("ProjectConfigForm (edit mode)", () => {
   });
 
   it("sends a typed forge_secret and the clear flag in the update body", async () => {
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () =>
         new Response(JSON.stringify({ project: sampleProject }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -207,7 +207,7 @@ describe("ProjectConfigForm (edit mode)", () => {
     renderForm({ project: sampleProject });
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.click(screen.getByRole("button", { name: /repository/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: /repository/i }));
     await screen.findByRole("option", { name: /acme\/api/i });
     await userEvent.click(screen.getByRole("option", { name: /acme\/api/i }));
 

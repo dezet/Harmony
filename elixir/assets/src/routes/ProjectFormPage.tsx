@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useProject } from "@/features/projects/useProjects";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectConfigForm } from "@/features/project/components/ProjectConfigForm";
@@ -36,10 +37,10 @@ export function ProjectFormPage() {
     return (
       <div className="max-w-xl space-y-4">
         <h1 className="text-2xl font-semibold">Edit project</h1>
-        <div role="alert" className="rounded-md border border-destructive/40 p-4">
-          <h2 className="font-medium">Could not load project</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{message}</p>
-        </div>
+        <Alert variant="destructive">
+          <AlertTitle>Could not load project</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
         <Button variant="outline" render={<Link to="/projects">Back to projects</Link>} />
       </div>
     );

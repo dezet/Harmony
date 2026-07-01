@@ -11,9 +11,23 @@ import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { JsonEditor } from "@/components/JsonEditor";
-import { Combobox, type ComboboxItem } from "@/components/Combobox";
+import { Combobox } from "@/components/Combobox";
 import { useForgeRepositories, useTrackerProjects } from "@/features/projects/usePickers";
 import type { Project } from "@/types/contract";
 
@@ -36,6 +50,10 @@ const SECRETS = [
     state: (p?: Project) => p?.tracker_secret ?? "unset",
   },
 ] as const;
+
+// Maps the stored forge value to its display label so the Select trigger shows
+// "GitHub" rather than the raw "github" value.
+const FORGE_LABELS: Record<string, string> = { github: "GitHub", gitlab: "GitLab" };
 
 function serverFieldToFormField(field: string): keyof ProjectFormValues {
   if (field === "config") return "config_json";
@@ -126,148 +144,164 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
   }
 
   return (
-    <form className="max-w-xl space-y-4" onSubmit={handleSubmit(onSubmit)}>
-      {FIELDS.map((f) => (
-        <div key={f.name} className="space-y-1">
-          <Label htmlFor={f.name}>{f.label}</Label>
-          <Input
-            id={f.name}
-            aria-describedby={errors[f.name] ? errorId(f.name) : undefined}
-            {...register(f.name)}
-          />
-          {errors[f.name] ? (
-            <p id={errorId(f.name)} className="text-sm text-destructive">
-              {errors[f.name]?.message}
-            </p>
-          ) : null}
-        </div>
-      ))}
-
-      {SECRETS.map((s) => (
-        <div key={s.name} className="space-y-1">
-          <Label htmlFor={s.name}>
-            {s.label} — currently: {s.state(project)}
-          </Label>
-          <Input
-            id={s.name}
-            type="password"
-            autoComplete="new-password"
-            placeholder={editing ? "Leave blank to keep current" : ""}
-            {...register(s.name)}
-          />
-          {editing ? (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input type="checkbox" {...register(s.clearName)} />
-              Clear (revert to environment default)
-            </label>
-          ) : null}
-        </div>
-      ))}
-
-      <div className="space-y-1">
-        <Label htmlFor="forge_type">Forge</Label>
-        <select id="forge_type" className="block w-full rounded-md border p-2" {...register("forge_type")}>
-          <option value="github">GitHub</option>
-          <option value="gitlab">GitLab</option>
-        </select>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="forge_base_url">Forge base URL (self-host, optional)</Label>
-        <Input id="forge_base_url" {...register("forge_base_url")} />
-      </div>
-
-      <div className="space-y-1">
-        <Label>Repository</Label>
-        <Combobox
-          label="Repository"
-          value={owner && repo ? { value: `${owner}/${repo}`, label: `${owner}/${repo}` } : null}
-          items={(repos.data?.repositories ?? []).map((r) => ({
-            value: `${r.owner}/${r.name}`,
-            label: `${r.owner}/${r.name}`,
-          }))}
-          loading={repos.isPending}
-          error={repos.isError ? "Could not list repositories — check the token and retry." : null}
-          onOpen={() =>
-            repos.mutate({ forge_type: forgeType, base_url: forgeBaseUrl || null, token: forgeToken || null })
-          }
-          onSelect={(item: ComboboxItem) => {
-            const r = (repos.data?.repositories ?? []).find((x) => `${x.owner}/${x.name}` === item.value);
-            if (r) {
-              setValue("github_owner", r.owner, { shouldDirty: true });
-              setValue("github_repo", r.name, { shouldDirty: true });
-              setValue("github_base_branch", r.default_branch, { shouldDirty: true });
-            }
-          }}
-        />
-        <Input aria-label="GitHub owner" {...register("github_owner")} readOnly />
-        <Input aria-label="GitHub repo" {...register("github_repo")} readOnly />
-        <Input aria-label="Base branch" {...register("github_base_branch")} readOnly />
-      </div>
-
-      <div className="space-y-1">
-        <Label>Linear project</Label>
-        <Combobox
-          label="Linear project"
-          value={linearSlug ? { value: linearSlug, label: linearSlug } : null}
-          items={(projects.data?.projects ?? []).map((p) => ({
-            value: p.slug,
-            label: `${p.name} (${p.team_key})`,
-          }))}
-          loading={projects.isPending}
-          error={projects.isError ? "Could not list projects — check the token and retry." : null}
-          onOpen={() => projects.mutate({ token: trackerToken || null, base_url: null })}
-          onSelect={(item: ComboboxItem) => {
-            const p = (projects.data?.projects ?? []).find((x) => x.slug === item.value);
-            if (p) {
-              setValue("linear_project_slug", p.slug, { shouldDirty: true });
-              setValue("linear_team_key", p.team_key, { shouldDirty: true });
-            }
-          }}
-        />
-        <Input aria-label="Linear project slug" {...register("linear_project_slug")} readOnly />
-        <input type="hidden" {...register("linear_team_key")} />
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="config_version">Config version</Label>
-        <Input
-          id="config_version"
-          type="number"
-          aria-describedby={errors.config_version ? errorId("config_version") : undefined}
-          {...register("config_version")}
-        />
-        {errors.config_version ? (
-          <p id={errorId("config_version")} className="text-sm text-destructive">
-            {errors.config_version.message}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="config_json">Config (JSON)</Label>
-        <Controller
-          name="config_json"
-          control={control}
-          render={({ field }) => (
-            <JsonEditor
-              value={field.value}
-              onChange={field.onChange}
-              ariaLabel="Config (JSON)"
-              ariaDescribedBy={errors.config_json ? errorId("config_json") : undefined}
+    <form className="max-w-xl" onSubmit={handleSubmit(onSubmit)}>
+      <FieldGroup>
+        {FIELDS.map((f) => (
+          <Field key={f.name} data-invalid={errors[f.name] ? true : undefined}>
+            <FieldLabel htmlFor={f.name}>{f.label}</FieldLabel>
+            <Input
+              id={f.name}
+              aria-invalid={errors[f.name] ? true : undefined}
+              aria-describedby={errors[f.name] ? errorId(f.name) : undefined}
+              {...register(f.name)}
             />
-          )}
-        />
-        {errors.config_json ? (
-          <p id={errorId("config_json")} className="text-sm text-destructive">
-            {errors.config_json.message}
-          </p>
-        ) : null}
-      </div>
+            <FieldError id={errorId(f.name)} errors={[errors[f.name]]} />
+          </Field>
+        ))}
 
-      <Button type="submit" disabled={isSubmitting || isSaving}>
-        Save
-      </Button>
+        {SECRETS.map((s) => (
+          <Field key={s.name}>
+            <FieldLabel htmlFor={s.name}>
+              {s.label} — currently: {s.state(project)}
+            </FieldLabel>
+            <Input
+              id={s.name}
+              type="password"
+              autoComplete="new-password"
+              placeholder={editing ? "Leave blank to keep current" : ""}
+              {...register(s.name)}
+            />
+            {editing ? (
+              <Field orientation="horizontal">
+                <Controller
+                  name={s.clearName}
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox
+                      id={s.clearName}
+                      checked={!!field.value}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                    />
+                  )}
+                />
+                <FieldLabel htmlFor={s.clearName} className="font-normal text-muted-foreground">
+                  Clear (revert to environment default)
+                </FieldLabel>
+              </Field>
+            ) : null}
+          </Field>
+        ))}
+
+        <Field>
+          <FieldLabel htmlFor="forge_type">Forge</FieldLabel>
+          <Controller
+            name="forge_type"
+            control={control}
+            render={({ field }) => (
+              <Select items={FORGE_LABELS} value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id="forge_type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="github">GitHub</SelectItem>
+                  <SelectItem value="gitlab">GitLab</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="forge_base_url">Forge base URL (self-host, optional)</FieldLabel>
+          <Input id="forge_base_url" {...register("forge_base_url")} />
+        </Field>
+
+        <Field>
+          <FieldLabel>Repository</FieldLabel>
+          <Combobox
+            label="Repository"
+            value={owner && repo ? { value: `${owner}/${repo}`, label: `${owner}/${repo}` } : null}
+            items={(repos.data?.repositories ?? []).map((r) => ({
+              value: `${r.owner}/${r.name}`,
+              label: `${r.owner}/${r.name}`,
+            }))}
+            loading={repos.isPending}
+            error={repos.isError ? "Could not list repositories — check the token and retry." : null}
+            onOpen={() =>
+              repos.mutate({ forge_type: forgeType, base_url: forgeBaseUrl || null, token: forgeToken || null })
+            }
+            onSelect={(item) => {
+              const r = (repos.data?.repositories ?? []).find((x) => `${x.owner}/${x.name}` === item.value);
+              if (r) {
+                setValue("github_owner", r.owner, { shouldDirty: true });
+                setValue("github_repo", r.name, { shouldDirty: true });
+                setValue("github_base_branch", r.default_branch, { shouldDirty: true });
+              }
+            }}
+          />
+          <FieldDescription>Selected owner, repository, and base branch:</FieldDescription>
+          <Input aria-label="GitHub owner" {...register("github_owner")} readOnly />
+          <Input aria-label="GitHub repo" {...register("github_repo")} readOnly />
+          <Input aria-label="Base branch" {...register("github_base_branch")} readOnly />
+        </Field>
+
+        <Field>
+          <FieldLabel>Linear project</FieldLabel>
+          <Combobox
+            label="Linear project"
+            value={linearSlug ? { value: linearSlug, label: linearSlug } : null}
+            items={(projects.data?.projects ?? []).map((p) => ({
+              value: p.slug,
+              label: `${p.name} (${p.team_key})`,
+            }))}
+            loading={projects.isPending}
+            error={projects.isError ? "Could not list projects — check the token and retry." : null}
+            onOpen={() => projects.mutate({ token: trackerToken || null, base_url: null })}
+            onSelect={(item) => {
+              const p = (projects.data?.projects ?? []).find((x) => x.slug === item.value);
+              if (p) {
+                setValue("linear_project_slug", p.slug, { shouldDirty: true });
+                setValue("linear_team_key", p.team_key, { shouldDirty: true });
+              }
+            }}
+          />
+          <Input aria-label="Linear project slug" {...register("linear_project_slug")} readOnly />
+          <input type="hidden" {...register("linear_team_key")} />
+        </Field>
+
+        <Field data-invalid={errors.config_version ? true : undefined}>
+          <FieldLabel htmlFor="config_version">Config version</FieldLabel>
+          <Input
+            id="config_version"
+            type="number"
+            aria-invalid={errors.config_version ? true : undefined}
+            aria-describedby={errors.config_version ? errorId("config_version") : undefined}
+            {...register("config_version")}
+          />
+          <FieldError id={errorId("config_version")} errors={[errors.config_version]} />
+        </Field>
+
+        <Field data-invalid={errors.config_json ? true : undefined}>
+          <FieldLabel htmlFor="config_json">Config (JSON)</FieldLabel>
+          <Controller
+            name="config_json"
+            control={control}
+            render={({ field }) => (
+              <JsonEditor
+                value={field.value}
+                onChange={field.onChange}
+                ariaLabel="Config (JSON)"
+                ariaDescribedBy={errors.config_json ? errorId("config_json") : undefined}
+              />
+            )}
+          />
+          <FieldError id={errorId("config_json")} errors={[errors.config_json]} />
+        </Field>
+
+        <Button type="submit" disabled={isSubmitting || isSaving}>
+          Save
+        </Button>
+      </FieldGroup>
     </form>
   );
 }

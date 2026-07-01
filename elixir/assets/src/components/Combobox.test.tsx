@@ -12,21 +12,22 @@ describe("Combobox", () => {
   it("calls onOpen the first time it is opened", async () => {
     const onOpen = vi.fn();
     render(<Combobox items={items} value={null} onSelect={() => {}} onOpen={onOpen} label="Repo" />);
-    await userEvent.click(screen.getByRole("button", { name: /repo/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: /repo/i }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("filters by query and selects an item", async () => {
     const onSelect = vi.fn();
     render(<Combobox items={items} value={null} onSelect={onSelect} onOpen={() => {}} label="Repo" />);
-    await userEvent.click(screen.getByRole("button", { name: /repo/i }));
-    await userEvent.type(screen.getByRole("textbox"), "bet");
+    const input = screen.getByRole("combobox", { name: /repo/i });
+    await userEvent.click(input);
+    await userEvent.type(input, "bet");
     expect(screen.queryByRole("option", { name: "Alpha" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: "Beta" }));
     expect(onSelect).toHaveBeenCalledWith({ value: "b", label: "Beta" });
   });
 
-  it("shows the current value as the button label", () => {
+  it("exposes the label as the combobox input's accessible name", () => {
     render(
       <Combobox
         items={items}
@@ -36,6 +37,6 @@ describe("Combobox", () => {
         label="Repo"
       />,
     );
-    expect(screen.getByRole("button", { name: /alpha/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /repo/i })).toBeInTheDocument();
   });
 });
