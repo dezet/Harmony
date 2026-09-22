@@ -6,14 +6,17 @@ defmodule SymphonyElixir.WorkSources.LinearIssueSource do
   @behaviour SymphonyElixir.WorkSource
 
   alias SymphonyElixir.{Tracker, WorkRun}
+  alias SymphonyElixir.Linear.Client
   alias SymphonyElixir.Intake.ExecutionGate
 
   @impl true
   @spec fetch_candidates(keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(opts \\ []) do
-    issue_fetcher = Keyword.get(opts, :issue_fetcher, &Tracker.fetch_candidate_issues/0)
+    scope_opts = linear_scope_options(opts)
+    issue_fetcher = Keyword.get(opts, :issue_fetcher) || default_issue_fetcher(scope_opts)
 
-    with {:ok, issues} <- issue_fetcher.() do
+    with {:ok, issues} <- invoke_issue_fetcher(issue_fetcher, scope_opts) do
+      issues = filter_to_project(issues, scope_opts)
       gate = Keyword.get(opts, :execution_gate_fun, &ExecutionGate.authorize_implementation/2)
       project_id = Keyword.get(opts, :project_id)
 
@@ -45,6 +48,43 @@ defmodule SymphonyElixir.WorkSources.LinearIssueSource do
         {:ok, runs} -> {:ok, Enum.reverse(runs)}
         error -> error
       end
+    end
+  end
+
+  defp linear_scope_options(opts) do
+    opts
+    |> Keyword.take([:project_slug, :linear_project_slug, :token, :request_fun, :timeout_ms])
+    |> then(fn scope_opts ->
+      case Keyword.get(scope_opts, :linear_project_slug) || Keyword.get(scope_opts, :project_slug) do
+        project_slug when is_binary(project_slug) -> Keyword.put_new(scope_opts, :linear_project_slug, project_slug)
+        _ -> scope_opts
+      end
+    end)
+  end
+
+  defp default_issue_fetcher(scope_opts) do
+    if is_binary(Keyword.get(scope_opts, :linear_project_slug)) do
+      fn opts -> Client.fetch_candidate_issues(opts) end
+    else
+      &Tracker.fetch_candidate_issues/0
+    end
+  end
+
+  defp invoke_issue_fetcher(issue_fetcher, scope_opts) when is_function(issue_fetcher, 1),
+    do: issue_fetcher.(scope_opts)
+
+  defp invoke_issue_fetcher(issue_fetcher, _scope_opts) when is_function(issue_fetcher, 0),
+    do: issue_fetcher.()
+
+  defp invoke_issue_fetcher(_issue_fetcher, _scope_opts), do: {:error, :invalid_issue_fetcher}
+
+  defp filter_to_project(issues, scope_opts) when is_list(issues) do
+    case Keyword.get(scope_opts, :linear_project_slug) do
+      project_slug when is_binary(project_slug) ->
+        Enum.filter(issues, &match?(%{project_slug: ^project_slug}, &1))
+
+      _ ->
+        issues
     end
   end
 end
