@@ -6,6 +6,7 @@ defmodule SymphonyElixir.IntakeConfigTest do
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Intake.Connections
   alias SymphonyElixir.Repo
+  alias SymphonyElixir.Storage.IntegrationConnection
 
   setup do
     :ok = Sandbox.checkout(Repo)
@@ -109,14 +110,14 @@ defmodule SymphonyElixir.IntakeConfigTest do
     assert Connections.present(cleared).secret_status == "unset"
   end
 
-  test "string-key connection input ignores unknown fields and redacts nested secrets" do
+  test "string-key connection input ignores unknown fields and normalizes settings" do
     assert {:ok, connection} =
              Connections.create(%{
                "kind" => "smtp",
                "name" => "SMTP with nested credentials",
                "settings" => %{
                  host: "smtp.example.test",
-                 accounts: [%{token: "nested-token", password: "nested-password", label: "primary"}]
+                 accounts: [%{label: "primary"}]
                },
                "secret" => "smtp-password",
                "secret_version" => 2,
@@ -138,8 +139,95 @@ defmodule SymphonyElixir.IntakeConfigTest do
     assert presented.settings == %{"host" => "smtp.example.test", "accounts" => [%{"label" => "primary"}]}
     assert presented.secret_status == "set"
     refute serialized =~ "smtp-password"
-    refute serialized =~ "nested-token"
-    refute serialized =~ "nested-password"
+  end
+
+  test "Jira credential-like settings are rejected before JSONB persistence" do
+    site_url = "https://jira-credentials-#{System.unique_integer([:positive])}.atlassian.net"
+
+    result =
+      Connections.create(%{
+        kind: "jira_cloud",
+        name: "Jira with misplaced credentials",
+        settings: %{
+          site_url: site_url,
+          auth_mode: "classic",
+          account_email: "ops@example.test",
+          api_token: "canary-api-token",
+          access_token: "canary-access-token",
+          credentials: [%{refreshToken: "canary-refresh-token", client_secret: "canary-client-secret"}]
+        }
+      })
+
+    assert {:error, changeset} = result
+    assert Keyword.has_key?(changeset.errors, :settings)
+    refute inspect(changeset) =~ "canary-"
+
+    %{rows: [[connection_count]]} =
+      Repo.query!("SELECT count(*) FROM integration_connections WHERE settings->>'site_url' = $1", [site_url])
+
+    assert connection_count == 0
+
+    assert {:ok, safe_connection} =
+             Connections.create(%{
+               kind: "jira_cloud",
+               name: "Jira with encrypted credential field",
+               settings: %{site_url: site_url, auth_mode: "classic", account_email: "ops@example.test"},
+               secret: "encrypted-field-canary"
+             })
+
+    assert {:error, update_changeset} =
+             Connections.update(safe_connection, %{settings: %{api_token: "canary-update-token"}})
+
+    assert Keyword.has_key?(update_changeset.errors, :settings)
+    refute inspect(update_changeset) =~ "canary-update-token"
+
+    stored_safe_connection = Repo.get!(IntegrationConnection, safe_connection.id)
+    assert stored_safe_connection.settings["site_url"] == site_url
+    refute Map.has_key?(stored_safe_connection.settings, "api_token")
+  end
+
+  test "presenter masks legacy token and credential variants and updates remove them from storage" do
+    site_url = "https://jira-legacy-secrets-#{System.unique_integer([:positive])}.atlassian.net"
+
+    secret_values = [
+      "legacy-api-token",
+      "legacy-access-token",
+      "legacy-client-secret",
+      "legacy-authorization",
+      "legacy-refresh-token"
+    ]
+
+    assert {:ok, legacy_connection} =
+             IntegrationConnection.changeset(%IntegrationConnection{}, %{
+               kind: "jira_cloud",
+               name: "Legacy Jira",
+               settings: %{
+                 site_url: site_url,
+                 api_token: Enum.at(secret_values, 0),
+                 access_token: Enum.at(secret_values, 1),
+                 client_secret: Enum.at(secret_values, 2),
+                 headers: [
+                   %{authorization: Enum.at(secret_values, 3), refreshToken: Enum.at(secret_values, 4)}
+                 ]
+               }
+             })
+             |> Repo.insert()
+
+    presented = legacy_connection |> Connections.present() |> Jason.encode!()
+    Enum.each(secret_values, fn secret -> refute presented =~ secret end)
+
+    assert {:ok, updated} = Connections.update(legacy_connection, %{name: "Repaired Jira"})
+    assert updated.name == "Repaired Jira"
+
+    stored = Repo.get!(IntegrationConnection, legacy_connection.id)
+    refute Map.has_key?(stored.settings, "api_token")
+    refute Map.has_key?(stored.settings, "access_token")
+    refute Map.has_key?(stored.settings, "client_secret")
+    refute Map.has_key?(hd(stored.settings["headers"]), "authorization")
+    refute Map.has_key?(hd(stored.settings["headers"]), "refreshToken")
+
+    stored_projection = Jason.encode!(Connections.present(stored))
+    Enum.each(secret_values, fn secret -> refute stored_projection =~ secret end)
   end
 
   test "SMS connections require a sender and partial updates preserve settings" do

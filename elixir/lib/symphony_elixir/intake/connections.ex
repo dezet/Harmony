@@ -28,11 +28,8 @@ defmodule SymphonyElixir.Intake.Connections do
 
   @spec changeset(IntegrationConnection.t(), attrs()) :: Ecto.Changeset.t()
   def changeset(%IntegrationConnection{} = connection, attrs) when is_map(attrs) do
-    attrs = normalize_attrs(attrs)
-
-    connection
-    |> IntegrationConnection.changeset(attrs)
-    |> validate_connection_settings()
+    {attrs, contains_secret_settings?} = normalize_attrs(attrs)
+    changeset_for_attrs(connection, attrs, contains_secret_settings?)
   end
 
   @spec create(attrs()) :: {:ok, IntegrationConnection.t()} | {:error, Ecto.Changeset.t()}
@@ -46,10 +43,11 @@ defmodule SymphonyElixir.Intake.Connections do
           {:ok, IntegrationConnection.t()} | {:error, Ecto.Changeset.t()}
   def update(%IntegrationConnection{} = connection, attrs) when is_map(attrs) do
     clear_secret? = Map.get(attrs, :clear_secret, Map.get(attrs, "clear_secret", false)) == true
-    attrs = attrs |> normalize_attrs() |> merge_settings(connection)
+    {attrs, contains_secret_settings?} = normalize_attrs(attrs)
+    attrs = merge_settings(attrs, connection)
 
     connection
-    |> changeset(attrs)
+    |> changeset_for_attrs(attrs, contains_secret_settings?)
     |> force_secret_clear(clear_secret?)
     |> reject_used_site_url_change(connection)
     |> Repo.update()
@@ -82,21 +80,24 @@ defmodule SymphonyElixir.Intake.Connections do
 
   defp normalize_attrs(attrs) do
     attrs = atomize_known_keys(attrs)
-    attrs = normalize_settings(attrs)
+    {attrs, contains_secret_settings?} = normalize_settings(attrs)
 
-    cond do
-      Map.get(attrs, :clear_secret, false) == true ->
-        attrs
-        |> Map.delete(:clear_secret)
-        |> Map.put(:secret, nil)
+    attrs =
+      cond do
+        Map.get(attrs, :clear_secret, false) == true ->
+          attrs
+          |> Map.delete(:clear_secret)
+          |> Map.put(:secret, nil)
 
-      blank_secret?(Map.get(attrs, :secret, :missing)) ->
-        Map.delete(attrs, :secret)
-        |> Map.delete(:clear_secret)
+        blank_secret?(Map.get(attrs, :secret, :missing)) ->
+          Map.delete(attrs, :secret)
+          |> Map.delete(:clear_secret)
 
-      true ->
-        Map.delete(attrs, :clear_secret)
-    end
+        true ->
+          Map.delete(attrs, :clear_secret)
+      end
+
+    {attrs, contains_secret_settings?}
   end
 
   defp atomize_known_keys(attrs) do
@@ -131,9 +132,14 @@ defmodule SymphonyElixir.Intake.Connections do
   defp force_secret_clear(changeset, false), do: changeset
 
   defp merge_settings(attrs, %IntegrationConnection{settings: current_settings}) do
+    {safe_current_settings, current_has_secrets?} = sanitize_settings(current_settings || %{})
+
     case Map.get(attrs, :settings) do
-      settings when is_map(settings) and is_map(current_settings) ->
-        Map.put(attrs, :settings, Map.merge(stringify_settings(current_settings), settings))
+      settings when is_map(settings) ->
+        Map.put(attrs, :settings, Map.merge(safe_current_settings, settings))
+
+      _ when current_has_secrets? ->
+        Map.put(attrs, :settings, safe_current_settings)
 
       _ ->
         attrs
@@ -142,19 +148,49 @@ defmodule SymphonyElixir.Intake.Connections do
 
   defp normalize_settings(attrs) do
     case Map.get(attrs, :settings) do
-      settings when is_map(settings) -> Map.put(attrs, :settings, stringify_settings(settings))
-      _ -> attrs
+      settings when is_map(settings) ->
+        {safe_settings, contains_secret_settings?} = sanitize_settings(settings)
+        {Map.put(attrs, :settings, safe_settings), contains_secret_settings?}
+
+      _ ->
+        {attrs, false}
     end
   end
 
-  defp stringify_settings(settings) when is_map(settings) do
-    Enum.reduce(settings, %{}, fn {key, value}, acc ->
-      Map.put(acc, to_string(key), stringify_settings(value))
+  defp sanitize_settings(settings) when is_map(settings) do
+    Enum.reduce(settings, {%{}, false}, fn {key, value}, {safe_settings, found_secret?} ->
+      key = to_string(key)
+
+      if secret_setting_key?(key) do
+        {safe_settings, true}
+      else
+        {safe_value, nested_secret?} = sanitize_settings(value)
+        {Map.put(safe_settings, key, safe_value), found_secret? or nested_secret?}
+      end
     end)
   end
 
-  defp stringify_settings(values) when is_list(values), do: Enum.map(values, &stringify_settings/1)
-  defp stringify_settings(value), do: value
+  defp sanitize_settings(values) when is_list(values) do
+    Enum.map_reduce(values, false, fn value, found_secret? ->
+      {safe_value, nested_secret?} = sanitize_settings(value)
+      {safe_value, found_secret? or nested_secret?}
+    end)
+  end
+
+  defp sanitize_settings(value), do: {value, false}
+
+  defp changeset_for_attrs(connection, attrs, contains_secret_settings?) do
+    changeset =
+      connection
+      |> IntegrationConnection.changeset(attrs)
+      |> validate_connection_settings()
+
+    if contains_secret_settings? do
+      add_error(changeset, :settings, "must not contain credentials; provide them using the encrypted secret field")
+    else
+      changeset
+    end
+  end
 
   defp validate_connection_settings(changeset) do
     changeset
@@ -231,10 +267,11 @@ defmodule SymphonyElixir.Intake.Connections do
   defp redact_settings(value), do: value
 
   defp secret_setting_key?(key) do
-    key
-    |> to_string()
-    |> String.downcase()
-    |> then(&(&1 in ["secret", "token", "password", "api_key", "apikey"]))
+    normalized_key = key |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9]/, "")
+
+    Enum.any?(["secret", "token", "password", "credential", "apikey", "authorization", "privatekey"], fn marker ->
+      String.contains?(normalized_key, marker)
+    end)
   end
 
   defp blank?(nil), do: true
