@@ -7,12 +7,19 @@ defmodule SymphonyElixir.IntakeDispatcherTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.Intake.{Dispatcher, Outbox}
+  alias SymphonyElixir.Intake
+  alias SymphonyElixir.Intake.Scheduler
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{IntegrationConnection, IntegrationDelivery}
 
   setup do
     :ok = Sandbox.checkout(Repo)
     :ok
+  end
+
+  test "runtime intake scheduler is absent while the default intake switch is disabled" do
+    refute Intake.enabled?()
+    refute Process.whereis(Scheduler)
   end
 
   test "dispatcher commits the lease before calling the injected I/O adapter" do

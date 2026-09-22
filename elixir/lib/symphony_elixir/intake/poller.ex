@@ -12,7 +12,10 @@ defmodule SymphonyElixir.Intake.Poller do
 
   @max_issues 10_000
   @max_duration_ms 10 * 60 * 1_000
-  @scan_lease_seconds 10 * 60
+  @scan_lease_seconds 120
+  @scan_heartbeat_ms 30 * 1_000
+  @scan_claim_lock_id 1_212_978_509
+  @max_active_scans 2
 
   @spec run(binary(), keyword()) :: {:ok, AutomationScan.t()} | {:error, term()}
   def run(rule_id, opts \\ []) when is_binary(rule_id) do
@@ -34,15 +37,47 @@ defmodule SymphonyElixir.Intake.Poller do
     end
   end
 
+  @spec heartbeat(binary(), binary(), binary(), keyword()) :: :ok | {:error, term()}
+  def heartbeat(rule_id, scan_id, lease_token, opts \\ [])
+      when is_binary(rule_id) and is_binary(scan_id) and is_binary(lease_token) do
+    now = current_time(opts)
+
+    result =
+      Repo.transaction(fn ->
+        scan = Repo.one(from(scan in AutomationScan, where: scan.id == ^scan_id, lock: "FOR UPDATE"))
+        rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE"))
+        context = %{scan: scan, lease_token: lease_token}
+
+        if still_owner?(scan, rule, context, now) do
+          rule
+          |> AutomationRule.changeset(%{
+            lease_until: DateTime.add(now, @scan_lease_seconds, :second),
+            lock_version: rule.lock_version + 1
+          })
+          |> Repo.update!()
+
+          :ok
+        else
+          Repo.rollback(:stale_generation)
+        end
+      end)
+
+    case result do
+      {:ok, :ok} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp start_scan(rule_id, opts) do
     now = current_time(opts)
     uuid_fun = Keyword.get(opts, :uuid_fun, &Ecto.UUID.generate/0)
 
     case Repo.transaction(fn ->
-           rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE"))
+           rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE SKIP LOCKED"))
 
            with %AutomationRule{} <- rule,
-                :ok <- validate_start(rule, now) do
+                :ok <- validate_start(rule, now),
+                :ok <- claim_scan_capacity(now) do
              mode = if is_nil(rule.baseline_generation), do: "baseline", else: "poll"
              generation = uuid_fun.()
              lease_token = uuid_fun.()
@@ -74,13 +109,36 @@ defmodule SymphonyElixir.Intake.Poller do
 
              %{scan: scan, rule: rule, lease_token: lease_token}
            else
-             nil -> Repo.rollback(:not_found)
-             {:error, reason} -> Repo.rollback(reason)
+             nil ->
+               reason =
+                 if Repo.exists?(from(rule in AutomationRule, where: rule.id == ^rule_id)),
+                   do: :scan_in_progress,
+                   else: :not_found
+
+               Repo.rollback(reason)
+
+             {:error, reason} ->
+               Repo.rollback(reason)
            end
          end) do
       {:ok, context} -> {:ok, context}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp claim_scan_capacity(now) do
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [@scan_claim_lock_id])
+
+    active_scans =
+      Repo.aggregate(
+        from(rule in AutomationRule,
+          where: not is_nil(rule.lease_token) and not is_nil(rule.lease_until) and rule.lease_until > ^now
+        ),
+        :count,
+        :id
+      )
+
+    if active_scans < @max_active_scans, do: :ok, else: {:error, :scan_capacity}
   end
 
   defp validate_start(%AutomationRule{lease_token: token, lease_until: until}, now)
@@ -102,6 +160,8 @@ defmodule SymphonyElixir.Intake.Poller do
          {:ok, client_opts} <- client_opts(connection, opts) do
       started_ms = monotonic_time(opts)
       result_count = :counters.new(1, [:atomics])
+      last_heartbeat_ms = :atomics.new(1, [])
+      :atomics.put(last_heartbeat_ms, 1, started_ms)
 
       page_fun = fn issues ->
         count = length(issues)
@@ -115,18 +175,20 @@ defmodule SymphonyElixir.Intake.Poller do
             {:error, %{kind: :scan_limit_exceeded}}
 
           true ->
-            matcher_opts =
-              opts
-              |> Keyword.put(:lease_token, context.lease_token)
-              |> Keyword.put(:analysis_profile, profile)
+            with :ok <- heartbeat_if_due(context, last_heartbeat_ms, opts) do
+              matcher_opts =
+                opts
+                |> Keyword.put(:lease_token, context.lease_token)
+                |> Keyword.put(:analysis_profile, profile)
 
-            case Matcher.persist_page(context.scan, issues, matcher_opts) do
-              {:ok, _counts} ->
-                :counters.add(result_count, 1, count)
-                :ok
+              case Matcher.persist_page(context.scan, issues, matcher_opts) do
+                {:ok, _counts} ->
+                  :counters.add(result_count, 1, count)
+                  :ok
 
-              {:error, reason} ->
-                {:error, reason}
+                {:error, reason} ->
+                  {:error, reason}
+              end
             end
         end
       end
@@ -273,6 +335,24 @@ defmodule SymphonyElixir.Intake.Poller do
   end
 
   defp still_owner?(_scan, _rule, _context, _now), do: false
+
+  defp heartbeat_if_due(context, last_heartbeat_ms, opts) do
+    now_ms = monotonic_time(opts)
+    last_ms = :atomics.get(last_heartbeat_ms, 1)
+
+    if now_ms - last_ms >= @scan_heartbeat_ms do
+      case heartbeat(context.rule.id, context.scan.id, context.lease_token, opts) do
+        :ok ->
+          :atomics.put(last_heartbeat_ms, 1, now_ms)
+          :ok
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      :ok
+    end
+  end
 
   defp cancel_scan!(nil, _now), do: :ok
 

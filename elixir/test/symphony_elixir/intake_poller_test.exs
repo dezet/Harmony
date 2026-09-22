@@ -144,6 +144,20 @@ defmodule SymphonyElixir.IntakePollerTest do
     assert Repo.one!(JiraObservation).generation == successful.generation
   end
 
+  test "a failed poll keeps the previous last success timestamp", %{rule: rule} do
+    assert {:ok, activating} = Rules.activate(rule)
+    assert {:ok, baseline} = Poller.run(activating.id, poll_opts([page([])]))
+    successful_at = Repo.get!(AutomationRule, rule.id).last_success_at
+
+    assert {:error, %{kind: :http_status, status: 503}} =
+             Poller.run(rule.id, poll_opts([{:http, 503, %{}}]))
+
+    failed_rule = Repo.get!(AutomationRule, rule.id)
+    assert failed_rule.last_success_at == successful_at
+    assert failed_rule.last_success_at == baseline.finished_at
+    assert failed_rule.last_error_code == "http_status"
+  end
+
   test "key changes, priority transitions, repeated pages, and overlapping sources still make one case", %{rule: rule} do
     assert {:ok, rule} = Rules.patch(rule, %{priority_ids: ["1", "2"]})
     assert {:ok, activating} = Rules.activate(rule)
@@ -323,6 +337,127 @@ defmodule SymphonyElixir.IntakePollerTest do
     assert scan.status == "succeeded"
   end
 
+  @tag :lease_contract_test
+  test "at most two scan leases are active across rules", %{rule: rule} do
+    assert {:ok, first_rule} = Rules.activate(rule)
+    assert {:ok, second_created} = create_rule!(rule, %{source_id: "#{System.unique_integer([:positive])}"})
+    assert {:ok, third_created} = create_rule!(rule, %{source_id: "#{System.unique_integer([:positive])}"})
+    assert {:ok, second_rule} = Rules.activate(second_created)
+    assert {:ok, third_rule} = Rules.activate(third_created)
+    parent = self()
+
+    request_fun = fn rule_id, wait? ->
+      fn request ->
+        case Keyword.fetch!(request, :method) do
+          :get ->
+            {:ok, %{status: 200, body: %{"filter" => %{"id" => "77"}}}}
+
+          :post when wait? ->
+            send(parent, {:scan_claimed, rule_id, self()})
+
+            receive do
+              {:finish_claim, ^rule_id} -> {:ok, %{status: 200, body: page([])}}
+            end
+
+          :post ->
+            {:ok, %{status: 200, body: page([])}}
+        end
+      end
+    end
+
+    first = Task.async(fn -> Poller.run(first_rule.id, poll_opts([], request_fun: request_fun.(first_rule.id, true))) end)
+    :ok = Sandbox.allow(Repo, self(), first.pid)
+    second = Task.async(fn -> Poller.run(second_rule.id, poll_opts([], request_fun: request_fun.(second_rule.id, true))) end)
+    :ok = Sandbox.allow(Repo, self(), second.pid)
+
+    assert_receive {:scan_claimed, first_id, first_worker}
+    assert_receive {:scan_claimed, second_id, second_worker}
+    assert MapSet.new([first_id, second_id]) == MapSet.new([first_rule.id, second_rule.id])
+
+    assert {:error, :scan_capacity} = Poller.run(third_rule.id, poll_opts([], request_fun: request_fun.(third_rule.id, false)))
+
+    send(first_worker, {:finish_claim, first_rule.id})
+    send(second_worker, {:finish_claim, second_rule.id})
+    assert {:ok, first_scan} = Task.await(first, 1_000)
+    assert {:ok, second_scan} = Task.await(second, 1_000)
+    assert first_scan.status == "succeeded"
+    assert second_scan.status == "succeeded"
+  end
+
+  @tag :lease_contract_test
+  test "a locked rule is skipped instead of waiting behind another claim" do
+    database = start_database_connection!()
+    ids = raw_activating_rule!(database)
+
+    try do
+      Postgrex.query!(database, "BEGIN", [])
+      Postgrex.query!(database, "SELECT id FROM automation_rules WHERE id = $1 FOR UPDATE", [Ecto.UUID.dump!(ids.rule)])
+
+      poll =
+        Task.async(fn ->
+          Poller.run(
+            ids.rule,
+            poll_opts([], request_fun: fn _request -> flunk("locked claim must not start a Jira request") end)
+          )
+        end)
+
+      :ok = Sandbox.allow(Repo, self(), poll.pid)
+      result = Task.yield(poll, 250)
+      Postgrex.query!(database, "ROLLBACK", [])
+
+      result = result || Task.await(poll, 1_000)
+      assert {:ok, {:error, :scan_in_progress}} = result
+    after
+      cleanup_raw_rule!(database, ids.rule, ids.connection, ids.project)
+      GenServer.stop(database)
+    end
+  end
+
+  @tag :lease_contract_test
+  test "scan lease lasts 120 seconds, renews after 30 seconds, and rejects the old owner", %{rule: rule} do
+    base = ~U[2026-09-23 10:00:00Z]
+    assert {:ok, activating} = Rules.activate(rule)
+    {:ok, clock} = Agent.start_link(fn -> %{now: base, monotonic_ms: 0, page: 0} end)
+    old_lease_token = Ecto.UUID.generate()
+    generation = Ecto.UUID.generate()
+    uuids = Agent.start_link(fn -> [generation, old_lease_token] end) |> elem(1)
+
+    request_fun = fn request ->
+      case Keyword.fetch!(request, :method) do
+        :get ->
+          claimed = Repo.get!(AutomationRule, activating.id)
+          assert DateTime.diff(claimed.lease_until, base, :second) == 120
+          {:ok, %{status: 200, body: %{"filter" => %{"id" => "77"}}}}
+
+        :post ->
+          page_number = Agent.get_and_update(clock, fn state -> {state.page + 1, %{state | page: state.page + 1}} end)
+
+          if page_number == 1 do
+            Agent.update(clock, fn state -> %{state | now: DateTime.add(base, 30, :second), monotonic_ms: 30_000} end)
+            {:ok, %{status: 200, body: %{"issues" => [], "isLast" => false, "nextPageToken" => "page-2"}}}
+          else
+            renewed = Repo.get!(AutomationRule, activating.id)
+            assert renewed.lease_until == DateTime.add(base, 150, :second) |> usec()
+            {:ok, %{status: 200, body: page([])}}
+          end
+      end
+    end
+
+    assert {:ok, scan} =
+             Poller.run(
+               activating.id,
+               poll_opts([],
+                 request_fun: request_fun,
+                 uuid_fun: fn -> Agent.get_and_update(uuids, fn [next | rest] -> {next, rest} end) end,
+                 clock: fn -> Agent.get(clock, & &1.now) end,
+                 monotonic_clock: fn -> Agent.get(clock, & &1.monotonic_ms) end
+               )
+             )
+
+    assert {:error, :stale_generation} =
+             Poller.heartbeat(activating.id, scan.id, old_lease_token, clock: fn -> DateTime.add(base, 31, :second) |> usec() end)
+  end
+
   defp poll_opts(pages, opts \\ []) do
     [
       request_fun: request_fun(pages, Keyword.get(opts, :after_post, fn _index -> :ok end)),
@@ -339,6 +474,50 @@ defmodule SymphonyElixir.IntakePollerTest do
         :error -> options
       end
     end)
+  end
+
+  defp usec(datetime), do: %{datetime | microsecond: {elem(datetime.microsecond, 0), 6}}
+
+  defp start_database_connection! do
+    opts = Repo.config() |> Keyword.take([:hostname, :port, :username, :password, :database])
+    {:ok, connection} = Postgrex.start_link(opts)
+    connection
+  end
+
+  defp raw_activating_rule!(database) do
+    ids = %{project: Ecto.UUID.generate(), connection: Ecto.UUID.generate(), rule: Ecto.UUID.generate()}
+    suffix = System.unique_integer([:positive])
+
+    Postgrex.query!(
+      database,
+      "INSERT INTO projects (id, slug, forge_owner, forge_repo, forge_base_branch, config_version, config, inserted_at, updated_at) VALUES ($1, $2, 'example', 'harmony', 'main', 1, '{}', now(), now())",
+      [Ecto.UUID.dump!(ids.project), "poller-lock-#{suffix}"]
+    )
+
+    Postgrex.query!(
+      database,
+      "INSERT INTO integration_connections (id, kind, name, settings, enabled, health, inserted_at, updated_at) VALUES ($1, 'jira_cloud', $2, $3::jsonb, TRUE, 'ok', now(), now())",
+      [
+        Ecto.UUID.dump!(ids.connection),
+        "Poller lock #{suffix}",
+        Jason.encode!(%{"site_url" => "https://poller-lock-#{suffix}.atlassian.net", "auth_mode" => "classic"})
+      ]
+    )
+
+    Postgrex.query!(
+      database,
+      "INSERT INTO automation_rules (id, project_id, jira_connection_id, name, source_type, source_id, priority_ids, interval_seconds, initial_policy, linear_team_id, linear_project_id, linear_todo_state_id, linear_hold_label_id, email_recipients, sms_recipients, enabled, config_version, activation_status, lock_version, inserted_at, updated_at) VALUES ($1, $2, $3, 'Locked claim', 'board', '42', ARRAY['1'], 300, 'new_matches_only', 'team-id', 'project-id', 'todo-id', 'hold-id', ARRAY[]::text[], ARRAY[]::text[], FALSE, 1, 'activating', 1, now(), now())",
+      [Ecto.UUID.dump!(ids.rule), Ecto.UUID.dump!(ids.project), Ecto.UUID.dump!(ids.connection)]
+    )
+
+    ids
+  end
+
+  defp cleanup_raw_rule!(database, rule_id, connection_id, project_id) do
+    Postgrex.query!(database, "DELETE FROM automation_scans WHERE rule_id = $1", [Ecto.UUID.dump!(rule_id)])
+    Postgrex.query!(database, "DELETE FROM automation_rules WHERE id = $1", [Ecto.UUID.dump!(rule_id)])
+    Postgrex.query!(database, "DELETE FROM integration_connections WHERE id = $1", [Ecto.UUID.dump!(connection_id)])
+    Postgrex.query!(database, "DELETE FROM projects WHERE id = $1", [Ecto.UUID.dump!(project_id)])
   end
 
   defp request_fun(search_pages, after_post) do
