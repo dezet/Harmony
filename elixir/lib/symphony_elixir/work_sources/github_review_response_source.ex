@@ -4,8 +4,12 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
   review threads whose newest comment is from a reviewer (capability a).
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
+  alias SymphonyElixir.Forge
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.Github
+  alias SymphonyElixir.Review.Identity
+  alias SymphonyElixir.Storage
+  alias SymphonyElixir.WorkRun
 
   @max_attempts 3
 
@@ -20,7 +24,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
 
     identity =
       Keyword.get(opts, :harmony_identity) ||
-        SymphonyElixir.Review.Identity.resolve(project, creds, current_user: fn c -> SymphonyElixir.Forge.adapter(project).current_user(c) end)
+        Identity.resolve(project, creds, current_user: fn c -> Forge.adapter(project).current_user(c) end)
 
     list_pull_requests =
       Keyword.get(opts, :list_pull_requests, fn o, r, _ ->
@@ -29,7 +33,7 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
 
     list_review_threads =
       Keyword.get(opts, :list_review_threads, fn o, r, number ->
-        SymphonyElixir.Forge.adapter(project).list_review_threads(
+        Forge.adapter(project).list_review_threads(
           creds,
           %{owner: o, repo: r, base_url: creds.base_url},
           number
@@ -39,53 +43,81 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
     dedupe_status = Keyword.get(opts, :dedupe_status, &Storage.dedupe_status/2)
     attempt_count = Keyword.get(opts, :attempt_count, &Storage.review_attempt_count/2)
 
+    dependencies = %{
+      owner: owner,
+      repo: repo,
+      list_review_threads: list_review_threads,
+      dedupe_status: dedupe_status,
+      attempt_count: attempt_count,
+      identity: identity
+    }
+
     with {:ok, prs} <- list_pull_requests.(owner, repo, []) do
-      prs
-      |> Enum.reduce_while({:ok, []}, fn pr, {:ok, runs} ->
-        case candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_status, attempt_count, identity) do
-          {:ok, new} -> {:cont, {:ok, runs ++ new}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+      reduce_pull_requests(prs, project, dependencies)
     end
   end
 
-  defp candidates_for_pr(project, owner, repo, pr, list_review_threads, dedupe_status, attempt_count, identity) do
+  defp reduce_pull_requests(prs, project, dependencies) do
+    Enum.reduce_while(prs, {:ok, []}, fn pr, {:ok, runs} ->
+      append_pr_candidates(pr, runs, project, dependencies)
+    end)
+  end
+
+  defp append_pr_candidates(pr, runs, project, dependencies) do
+    case candidates_for_pr(project, pr, dependencies) do
+      {:ok, new_runs} -> {:cont, {:ok, runs ++ new_runs}}
+      {:error, reason} -> {:halt, {:error, reason}}
+    end
+  end
+
+  defp candidates_for_pr(project, pr, dependencies) do
     link = Github.LinkResolver.resolve(pr, team_keys: List.wrap(pv(project, :linear_team_key)))
 
-    if is_nil(link) do
-      {:ok, []}
-    else
-      case list_review_threads.(owner, repo, pr.number) do
-        {:ok, threads} ->
-          {:ok, build_runs(project, owner, repo, pr, link, threads, dedupe_status, attempt_count, identity)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    case link do
+      nil -> {:ok, []}
+      _link -> review_thread_candidates(project, pr, link, dependencies)
     end
   end
 
-  defp build_runs(project, owner, repo, pr, link, threads, dedupe_status, attempt_count, identity) do
-    project_id = pv(project, :id)
+  defp review_thread_candidates(project, pr, link, dependencies) do
+    case dependencies.list_review_threads.(dependencies.owner, dependencies.repo, pr.number) do
+      {:ok, threads} ->
+        {:ok, build_runs(project, pr, link, threads, dependencies)}
 
-    actionable =
-      threads
-      |> Enum.filter(&actionable_thread?(&1, identity))
-      |> Enum.reject(fn t ->
-        # Skip a thread only when its key is terminal: processed (resolved/capped)
-        # or already at the attempt cap. A mid-retry "claimed" row must NOT skip it,
-        # or attempts 2..N would never run.
-        key = dedupe_key(owner, repo, pr, t)
-        dedupe_status.(project_id, key) == "processed" or attempt_count.(project_id, key) >= @max_attempts
-      end)
-      |> Enum.map(fn t -> Map.put(t, :dedupe_key, dedupe_key(owner, repo, pr, t)) end)
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp build_runs(project, pr, link, threads, dependencies) do
+    project_id = pv(project, :id)
+    actionable = actionable_threads(project_id, pr, threads, dependencies)
 
     if actionable == [] do
       []
     else
-      [build_run(project, owner, repo, pr, link, actionable)]
+      [build_run(project, pr, link, actionable, dependencies)]
     end
+  end
+
+  defp actionable_threads(project_id, pr, threads, dependencies) do
+    actionable =
+      threads
+      |> Enum.filter(&actionable_thread?(&1, dependencies.identity))
+      |> Enum.reject(fn t ->
+        # Skip a thread only when its key is terminal: processed (resolved/capped)
+        # or already at the attempt cap. A mid-retry "claimed" row must NOT skip it,
+        # or attempts 2..N would never run.
+        key = dedupe_key(dependencies.owner, dependencies.repo, pr, t)
+
+        dependencies.dedupe_status.(project_id, key) == "processed" or
+          dependencies.attempt_count.(project_id, key) >= @max_attempts
+      end)
+      |> Enum.map(fn t ->
+        Map.put(t, :dedupe_key, dedupe_key(dependencies.owner, dependencies.repo, pr, t))
+      end)
+
+    actionable
   end
 
   defp actionable_thread?(thread, identity) do
@@ -98,14 +130,14 @@ defmodule SymphonyElixir.WorkSources.GithubReviewResponseSource do
 
   defp reviewer_latest?(_thread, _identity), do: false
 
-  defp build_run(project, owner, repo, pr, link, threads) do
+  defp build_run(project, pr, link, threads, dependencies) do
     %WorkRun{
       project_slug: pv(project, :slug),
       type: "address_review",
       status: "queued",
-      dedupe_key: dedupe_key(owner, repo, pr, List.first(threads)),
-      forge_owner: owner,
-      forge_repo: repo,
+      dedupe_key: dedupe_key(dependencies.owner, dependencies.repo, pr, List.first(threads)),
+      forge_owner: dependencies.owner,
+      forge_repo: dependencies.repo,
       forge_pr_number: pr.number,
       forge_head_sha: pr.head_sha,
       forge_head_ref: pr.head_ref,

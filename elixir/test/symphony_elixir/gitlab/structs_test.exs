@@ -1,6 +1,6 @@
 defmodule SymphonyElixir.Gitlab.StructsTest do
   use ExUnit.Case, async: true
-  alias SymphonyElixir.Gitlab.{MergeRequest, Pipeline, Job, Note}
+  alias SymphonyElixir.Gitlab.{Job, MergeRequest, Note, Pipeline}
 
   test "MergeRequest.from_api maps iid, branches, sha, fork project ids" do
     raw = %{

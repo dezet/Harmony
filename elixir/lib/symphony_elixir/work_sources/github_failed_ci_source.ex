@@ -3,8 +3,8 @@ defmodule SymphonyElixir.WorkSources.GithubFailedCiSource do
   Polls open GitHub PRs and emits failed GitHub Actions repair work.
   """
 
-  alias SymphonyElixir.{Github, RuntimePolicy, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, RuntimePolicy, Storage, WorkRun}
 
   @max_log_excerpt_bytes 12_000
 

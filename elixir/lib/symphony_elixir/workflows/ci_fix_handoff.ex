@@ -3,8 +3,8 @@ defmodule SymphonyElixir.Workflows.CiFixHandoff do
   Reports failed CI repair blockers to GitHub and linked Linear issues.
   """
 
-  alias SymphonyElixir.{RuntimePolicy, Storage, Tracker, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{RuntimePolicy, Storage, Tracker, WorkRun}
 
   @default_human_review_state "Human Review"
 

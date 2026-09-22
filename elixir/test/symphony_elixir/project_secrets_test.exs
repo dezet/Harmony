@@ -1,8 +1,8 @@
 defmodule SymphonyElixir.ProjectSecretsTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.Storage
   alias SymphonyElixir.Encrypted.Binary, as: EncryptedBinary
+  alias SymphonyElixir.Storage
 
   describe "vault round-trip" do
     test "encrypts and decrypts through the Ecto type" do
@@ -34,7 +34,16 @@ defmodule SymphonyElixir.ProjectSecretsTest do
     alias SymphonyElixirWeb.Presenter
 
     test "summary exposes set|unset, not the value" do
-      project = %Project{id: "p1", slug: "p", forge_owner: "o", forge_repo: "r", forge_base_branch: "main", forge_secret: "ghp_tok", tracker_secret: nil}
+      project = %Project{
+        id: "p1",
+        slug: "p",
+        forge_owner: "o",
+        forge_repo: "r",
+        forge_base_branch: "main",
+        forge_secret: "ghp_tok",
+        tracker_secret: nil
+      }
+
       snapshot = %{running: [], retrying: [], blocked: []}
       payload = Presenter.project_summary_payload(project, snapshot, [])
       refute payload |> inspect() |> String.contains?("ghp_tok")

@@ -1,7 +1,7 @@
 defmodule SymphonyElixir.WorkSources.GitlabPipelineSourceTest do
   use ExUnit.Case, async: true
-  alias SymphonyElixir.WorkSources.GitlabPipelineSource
   alias SymphonyElixir.Gitlab.{MergeRequest, Pipeline}
+  alias SymphonyElixir.WorkSources.GitlabPipelineSource
 
   test "blocks push to a protected branch listed in project config but not the base branch" do
     # Scenario: a non-fork MR whose head_ref is "release", which is listed in
@@ -43,8 +43,24 @@ defmodule SymphonyElixir.WorkSources.GitlabPipelineSourceTest do
   end
 
   test "fetch_candidates emits a ci_fix run for a failed pipeline with log excerpt" do
-    project = %{id: 1, slug: "demo", forge_type: "gitlab", forge_owner: "group", forge_repo: "api", forge_base_branch: "main"}
-    mr = %MergeRequest{number: 5, head_sha: "abc", head_ref: "f", base_ref: "main", head_repo_full_name: "7", base_repo_full_name: "7"}
+    project = %{
+      id: 1,
+      slug: "demo",
+      forge_type: "gitlab",
+      forge_owner: "group",
+      forge_repo: "api",
+      forge_base_branch: "main"
+    }
+
+    mr = %MergeRequest{
+      number: 5,
+      head_sha: "abc",
+      head_ref: "f",
+      base_ref: "main",
+      head_repo_full_name: "7",
+      base_repo_full_name: "7"
+    }
+
     pipeline = %Pipeline{id: 9, status: "failed", sha: "abc"}
 
     opts = [

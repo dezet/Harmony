@@ -29,58 +29,7 @@ defmodule SymphonyElixirWeb.RunDetailController do
 
     case get_snapshot(conn) do
       {:ok, snapshot} ->
-        live = find_live_entry(identifier, snapshot)
-
-        if is_nil(work_run) and is_nil(live) do
-          {:error, :run_not_found}
-        else
-          has_live = not is_nil(live)
-
-          # PR links scoped to this run's identifier.
-          pr_links =
-            if work_run && work_run.project_id do
-              work_run.project_id
-              |> Storage.list_pull_request_links_for_project()
-              |> Enum.filter(&(&1.linear_identifier == identifier))
-            else
-              []
-            end
-
-          # Artifacts — only available when there is a durable row.
-          artifacts =
-            if work_run do
-              Storage.list_artifacts_for_work_run(work_run.id)
-            else
-              []
-            end
-
-          # Project struct (rescue not_found → nil).
-          project =
-            if work_run && work_run.project_id do
-              try do
-                Storage.get_project!(work_run.project_id)
-              rescue
-                Ecto.NoResultsError -> nil
-              end
-            else
-              nil
-            end
-
-          # First events page + stream_cursor.
-          stream_cursor =
-            if work_run do
-              page = Storage.list_work_events_for_run(work_run.id, %{page_size: @default_page_size})
-              Presenter.run_stream_payload(page, @default_page_size, has_live).meta.next_cursor
-            else
-              nil
-            end
-
-          payload =
-            Presenter.run_detail_payload(identifier, work_run, snapshot, pr_links, artifacts, project)
-            |> Map.put(:stream_cursor, stream_cursor)
-
-          json(conn, payload)
-        end
+        show_snapshot(conn, identifier, work_run, snapshot)
 
       {:snapshot_error, status_code, error_body} ->
         conn
@@ -99,23 +48,7 @@ defmodule SymphonyElixirWeb.RunDetailController do
 
     case get_snapshot(conn) do
       {:ok, snapshot} ->
-        live = find_live_entry(identifier, snapshot)
-
-        cond do
-          is_nil(work_run) and is_nil(live) ->
-            {:error, :run_not_found}
-
-          is_nil(work_run) ->
-            # Live-only: no durable events yet.
-            json(conn, %{items: [], meta: %{next_cursor: nil, has_live: true}})
-
-          true ->
-            has_live = not is_nil(live)
-            page_size = parse_page_size(params["page_size"])
-            opts = build_stream_opts(params, page_size)
-            events = Storage.list_work_events_for_run(work_run.id, opts)
-            json(conn, Presenter.run_stream_payload(events, page_size, has_live))
-        end
+        stream_snapshot(conn, identifier, params, work_run, snapshot)
 
       {:snapshot_error, status_code, error_body} ->
         conn
@@ -138,6 +71,70 @@ defmodule SymphonyElixirWeb.RunDetailController do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp show_snapshot(conn, identifier, work_run, snapshot) do
+    live = find_live_entry(identifier, snapshot)
+
+    if is_nil(work_run) and is_nil(live) do
+      {:error, :run_not_found}
+    else
+      has_live = not is_nil(live)
+      pr_links = run_pull_request_links(work_run, identifier)
+      artifacts = run_artifacts(work_run)
+      project = run_project(work_run)
+      stream_cursor = run_stream_cursor(work_run, has_live)
+
+      payload =
+        Presenter.run_detail_payload(identifier, work_run, snapshot, pr_links, artifacts, project)
+        |> Map.put(:stream_cursor, stream_cursor)
+
+      json(conn, payload)
+    end
+  end
+
+  defp run_pull_request_links(%{project_id: project_id}, identifier) when not is_nil(project_id) do
+    project_id
+    |> Storage.list_pull_request_links_for_project()
+    |> Enum.filter(&(&1.linear_identifier == identifier))
+  end
+
+  defp run_pull_request_links(_work_run, _identifier), do: []
+
+  defp run_artifacts(%{id: id}), do: Storage.list_artifacts_for_work_run(id)
+  defp run_artifacts(_work_run), do: []
+
+  defp run_project(%{project_id: project_id}) when not is_nil(project_id) do
+    Storage.get_project!(project_id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp run_project(_work_run), do: nil
+
+  defp run_stream_cursor(%{id: id}, has_live) do
+    page = Storage.list_work_events_for_run(id, %{page_size: @default_page_size})
+    Presenter.run_stream_payload(page, @default_page_size, has_live).meta.next_cursor
+  end
+
+  defp run_stream_cursor(_work_run, _has_live), do: nil
+
+  defp stream_snapshot(conn, identifier, params, work_run, snapshot) do
+    live = find_live_entry(identifier, snapshot)
+
+    cond do
+      is_nil(work_run) and is_nil(live) ->
+        {:error, :run_not_found}
+
+      is_nil(work_run) ->
+        json(conn, %{items: [], meta: %{next_cursor: nil, has_live: true}})
+
+      true ->
+        page_size = parse_page_size(params["page_size"])
+        opts = build_stream_opts(params, page_size)
+        events = Storage.list_work_events_for_run(work_run.id, opts)
+        json(conn, Presenter.run_stream_payload(events, page_size, not is_nil(live)))
+    end
+  end
 
   defp get_snapshot(_conn) do
     orchestrator = Endpoint.config(:orchestrator) || SymphonyElixir.Orchestrator

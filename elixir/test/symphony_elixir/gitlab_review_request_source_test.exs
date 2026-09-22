@@ -1,7 +1,7 @@
 defmodule SymphonyElixir.WorkSources.GitlabReviewRequestSourceTest do
   use ExUnit.Case, async: true
-  alias SymphonyElixir.WorkSources.GitlabReviewRequestSource
   alias SymphonyElixir.Gitlab.{MergeRequest, Note}
+  alias SymphonyElixir.WorkSources.GitlabReviewRequestSource
 
   test "fetch_candidates emits a code_review run when a note contains the trigger" do
     project = %{id: 1, slug: "demo", forge_type: "gitlab", forge_owner: "group", forge_repo: "api"}

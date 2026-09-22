@@ -1,7 +1,7 @@
 defmodule SymphonyElixir.Gitlab.Client do
   @moduledoc "Minimal GitLab REST v4 client for Harmony MR/pipeline polling."
 
-  alias SymphonyElixir.Gitlab.{MergeRequest, Pipeline, Job, Note}
+  alias SymphonyElixir.Gitlab.{Job, MergeRequest, Note, Pipeline}
 
   @default_host "https://gitlab.com"
 
@@ -49,7 +49,8 @@ defmodule SymphonyElixir.Gitlab.Client do
     get(opts, "/projects/#{project_path(owner, repo)}/jobs/#{job_id}/trace", parse: & &1)
   end
 
-  @spec list_merge_request_notes(String.t(), String.t(), pos_integer(), keyword()) :: {:ok, [Note.t()]} | {:error, term()}
+  @spec list_merge_request_notes(String.t(), String.t(), pos_integer(), keyword()) ::
+          {:ok, [Note.t()]} | {:error, term()}
   def list_merge_request_notes(owner, repo, mr_iid, opts \\ []) do
     get(opts, "/projects/#{project_path(owner, repo)}/merge_requests/#{mr_iid}/notes",
       params: [per_page: 100],
@@ -57,7 +58,8 @@ defmodule SymphonyElixir.Gitlab.Client do
     )
   end
 
-  @spec create_merge_request_note(String.t(), String.t(), pos_integer(), String.t(), keyword()) :: :ok | {:error, term()}
+  @spec create_merge_request_note(String.t(), String.t(), pos_integer(), String.t(), keyword()) ::
+          :ok | {:error, term()}
   def create_merge_request_note(owner, repo, mr_iid, body, opts \\ []) when is_binary(body) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     url = "#{api_root(opts)}/projects/#{project_path(owner, repo)}/merge_requests/#{mr_iid}/notes"

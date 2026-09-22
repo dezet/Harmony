@@ -3,8 +3,8 @@ defmodule SymphonyElixir.WorkSources.GithubPrSource do
   Polls open GitHub PRs and records durable PR metadata.
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, Storage, WorkRun}
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do

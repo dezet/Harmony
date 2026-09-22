@@ -1,8 +1,8 @@
 defmodule SymphonyElixir.WorkSources.GitlabPipelineSource do
   @moduledoc "Polls open GitLab MRs and emits failed-pipeline repair work."
 
-  alias SymphonyElixir.{Gitlab, Github, RuntimePolicy, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, Gitlab, RuntimePolicy, Storage, WorkRun}
 
   @max_log_excerpt_bytes 12_000
 
@@ -42,16 +42,24 @@ defmodule SymphonyElixir.WorkSources.GitlabPipelineSource do
     repo = ref.repo || project_value(project, :forge_repo)
 
     with {:ok, mrs} <- list_merge_requests.(owner, repo, []) do
-      Enum.reduce_while(mrs, {:ok, []}, fn mr, {:ok, runs} ->
-        case list_pipelines.(owner, repo, sha: mr.head_sha) do
-          {:ok, pipelines} ->
-            candidates = candidates(project, owner, repo, mr, pipelines, get_pipeline_logs, dedupe_seen?)
-            {:cont, {:ok, runs ++ candidates}}
+      reduce_merge_requests(mrs, project, owner, repo, list_pipelines, get_pipeline_logs, dedupe_seen?)
+    end
+  end
 
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
-      end)
+  defp reduce_merge_requests(mrs, project, owner, repo, list_pipelines, get_pipeline_logs, dedupe_seen?) do
+    Enum.reduce_while(mrs, {:ok, []}, fn mr, result ->
+      append_mr_candidates(mr, result, project, owner, repo, list_pipelines, get_pipeline_logs, dedupe_seen?)
+    end)
+  end
+
+  defp append_mr_candidates(mr, {:ok, runs}, project, owner, repo, list_pipelines, get_pipeline_logs, dedupe_seen?) do
+    case list_pipelines.(owner, repo, sha: mr.head_sha) do
+      {:ok, pipelines} ->
+        candidates = candidates(project, owner, repo, mr, pipelines, get_pipeline_logs, dedupe_seen?)
+        {:cont, {:ok, runs ++ candidates}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
     end
   end
 
