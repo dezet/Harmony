@@ -91,6 +91,16 @@ defmodule SymphonyElixir.Config do
     end
   end
 
+  @spec intake_settings() :: Schema.Intake.t()
+  def intake_settings do
+    settings!().intake
+  end
+
+  @spec analysis_settings() :: Schema.Analysis.t()
+  def analysis_settings do
+    settings!().analysis
+  end
+
   @spec validate!() :: :ok | {:error, term()}
   def validate! do
     with {:ok, settings} <- settings() do
