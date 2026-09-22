@@ -1,0 +1,17 @@
+{
+  "id": "44444444-4444-4444-8444-444444444444",
+  "kind": "jira_cloud",
+  "name": "Jira · przykład",
+  "settings": {
+    "site_url": "https://example.atlassian.net",
+    "auth_mode": "scoped",
+    "cloud_id": "example-cloud"
+  },
+  "secret_state": "set",
+  "secret_version": 1,
+  "enabled": false,
+  "last_checked_at": null,
+  "health": "unchecked",
+  "error_code": null,
+  "lock_version": 1
+}

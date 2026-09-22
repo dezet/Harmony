@@ -6,7 +6,15 @@ import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
 import runStreamPageFixture from "@/test/fixtures/run_stream_page.fixture.json";
 import projectArtifactsPageFixture from "@/test/fixtures/project_artifacts_page.fixture.json";
 import projectActivityPageFixture from "@/test/fixtures/project_activity_page.fixture.json";
+import casesPageFixture from "@/test/fixtures/cases_page.fixture.json";
+import caseDetailFixture from "@/test/fixtures/case_detail.fixture.json";
+import automationRuleFixture from "@/test/fixtures/automation_rule.fixture.json";
+import integrationConnectionFixture from "@/test/fixtures/integration_connection.fixture.json";
 import type {
+  AutomationRule,
+  CaseDetail,
+  CasesPage,
+  IntegrationConnection,
   ProjectActivityPage,
   ProjectArtifactsPage,
   ProjectSummary,
@@ -348,5 +356,87 @@ describe("ProjectActivityPage contract fixture", () => {
     expect(page.items[0].type).toBe("turn_start");
     expect(page.items[1].payload).toMatchObject({ message: "Turn completed successfully" });
     expect(page.meta.next_cursor).not.toBeNull();
+  });
+});
+
+describe("Intake contract fixtures", () => {
+  it("requires both external links, explicit actions, publication state, and analysis-only mode", () => {
+    const page = casesPageFixture as CasesPage;
+    const detail = caseDetailFixture as CaseDetail;
+
+    expect(page.items.slice(0, 5).map((item) => item.jira?.key)).toEqual([
+      "OPS-142",
+      "OPS-139",
+      "FIN-87",
+      "OPS-145",
+      "HR-63",
+    ]);
+    expect(page.items.slice(0, 5).every((item) => item.execution_mode === "analysis_only")).toBe(true);
+    expect(page.items.slice(0, 5).every((item) => item.jira !== null && item.linear !== null)).toBe(true);
+    expectKeys(detail.actions, ["acknowledge", "approve_repair", "reanalyze"]);
+    expectKeys(detail.actions.acknowledge, ["allowed", "reason"]);
+    expectKeys(detail.links, ["jira", "linear"]);
+    expect(detail.case.execution_mode).toBe("analysis_only");
+    expect(detail.analysis?.status).toBe("succeeded");
+    expect(detail.publication.status).toBe("published");
+    expect(detail.publication.comment_id).toBeTruthy();
+    expect(page.items.find((item) => item.status_label === "awaiting_owner")?.attention).toEqual({
+      code: "unknown_status",
+      message: "Nieznany status przebiegu: awaiting_owner",
+    });
+  });
+
+  it("keeps the automation and integration wire shapes explicit", () => {
+    const rule = automationRuleFixture as AutomationRule;
+    const connection = integrationConnectionFixture as IntegrationConnection;
+
+    expectKeys(rule, [
+      "activation_status",
+      "baseline_complete_at",
+      "baseline_generation",
+      "config_version",
+      "email_connection_id",
+      "email_recipients",
+      "enabled",
+      "id",
+      "initial_policy",
+      "interval_seconds",
+      "jira_connection_id",
+      "last_error_code",
+      "last_started_at",
+      "last_success_at",
+      "lease_until",
+      "linear_hold_label_id",
+      "linear_project_id",
+      "linear_team_id",
+      "linear_todo_state_id",
+      "lock_version",
+      "name",
+      "next_poll_at",
+      "priority_ids",
+      "project_id",
+      "sms_connection_id",
+      "sms_recipients",
+      "source_id",
+      "source_type",
+      "activated_at",
+    ]);
+    expect(rule.initial_policy).toBe("new_matches_only");
+    expect(rule.enabled).toBe(false);
+    expectKeys(connection, [
+      "error_code",
+      "health",
+      "id",
+      "kind",
+      "last_checked_at",
+      "lock_version",
+      "name",
+      "secret_state",
+      "secret_version",
+      "settings",
+      "enabled",
+    ]);
+    expect(connection.secret_state).toBe("set");
+    expect(connection.settings.site_url).toBe("https://example.atlassian.net");
   });
 });

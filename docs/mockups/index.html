@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Harmony — trzy kierunki UI/UX</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236052d5'/%3E%3Cpath d='M9 11v12m7-17v20m7-14v11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-concept="a">
+  <a class="skip" href="#main">Przejdź do treści</a>
+  <header class="concept-bar">
+    <div class="prototype-label"><span class="prototype-dot"></span> HARMONY <span>/</span> DESIGN EXPLORATION <span class="demo-label">Dane przykładowe</span></div>
+    <nav class="concept-switch" aria-label="Wariant projektu">
+      <button data-concept="a" aria-pressed="true"><b>A</b> Centrum spraw <span class="recommended">Polecany</span></button>
+      <button data-concept="b" aria-pressed="false"><b>B</b> Przepływ</button>
+      <button data-concept="c" aria-pressed="false"><b>C</b> Briefing</button>
+    </nav>
+  </header>
+  <div id="app"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="detail-dialog" aria-label="Szczegóły sprawy"></dialog>
+</body>
+</html>
