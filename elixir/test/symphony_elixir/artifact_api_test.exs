@@ -91,6 +91,7 @@ defmodule SymphonyElixir.ArtifactApiTest do
   test "returns 404 for a garbage (non-UUID) id" do
     for garbage <- ["not-a-uuid", "123", "deadbeef-notauuid"] do
       conn = get(build_conn(), "/api/v1/artifacts/#{garbage}")
+
       assert json_response(conn, 404)["error"]["code"] == "artifact_not_found",
              "expected 404 for garbage id=#{inspect(garbage)}"
     end
@@ -269,6 +270,7 @@ defmodule SymphonyElixir.ArtifactApiTest do
 
     for method <- [:post, :put, :patch, :delete] do
       conn = method |> build_conn("/api/v1/artifacts/#{fake_id}") |> dispatch_method(method)
+
       assert json_response(conn, 405)["error"]["code"] == "method_not_allowed",
              "expected 405 for #{method}"
     end

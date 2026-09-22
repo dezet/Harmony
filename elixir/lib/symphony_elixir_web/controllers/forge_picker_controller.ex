@@ -17,25 +17,23 @@ defmodule SymphonyElixirWeb.ForgePickerController do
     token = blank_to_nil(params["token"]) || env_token(forge_type)
     base_url = blank_to_nil(params["base_url"])
 
-    cond do
-      is_nil(token) ->
-        error(conn, 422, "missing_credentials")
+    if is_nil(token) do
+      error(conn, 422, "missing_credentials")
+    else
+      creds = %{token: token, base_url: base_url, request_fun: nil}
 
-      true ->
-        creds = %{token: token, base_url: base_url, request_fun: nil}
+      case Forge.adapter(%{forge_type: forge_type}).list_repositories(creds, []) do
+        {:ok, repos} ->
+          capped = Enum.take(repos, @cap)
 
-        case Forge.adapter(%{forge_type: forge_type}).list_repositories(creds, []) do
-          {:ok, repos} ->
-            capped = Enum.take(repos, @cap)
+          json(conn, %{
+            repositories: Enum.map(capped, &repo_json/1),
+            truncated: length(repos) > @cap
+          })
 
-            json(conn, %{
-              repositories: Enum.map(capped, &repo_json/1),
-              truncated: length(repos) > @cap
-            })
-
-          {:error, reason} ->
-            map_error(conn, reason, "forge")
-        end
+        {:error, reason} ->
+          map_error(conn, reason, "forge")
+      end
     end
   end
 

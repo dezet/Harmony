@@ -14,23 +14,21 @@ defmodule SymphonyElixirWeb.TrackerPickerController do
   def projects(conn, params) do
     token = blank_to_nil(params["token"]) || System.get_env("LINEAR_API_KEY")
 
-    cond do
-      is_nil(token) ->
-        error(conn, 422, "missing_credentials")
+    if is_nil(token) do
+      error(conn, 422, "missing_credentials")
+    else
+      case Tracker.list_projects(%{token: token}) do
+        {:ok, projects} ->
+          capped = Enum.take(projects, @cap)
 
-      true ->
-        case Tracker.list_projects(%{token: token}) do
-          {:ok, projects} ->
-            capped = Enum.take(projects, @cap)
+          json(conn, %{
+            projects: Enum.map(capped, &project_json/1),
+            truncated: length(projects) > @cap
+          })
 
-            json(conn, %{
-              projects: Enum.map(capped, &project_json/1),
-              truncated: length(projects) > @cap
-            })
-
-          {:error, reason} ->
-            map_error(conn, reason)
-        end
+        {:error, reason} ->
+          map_error(conn, reason)
+      end
     end
   end
 

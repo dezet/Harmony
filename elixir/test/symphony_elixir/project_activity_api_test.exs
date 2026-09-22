@@ -199,11 +199,12 @@ defmodule SymphonyElixir.ProjectActivityApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, evt} = SymphonyElixir.Storage.append_event(%{
-      project_id: project.id,
-      type: "turn_start",
-      payload: %{"info" => "test"}
-    })
+    {:ok, evt} =
+      SymphonyElixir.Storage.append_event(%{
+        project_id: project.id,
+        type: "turn_start",
+        payload: %{"info" => "test"}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/activity")
     body = json_response(conn, 200)

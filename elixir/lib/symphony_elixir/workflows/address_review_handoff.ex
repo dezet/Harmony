@@ -4,8 +4,8 @@ defmodule SymphonyElixir.Workflows.AddressReviewHandoff do
   forge: reply to each thread, resolve the ones the agent marked resolved.
   """
 
-  alias SymphonyElixir.{Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Storage, WorkRun}
 
   @max_attempts 3
 

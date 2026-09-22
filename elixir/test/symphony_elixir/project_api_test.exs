@@ -63,6 +63,7 @@ defmodule SymphonyElixir.ProjectApiTest do
   @tag :db
   test "updates an existing project" do
     :ok = checkout_repo(%{})
+
     {:ok, project} =
       SymphonyElixir.Storage.upsert_project(%{
         slug: "portal",

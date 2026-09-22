@@ -41,17 +41,23 @@ defmodule SymphonyElixir.Review.Identity do
 
       _ ->
         current_user = Keyword.get(opts, :current_user, fn c -> default_current_user(c) end)
-
-        case current_user.(creds) do
-          {:ok, login} when is_binary(login) and login != "" ->
-            if token, do: :ets.insert(@table, {token, login})
-            login
-
-          _ ->
-            @default
-        end
+        current_login(creds, token, current_user)
     end
   end
+
+  defp current_login(creds, token, current_user) do
+    case current_user.(creds) do
+      {:ok, login} when is_binary(login) and login != "" ->
+        cache_login(token, login)
+        login
+
+      _ ->
+        @default
+    end
+  end
+
+  defp cache_login(nil, _login), do: :ok
+  defp cache_login(token, login), do: :ets.insert(@table, {token, login})
 
   defp default_current_user(_creds), do: {:error, :not_wired}
 

@@ -3,8 +3,8 @@ defmodule SymphonyElixir.WorkSources.GithubReviewRequestSource do
   Polls open GitHub PRs and emits requested code review work.
   """
 
-  alias SymphonyElixir.{Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, Storage, WorkRun}
 
   @default_trigger "@hreview"
   @default_template_version 1

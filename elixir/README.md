@@ -196,6 +196,8 @@ required_evidence:
 
 `required_evidence: ["browser"]` requires a browser evidence artifact before a Linear
 implementation handoff can move an issue to Human Review.
+Each configured project's Linear poll, retry, and issue revalidation use its `linear.project_slug`.
+The project's `tracker_secret` takes precedence over the global `tracker.api_key` fallback.
 
 Minimal example:
 

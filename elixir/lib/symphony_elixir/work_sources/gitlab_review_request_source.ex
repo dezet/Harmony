@@ -1,8 +1,8 @@
 defmodule SymphonyElixir.WorkSources.GitlabReviewRequestSource do
   @moduledoc "Polls open GitLab MRs and emits requested code review work from MR notes."
 
-  alias SymphonyElixir.{Gitlab, Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, Gitlab, Storage, WorkRun}
 
   @default_trigger "@hreview"
   @default_template_version 1

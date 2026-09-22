@@ -1,7 +1,7 @@
 defmodule SymphonyElixir.WorkSources.GitlabMrSourceTest do
   use ExUnit.Case, async: true
-  alias SymphonyElixir.WorkSources.GitlabMrSource
   alias SymphonyElixir.Gitlab.MergeRequest
+  alias SymphonyElixir.WorkSources.GitlabMrSource
 
   test "fetch_candidates emits a gitlab_mr_observed run per MR" do
     project = %{id: 1, slug: "demo", forge_type: "gitlab", forge_owner: "group", forge_repo: "api", linear_team_key: "ABC"}

@@ -2,8 +2,8 @@ defmodule SymphonyElixir.GitlabEndToEndTest do
   use SymphonyElixir.TestSupport
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias SymphonyElixir.{Orchestrator, Repo, Storage, Workflow}
   alias SymphonyElixir.Gitlab.MergeRequest
+  alias SymphonyElixir.{Orchestrator, Repo, Storage, Workflow}
   alias SymphonyElixir.WorkSources.GitlabMrSource
 
   @tag :db

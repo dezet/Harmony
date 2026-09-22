@@ -16,12 +16,17 @@ defmodule SymphonyElixir.ReviewIdentityTest do
   test "falls back to whoami when no config, and caches by token" do
     project = %{forge_type: "github", config: %{}}
     pid = self()
-    whoami = fn _ -> send(pid, :called); {:ok, "api-bot"} end
+
+    whoami = fn _ ->
+      send(pid, :called)
+      {:ok, "api-bot"}
+    end
 
     assert "api-bot" = Identity.resolve(project, %{token: "tok"}, current_user: whoami)
     assert "api-bot" = Identity.resolve(project, %{token: "tok"}, current_user: whoami)
     assert_received :called
-    refute_received :called  # second call served from cache
+    # second call served from cache
+    refute_received :called
   end
 
   test "whoami error falls back to default harmony" do

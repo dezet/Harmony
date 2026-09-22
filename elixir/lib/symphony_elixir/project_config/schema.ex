@@ -88,8 +88,6 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
     end
   end
 
-  defp parse_forge_map(_raw), do: {:error, {:invalid_project_config_section, "forge"}}
-
   defp parse_review(raw) when is_map(raw) do
     {:ok,
      %Review{

@@ -265,7 +265,7 @@ defmodule SymphonyElixir.WorkRunApiTest do
     conn = get(build_conn(), "/api/v1/work_runs?project=alpha")
     body = json_response(conn, 200)
 
-    assert length(body["work_runs"]) >= 1
+    assert [_ | _] = body["work_runs"]
     assert Enum.all?(body["work_runs"], fn r -> not Map.has_key?(r, "payload") end)
   end
 
@@ -295,21 +295,25 @@ defmodule SymphonyElixir.WorkRunApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    run1 = insert_work_run(project.id, %{
-      linear_identifier: "COD-1",
-      linear_url: "https://linear.app/acme/issue/COD-1",
-      forge_owner: "acme",
-      forge_repo: "portal",
-      forge_pr_number: 10,
-      forge_head_sha: "abc123def456",
-      forge_head_ref: "cod-1-feature",
-      forge_base_ref: "main"
-    }) |> set_inserted_at(~U[2026-06-13 10:00:02.000000Z])
+    run1 =
+      insert_work_run(project.id, %{
+        linear_identifier: "COD-1",
+        linear_url: "https://linear.app/acme/issue/COD-1",
+        forge_owner: "acme",
+        forge_repo: "portal",
+        forge_pr_number: 10,
+        forge_head_sha: "abc123def456",
+        forge_head_ref: "cod-1-feature",
+        forge_base_ref: "main"
+      })
+      |> set_inserted_at(~U[2026-06-13 10:00:02.000000Z])
 
-    _run2 = insert_work_run(project.id, %{
-      linear_identifier: "COD-2",
-      linear_url: "https://linear.app/acme/issue/COD-2"
-    }) |> set_inserted_at(~U[2026-06-13 10:00:01.000000Z])
+    _run2 =
+      insert_work_run(project.id, %{
+        linear_identifier: "COD-2",
+        linear_url: "https://linear.app/acme/issue/COD-2"
+      })
+      |> set_inserted_at(~U[2026-06-13 10:00:01.000000Z])
 
     # Use page_size=1 so next_cursor is non-null (overfetch returns both, slices to 1)
     # Actually we seed 2 runs and request page_size=1 to get a non-null cursor

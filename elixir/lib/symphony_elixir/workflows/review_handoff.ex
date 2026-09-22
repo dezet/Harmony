@@ -3,8 +3,8 @@ defmodule SymphonyElixir.Workflows.ReviewHandoff do
   Publishes requested GitHub PR review output.
   """
 
-  alias SymphonyElixir.{Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Storage, WorkRun}
 
   @processed_marker "harmony-review-processed"
 

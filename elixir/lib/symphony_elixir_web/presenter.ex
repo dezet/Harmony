@@ -115,45 +115,11 @@ defmodule SymphonyElixirWeb.Presenter do
         ) :: map()
   def run_detail_payload(identifier, work_run, snapshot, pr_links, artifacts, project \\ nil) do
     live = find_live_entry(identifier, snapshot)
-
-    {live_running, live_retry, live_blocked} =
-      case live do
-        {:running, entry} -> {entry, nil, nil}
-        {:retrying, entry} -> {nil, entry, nil}
-        {:blocked, entry} -> {nil, nil, entry}
-        nil -> {nil, nil, nil}
-      end
-
-    status =
-      case live do
-        {:running, _} -> "running"
-        {:retrying, _} -> "retrying"
-        {:blocked, _} -> "blocked"
-        nil -> work_run && work_run.status
-      end
-
-    live_entry = live_running || live_retry || live_blocked
-
-    issue_id =
-      (live_entry && live_entry.issue_id) ||
-        (work_run && work_run.linear_issue_id)
-
-    work_run_id = work_run && work_run.id
-
-    project_payload =
-      cond do
-        live_entry && not blank_project?(project_payload(live_entry)) ->
-          project_payload(live_entry)
-
-        not is_nil(project) ->
-          project_payload_from_struct(project)
-
-        work_run && work_run.project_id ->
-          %{id: work_run.project_id, slug: nil, name: nil}
-
-        true ->
-          nil
-      end
+    {live_running, live_retry, live_blocked, status} = live_run_state(live, work_run)
+    live_entry = selected_live_entry(live_running, live_retry, live_blocked)
+    issue_id = run_issue_id(live_entry, work_run)
+    work_run_id = run_work_run_id(work_run)
+    project_payload = run_project_payload(live_entry, work_run, project)
 
     workspace =
       if live_entry do
@@ -165,65 +131,10 @@ defmodule SymphonyElixirWeb.Presenter do
         %{path: nil, host: nil}
       end
 
-    {session_id, turn_count, started_at, last_event_at, last_event, last_message, tokens} =
-      cond do
-        live_running ->
-          {
-            live_running.session_id,
-            Map.get(live_running, :turn_count, 0),
-            iso8601(live_running.started_at),
-            iso8601(live_running.last_codex_timestamp),
-            live_running.last_codex_event,
-            summarize_message(live_running.last_codex_message),
-            %{
-              input_tokens: live_running.codex_input_tokens,
-              output_tokens: live_running.codex_output_tokens,
-              total_tokens: live_running.codex_total_tokens
-            }
-          }
+    runtime_details = live_runtime_details(live)
+    attempts = run_attempts(live_retry)
 
-        live_blocked ->
-          {
-            live_blocked.session_id,
-            nil,
-            iso8601(Map.get(live_blocked, :started_at)),
-            iso8601(live_blocked.last_codex_timestamp),
-            live_blocked.last_codex_event,
-            summarize_message(live_blocked.last_codex_message),
-            nil
-          }
-
-        live_retry ->
-          {
-            nil,
-            nil,
-            iso8601(Map.get(live_retry, :started_at)),
-            nil,
-            nil,
-            nil,
-            nil
-          }
-
-        true ->
-          {nil, nil, nil, nil, nil, nil, nil}
-      end
-
-    attempts =
-      cond do
-        live_retry ->
-          attempt = live_retry.attempt || 0
-          %{restart_count: max(attempt - 1, 0), current_retry_attempt: attempt}
-
-        live_entry ->
-          %{restart_count: nil, current_retry_attempt: nil}
-
-        true ->
-          %{restart_count: nil, current_retry_attempt: nil}
-      end
-
-    last_error =
-      (live_blocked && live_blocked.error) ||
-        (live_retry && live_retry.error)
+    last_error = run_last_error(live_blocked, live_retry)
 
     %{
       identifier: identifier,
@@ -232,19 +143,113 @@ defmodule SymphonyElixirWeb.Presenter do
       status: status,
       project: project_payload,
       workspace: workspace,
-      session_id: session_id,
-      turn_count: turn_count,
-      started_at: started_at,
-      last_event_at: last_event_at,
-      last_event: last_event,
-      last_message: last_message,
-      tokens: tokens,
+      session_id: runtime_details.session_id,
+      turn_count: runtime_details.turn_count,
+      started_at: runtime_details.started_at,
+      last_event_at: runtime_details.last_event_at,
+      last_event: runtime_details.last_event,
+      last_message: runtime_details.last_message,
+      tokens: runtime_details.tokens,
       attempts: attempts,
       pull_requests: Enum.map(pr_links, &pr_link_payload/1),
       artifacts: Enum.map(artifacts, &run_artifact_payload/1),
       last_error: last_error,
       stream_cursor: nil
     }
+  end
+
+  defp selected_live_entry(live_running, live_retry, live_blocked) do
+    live_running || live_retry || live_blocked
+  end
+
+  defp run_issue_id(live_entry, work_run) do
+    (live_entry && live_entry.issue_id) || (work_run && work_run.linear_issue_id)
+  end
+
+  defp run_work_run_id(work_run), do: work_run && work_run.id
+
+  defp run_last_error(live_blocked, live_retry) do
+    (live_blocked && live_blocked.error) || (live_retry && live_retry.error)
+  end
+
+  defp live_run_state({:running, entry}, _work_run), do: {entry, nil, nil, "running"}
+  defp live_run_state({:retrying, entry}, _work_run), do: {nil, entry, nil, "retrying"}
+  defp live_run_state({:blocked, entry}, _work_run), do: {nil, nil, entry, "blocked"}
+  defp live_run_state(nil, work_run), do: {nil, nil, nil, work_run && work_run.status}
+
+  defp run_project_payload(live_entry, work_run, project) do
+    cond do
+      live_entry && not blank_project?(project_payload(live_entry)) ->
+        project_payload(live_entry)
+
+      not is_nil(project) ->
+        project_payload_from_struct(project)
+
+      work_run && work_run.project_id ->
+        %{id: work_run.project_id, slug: nil, name: nil}
+
+      true ->
+        nil
+    end
+  end
+
+  defp live_runtime_details({:running, running}) do
+    %{
+      session_id: running.session_id,
+      turn_count: Map.get(running, :turn_count, 0),
+      started_at: iso8601(running.started_at),
+      last_event_at: iso8601(running.last_codex_timestamp),
+      last_event: running.last_codex_event,
+      last_message: summarize_message(running.last_codex_message),
+      tokens: %{
+        input_tokens: running.codex_input_tokens,
+        output_tokens: running.codex_output_tokens,
+        total_tokens: running.codex_total_tokens
+      }
+    }
+  end
+
+  defp live_runtime_details({:blocked, blocked}) do
+    %{
+      session_id: blocked.session_id,
+      turn_count: nil,
+      started_at: iso8601(Map.get(blocked, :started_at)),
+      last_event_at: iso8601(blocked.last_codex_timestamp),
+      last_event: blocked.last_codex_event,
+      last_message: summarize_message(blocked.last_codex_message),
+      tokens: nil
+    }
+  end
+
+  defp live_runtime_details({:retrying, retry}) do
+    %{
+      session_id: nil,
+      turn_count: nil,
+      started_at: iso8601(Map.get(retry, :started_at)),
+      last_event_at: nil,
+      last_event: nil,
+      last_message: nil,
+      tokens: nil
+    }
+  end
+
+  defp live_runtime_details(nil) do
+    %{
+      session_id: nil,
+      turn_count: nil,
+      started_at: nil,
+      last_event_at: nil,
+      last_event: nil,
+      last_message: nil,
+      tokens: nil
+    }
+  end
+
+  defp run_attempts(nil), do: %{restart_count: nil, current_retry_attempt: nil}
+
+  defp run_attempts(live_retry) do
+    attempt = live_retry.attempt || 0
+    %{restart_count: max(attempt - 1, 0), current_retry_attempt: attempt}
   end
 
   @doc """

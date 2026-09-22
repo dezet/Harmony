@@ -193,10 +193,12 @@ defmodule SymphonyElixir.StorageTest do
 
     defp set_inserted_at(run, inserted_at) do
       import Ecto.Query
+
       SymphonyElixir.Repo.update_all(
         from(r in SymphonyElixir.Storage.WorkRun, where: r.id == ^run.id),
         set: [inserted_at: inserted_at]
       )
+
       %{run | inserted_at: inserted_at}
     end
 

@@ -256,6 +256,144 @@ defmodule SymphonyElixir.Config.Schema do
     end
   end
 
+  defmodule Intake do
+    @moduledoc false
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @primary_key false
+    embedded_schema do
+      field(:enabled, :boolean, default: false)
+      field(:effects_enabled, :boolean, default: false)
+      field(:public_url, :string)
+      field(:smtp_allowed_hosts, {:array, :string}, default: [])
+    end
+
+    @type t :: %__MODULE__{}
+
+    @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
+    def changeset(schema, attrs) do
+      schema
+      |> cast(attrs, [:enabled, :effects_enabled, :public_url, :smtp_allowed_hosts], empty_values: [])
+      |> update_change(:public_url, &normalize_url/1)
+      |> update_change(:smtp_allowed_hosts, &normalize_hosts/1)
+      |> validate_hosts()
+      |> validate_public_url()
+    end
+
+    defp normalize_url(url) when is_binary(url) do
+      case String.trim(url) do
+        "" -> nil
+        normalized -> normalized
+      end
+    end
+
+    defp normalize_url(url), do: url
+
+    defp normalize_hosts(hosts) when is_list(hosts) do
+      hosts
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+    end
+
+    defp normalize_hosts(hosts), do: hosts
+
+    defp validate_hosts(changeset) do
+      validate_change(changeset, :smtp_allowed_hosts, fn :smtp_allowed_hosts, hosts ->
+        if Enum.all?(hosts, &(is_binary(&1) and valid_host?(&1))) do
+          []
+        else
+          [smtp_allowed_hosts: "must contain valid host names"]
+        end
+      end)
+    end
+
+    defp validate_public_url(changeset) do
+      validate_change(changeset, :public_url, fn :public_url, url ->
+        if get_field(changeset, :enabled) and not https_url?(url) do
+          [public_url: "must be an HTTPS URL when intake is enabled"]
+        else
+          []
+        end
+      end)
+      |> validate_change(:enabled, fn :enabled, enabled ->
+        if enabled and not https_url?(get_field(changeset, :public_url)) do
+          [enabled: "requires an HTTPS public_url"]
+        else
+          []
+        end
+      end)
+    end
+
+    defp valid_host?(host) do
+      host =~ ~r/\A(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])\z/
+    end
+
+    defp https_url?(url) when is_binary(url) do
+      uri = URI.parse(url)
+      uri.scheme == "https" and is_binary(uri.host) and uri.host != ""
+    rescue
+      URI.Error -> false
+    end
+
+    defp https_url?(_url), do: false
+  end
+
+  defmodule Analysis do
+    @moduledoc false
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @primary_key false
+    embedded_schema do
+      field(:enabled, :boolean, default: false)
+      field(:model, :string)
+      field(:effort, :string, default: "medium")
+      field(:max_concurrent, :integer, default: 1)
+      field(:timeout_ms, :integer, default: 600_000)
+      field(:max_turns, :integer, default: 1)
+      field(:max_result_bytes, :integer, default: 32_768)
+    end
+
+    @type t :: %__MODULE__{}
+
+    @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
+    def changeset(schema, attrs) do
+      schema
+      |> cast(
+        attrs,
+        [:enabled, :model, :effort, :max_concurrent, :timeout_ms, :max_turns, :max_result_bytes],
+        empty_values: []
+      )
+      |> validate_change(:effort, fn :effort, effort ->
+        if is_binary(effort) and String.trim(effort) != "" do
+          []
+        else
+          [effort: "must not be blank"]
+        end
+      end)
+      |> validate_number(:max_concurrent, greater_than_or_equal_to: 1, less_than_or_equal_to: 4)
+      |> validate_number(:timeout_ms, greater_than_or_equal_to: 60_000, less_than_or_equal_to: 900_000)
+      |> validate_number(:max_turns, equal_to: 1)
+      |> validate_number(:max_result_bytes, greater_than: 0, less_than_or_equal_to: 32_768)
+      |> validate_model()
+    end
+
+    defp validate_model(changeset) do
+      if get_field(changeset, :enabled) and blank?(get_field(changeset, :model)) do
+        add_error(changeset, :model, "is required when analysis is enabled")
+      else
+        changeset
+      end
+    end
+
+    defp blank?(nil), do: true
+    defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+    defp blank?(_value), do: true
+  end
+
   defmodule Server do
     @moduledoc false
     use Ecto.Schema
@@ -284,6 +422,8 @@ defmodule SymphonyElixir.Config.Schema do
     embeds_one(:codex, Codex, on_replace: :update, defaults_to_struct: true)
     embeds_one(:hooks, Hooks, on_replace: :update, defaults_to_struct: true)
     embeds_one(:observability, Observability, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:intake, Intake, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:analysis, Analysis, on_replace: :update, defaults_to_struct: true)
     embeds_one(:server, Server, on_replace: :update, defaults_to_struct: true)
   end
 
@@ -376,6 +516,8 @@ defmodule SymphonyElixir.Config.Schema do
     |> cast_embed(:codex, with: &Codex.changeset/2)
     |> cast_embed(:hooks, with: &Hooks.changeset/2)
     |> cast_embed(:observability, with: &Observability.changeset/2)
+    |> cast_embed(:intake, with: &Intake.changeset/2)
+    |> cast_embed(:analysis, with: &Analysis.changeset/2)
     |> cast_embed(:server, with: &Server.changeset/2)
   end
 

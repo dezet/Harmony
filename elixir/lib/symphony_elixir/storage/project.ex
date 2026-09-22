@@ -21,6 +21,7 @@ defmodule SymphonyElixir.Storage.Project do
     field(:forge_base_url, :string)
     field(:forge_secret, SymphonyElixir.Encrypted.Binary, redact: true)
     field(:tracker_secret, SymphonyElixir.Encrypted.Binary, redact: true)
+    field(:ui_color, :string, default: "purple")
     field(:config_version, :integer, default: 1)
     field(:config, :map, default: %{})
     timestamps(type: :utc_datetime_usec)
@@ -41,10 +42,12 @@ defmodule SymphonyElixir.Storage.Project do
       :forge_repo,
       :forge_base_branch,
       :forge_base_url,
+      :ui_color,
       :config_version,
       :config
     ])
     |> validate_required([:slug, :forge_owner, :forge_repo, :forge_base_branch, :forge_type, :config_version, :config])
+    |> validate_inclusion(:ui_color, ~w(purple gold teal))
     |> unique_constraint(:slug)
   end
 

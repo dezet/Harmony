@@ -1,12 +1,14 @@
 defmodule SymphonyElixir.Forge.GithubTest do
   use ExUnit.Case, async: true
   alias SymphonyElixir.Forge.Github
+  alias SymphonyElixir.Github.Comment
 
   test "list_change_requests normalizes GitHub PRs and uses base_url" do
     fake = fn opts ->
       assert opts[:url] =~ "https://ghe.example.com/repos/o/r/pulls"
       {:ok, %{status: 200, body: [%{"number" => 7, "head" => %{"sha" => "abc", "ref" => "f"}, "base" => %{"ref" => "main"}, "html_url" => "u"}]}}
     end
+
     creds = %{token: "t", base_url: "https://ghe.example.com", request_fun: fake}
     ref = %{owner: "o", repo: "r", base_url: "https://ghe.example.com"}
     assert {:ok, [%{number: 7, head_sha: "abc"}]} = Github.list_change_requests(creds, ref, [])
@@ -17,6 +19,7 @@ defmodule SymphonyElixir.Forge.GithubTest do
       assert opts[:url] =~ "/user/repos"
       {:ok, %{status: 200, body: [%{"name" => "r", "owner" => %{"login" => "o"}, "default_branch" => "main", "html_url" => "u"}]}}
     end
+
     assert {:ok, [%{owner: "o", name: "r", default_branch: "main"}]} =
              Github.list_repositories(%{token: "t", request_fun: fake}, [])
   end
@@ -26,6 +29,7 @@ defmodule SymphonyElixir.Forge.GithubTest do
       assert opts[:url] =~ "/repos/o/r"
       {:ok, %{status: 200, body: %{"name" => "r", "owner" => %{"login" => "o"}, "default_branch" => "develop", "html_url" => "u"}}}
     end
+
     assert {:ok, %{default_branch: "develop"}} = Github.get_repository(%{token: "t", request_fun: fake}, "o", "r")
   end
 
@@ -39,7 +43,7 @@ defmodule SymphonyElixir.Forge.GithubTest do
     creds = %{token: "t", base_url: "https://ghe.example.com", request_fun: fake}
     ref = %{owner: "o", repo: "r", base_url: "https://ghe.example.com"}
 
-    assert {:ok, [%SymphonyElixir.Github.Comment{id: 11, body: "@hreview please", author: "octo"}]} =
-             SymphonyElixir.Forge.Github.list_change_request_comments(creds, ref, 7)
+    assert {:ok, [%Comment{id: 11, body: "@hreview please", author: "octo"}]} =
+             Github.list_change_request_comments(creds, ref, 7)
   end
 end

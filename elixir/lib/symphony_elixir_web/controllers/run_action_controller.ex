@@ -25,16 +25,7 @@ defmodule SymphonyElixirWeb.RunActionController do
 
     case get_snapshot(orchestrator) do
       {:ok, snapshot} ->
-        case find_issue_id(identifier, snapshot) do
-          nil ->
-            {:error, :run_not_found}
-
-          issue_id ->
-            case Orchestrator.stop_run(orchestrator, issue_id) do
-              :ok -> json(conn, %{status: "stopped"})
-              {:error, reason} -> {:error, reason}
-            end
-        end
+        perform_action(conn, identifier, snapshot, orchestrator, &Orchestrator.stop_run/2, "stopped")
 
       {:snapshot_error, status_code, error_body} ->
         conn
@@ -53,16 +44,7 @@ defmodule SymphonyElixirWeb.RunActionController do
 
     case get_snapshot(orchestrator) do
       {:ok, snapshot} ->
-        case find_issue_id(identifier, snapshot) do
-          nil ->
-            {:error, :run_not_found}
-
-          issue_id ->
-            case Orchestrator.retry_now(orchestrator, issue_id) do
-              :ok -> json(conn, %{status: "retrying"})
-              {:error, reason} -> {:error, reason}
-            end
-        end
+        perform_action(conn, identifier, snapshot, orchestrator, &Orchestrator.retry_now/2, "retrying")
 
       {:snapshot_error, status_code, error_body} ->
         conn
@@ -85,6 +67,20 @@ defmodule SymphonyElixirWeb.RunActionController do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp perform_action(conn, identifier, snapshot, orchestrator, action, status) do
+    case find_issue_id(identifier, snapshot) do
+      nil -> {:error, :run_not_found}
+      issue_id -> perform_issue_action(conn, action, orchestrator, issue_id, status)
+    end
+  end
+
+  defp perform_issue_action(conn, action, orchestrator, issue_id, status) do
+    case action.(orchestrator, issue_id) do
+      :ok -> json(conn, %{status: status})
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   defp get_snapshot(orchestrator) do
     timeout_ms = Endpoint.config(:snapshot_timeout_ms) || 15_000

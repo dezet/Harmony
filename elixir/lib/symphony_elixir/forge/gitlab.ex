@@ -46,14 +46,16 @@ defmodule SymphonyElixir.Forge.Gitlab do
       traces =
         jobs
         |> Enum.filter(&(&1.status == "failed"))
-        |> Enum.map(fn job ->
-          case Client.get_job_trace(ref.owner, ref.repo, job.id, opts) do
-            {:ok, trace} -> "== job #{job.name} ==\n#{trace}"
-            {:error, reason} -> "== job #{job.name} (trace error: #{inspect(reason)}) =="
-          end
-        end)
+        |> Enum.map(&job_trace(ref, opts, &1))
 
       {:ok, Enum.join(traces, "\n\n")}
+    end
+  end
+
+  defp job_trace(ref, opts, job) do
+    case Client.get_job_trace(ref.owner, ref.repo, job.id, opts) do
+      {:ok, trace} -> "== job #{job.name} ==\n#{trace}"
+      {:error, reason} -> "== job #{job.name} (trace error: #{inspect(reason)}) =="
     end
   end
 
@@ -114,18 +116,13 @@ defmodule SymphonyElixir.Forge.Gitlab do
   # A "review thread" is a discussion whose first note is resolvable (diff-anchored).
   defp normalize_discussion(%{"notes" => [first | _] = notes} = discussion) do
     if first["resolvable"] == true do
-      comments =
-        Enum.map(notes, fn n ->
-          %{id: n["id"], author: get_in(n, ["author", "username"]), body: n["body"], created_at: n["created_at"]}
-        end)
-
       %{
         id: discussion["id"],
         path: get_in(first, ["position", "new_path"]),
         line: get_in(first, ["position", "new_line"]),
         resolved: Enum.all?(notes, &(&1["resolved"] == true)),
         author: get_in(first, ["author", "username"]),
-        comments: comments,
+        comments: Enum.map(notes, &normalize_discussion_comment/1),
         last_comment_at: notes |> List.last() |> Map.get("created_at")
       }
     else
@@ -134,6 +131,15 @@ defmodule SymphonyElixir.Forge.Gitlab do
   end
 
   defp normalize_discussion(_), do: nil
+
+  defp normalize_discussion_comment(note) do
+    %{
+      id: note["id"],
+      author: get_in(note, ["author", "username"]),
+      body: note["body"],
+      created_at: note["created_at"]
+    }
+  end
 
   defp normalize_repo(body) do
     %{

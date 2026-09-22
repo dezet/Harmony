@@ -1,8 +1,8 @@
 defmodule SymphonyElixir.WorkSources.GitlabMrSource do
   @moduledoc "Polls open GitLab merge requests and records durable MR metadata."
 
-  alias SymphonyElixir.{Gitlab, Github, Storage, WorkRun}
   alias SymphonyElixir.Forge.ProjectCreds
+  alias SymphonyElixir.{Github, Gitlab, Storage, WorkRun}
 
   @spec fetch_candidates(term(), keyword()) :: {:ok, [WorkRun.t()]} | {:error, term()}
   def fetch_candidates(project, opts \\ []) do

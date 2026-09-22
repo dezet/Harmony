@@ -1,6 +1,6 @@
 defmodule SymphonyElixir.ForgeCurrentUserTest do
   use ExUnit.Case, async: false
-  alias SymphonyElixir.Forge.{Memory, Github, Gitlab}
+  alias SymphonyElixir.Forge.{Github, Gitlab, Memory}
 
   setup do
     Memory.reset()

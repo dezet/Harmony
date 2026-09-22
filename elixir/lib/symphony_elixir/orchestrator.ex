@@ -9,8 +9,17 @@ defmodule SymphonyElixir.Orchestrator do
 
   alias SymphonyElixir.{AgentRunner, Config, RuntimePolicy, StatusDashboard, Storage, Tracker, WorkRun, Workspace}
   alias SymphonyElixir.Diagnostics.Sandbox
-  alias SymphonyElixir.Linear.Issue
-  alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
+  alias SymphonyElixir.Intake.ExecutionGate
+  alias SymphonyElixir.Linear.{Client, Issue}
+
+  alias SymphonyElixir.Workflows.{
+    AddressReviewHandoff,
+    AddressReviewPrompt,
+    CiFixHandoff,
+    CiFixPrompt,
+    ReviewHandoff,
+    ReviewPrompt
+  }
 
   alias SymphonyElixir.WorkSources.{
     GithubFailedCiSource,
@@ -252,7 +261,9 @@ defmodule SymphonyElixir.Orchestrator do
         |> complete_issue(issue_id)
         |> schedule_issue_retry(issue_id, 1, %{
           identifier: running_entry.identifier,
+          project_slug: Map.get(running_entry, :project_slug),
           delay_type: :continuation,
+          gate_project_id: Map.get(running_entry, :storage_project_id),
           worker_host: Map.get(running_entry, :worker_host),
           workspace_path: Map.get(running_entry, :workspace_path)
         })
@@ -334,7 +345,9 @@ defmodule SymphonyElixir.Orchestrator do
 
     schedule_issue_retry(state, issue_id, next_attempt, %{
       identifier: running_entry.identifier,
+      project_slug: Map.get(running_entry, :project_slug),
       error: "agent exited: #{inspect(reason)}",
+      gate_project_id: Map.get(running_entry, :storage_project_id),
       worker_host: Map.get(running_entry, :worker_host),
       workspace_path: Map.get(running_entry, :workspace_path)
     })
@@ -464,6 +477,77 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  defp linear_scope_options_for_slug(project_slug) when is_binary(project_slug) do
+    with {:ok, projects} <- fetch_configured_projects() do
+      matching_projects = Enum.filter(projects, &(project_value(&1, :linear_project_slug) == project_slug))
+
+      case matching_projects do
+        [] ->
+          {:ok, [linear_project_slug: project_slug, token: Config.settings!().tracker.api_key]}
+
+        [project] ->
+          {:ok,
+           [
+             linear_project_slug: project_slug,
+             token: project_value(project, :tracker_secret) || Config.settings!().tracker.api_key
+           ]}
+
+        _ambiguous ->
+          {:error, :ambiguous_linear_project_scope}
+      end
+    end
+  end
+
+  defp fetch_retry_candidate_issues(project_slug) do
+    if Config.settings!().tracker.kind == "linear" do
+      if is_binary(project_slug) do
+        fetch_project_candidate_issues(project_slug)
+      else
+        {:error, :missing_linear_project_slug}
+      end
+    else
+      Tracker.fetch_candidate_issues()
+    end
+  end
+
+  defp fetch_project_candidate_issues(project_slug, request_fun \\ nil) when is_binary(project_slug) do
+    with {:ok, opts} <- linear_scope_options_for_slug(project_slug) do
+      opts = maybe_put_request_fun(opts, request_fun)
+      Client.fetch_candidate_issues(opts)
+    end
+  end
+
+  defp fetch_project_issue_states(project_slug, issue_ids, request_fun \\ nil)
+
+  defp fetch_project_issue_states(project_slug, issue_ids, request_fun)
+       when is_binary(project_slug) and is_list(issue_ids) do
+    if Config.settings!().tracker.kind == "linear" do
+      with {:ok, opts} <- linear_scope_options_for_slug(project_slug) do
+        opts = maybe_put_request_fun(opts, request_fun)
+        Client.fetch_issue_states_by_ids(issue_ids, opts)
+      end
+    else
+      Tracker.fetch_issue_states_by_ids(issue_ids)
+    end
+  end
+
+  defp fetch_project_issue_states(project_slug, issue_ids, _request_fun) when is_list(issue_ids) do
+    if Config.settings!().tracker.kind == "linear" do
+      if is_binary(project_slug) do
+        fetch_project_issue_states(project_slug, issue_ids)
+      else
+        {:error, :missing_linear_project_slug}
+      end
+    else
+      Tracker.fetch_issue_states_by_ids(issue_ids)
+    end
+  end
+
+  defp maybe_put_request_fun(opts, request_fun) when is_function(request_fun, 2),
+    do: Keyword.put(opts, :request_fun, request_fun)
+
+  defp maybe_put_request_fun(opts, _request_fun), do: opts
+
   defp project_fetcher do
     Application.get_env(:symphony_elixir, :project_fetcher, &Storage.list_projects/0)
   end
@@ -474,7 +558,8 @@ defmodule SymphonyElixir.Orchestrator do
          {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
          {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()),
          {:ok, review_response_runs} <- fetch_project_runs(projects, review_response_work_source_fetcher()) do
-      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs ++ review_response_runs)
+      runs = Enum.concat([pr_observations, linear_runs, github_ci_runs, github_review_runs, review_response_runs])
+      persist_fetched_work_runs(runs)
     end
   end
 
@@ -490,14 +575,47 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp linear_work_source_fetcher do
     Application.get_env(:symphony_elixir, :linear_work_source_fetcher, fn project ->
-      LinearIssueSource.fetch_candidates(
-        project_id: project_value(project, :id),
-        project_slug: project_value(project, :slug),
-        base_branch: project_value(project, :forge_base_branch),
-        config_version: project_value(project, :config_version),
-        required_evidence: project_required_evidence(project)
-      )
+      opts = linear_project_source_options(project)
+
+      if is_binary(opts[:linear_project_slug]) do
+        LinearIssueSource.fetch_candidates(opts)
+      else
+        {:error, :missing_linear_project_slug}
+      end
     end)
+  end
+
+  defp linear_project_source_options(project) do
+    [
+      project_id: project_value(project, :id),
+      project_slug: project_value(project, :slug),
+      linear_project_slug: project_value(project, :linear_project_slug),
+      token: project_value(project, :tracker_secret) || Config.settings!().tracker.api_key,
+      base_branch: project_value(project, :forge_base_branch),
+      config_version: project_value(project, :config_version),
+      required_evidence: project_required_evidence(project)
+    ]
+  end
+
+  @doc false
+  @spec linear_project_source_options_for_test(map()) :: keyword()
+  def linear_project_source_options_for_test(project) when is_map(project) do
+    linear_project_source_options(project)
+  end
+
+  @doc false
+  @spec fetch_project_candidates_for_test(String.t(), (map(), keyword() -> {:ok, map()} | {:error, term()})) ::
+          {:ok, [Issue.t()]} | {:error, term()}
+  def fetch_project_candidates_for_test(project_slug, request_fun)
+      when is_binary(project_slug) and is_function(request_fun, 2) do
+    fetch_project_candidate_issues(project_slug, request_fun)
+  end
+
+  @doc false
+  @spec fetch_project_issue_states_for_test(Issue.t(), (map(), keyword() -> {:ok, map()} | {:error, term()})) ::
+          {:ok, [Issue.t()]} | {:error, term()}
+  def fetch_project_issue_states_for_test(%Issue{} = issue, request_fun) when is_function(request_fun, 2) do
+    fetch_project_issue_states(issue.project_slug, [issue.id], request_fun)
   end
 
   defp github_pr_work_source_fetcher do
@@ -525,6 +643,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @doc false
+  @spec review_response_work_source_fetcher() :: (map() -> {:ok, [WorkRun.t()]} | {:error, term()})
   def review_response_work_source_fetcher do
     Application.get_env(
       :symphony_elixir,
@@ -660,21 +779,9 @@ defmodule SymphonyElixir.Orchestrator do
     if running_ids == [] do
       state
     else
-      case Tracker.fetch_issue_states_by_ids(running_ids) do
-        {:ok, issues} ->
-          issues
-          |> reconcile_running_issue_states(
-            state,
-            active_state_set(),
-            terminal_state_set()
-          )
-          |> reconcile_missing_running_issue_ids(running_ids, issues)
-
-        {:error, reason} ->
-          Logger.debug("Failed to refresh running issue states: #{inspect(reason)}; keeping active workers")
-
-          state
-      end
+      state.running
+      |> Enum.group_by(fn {_issue_id, entry} -> Map.get(entry, :project_slug) end, fn {issue_id, _entry} -> issue_id end)
+      |> Enum.reduce(state, &reconcile_running_project/2)
     end
   end
 
@@ -684,21 +791,35 @@ defmodule SymphonyElixir.Orchestrator do
     if blocked_ids == [] do
       state
     else
-      case Tracker.fetch_issue_states_by_ids(blocked_ids) do
-        {:ok, issues} ->
-          issues
-          |> reconcile_blocked_issue_states(
-            state,
-            active_state_set(),
-            terminal_state_set()
-          )
-          |> reconcile_missing_blocked_issue_ids(blocked_ids, issues)
+      state.blocked
+      |> Enum.group_by(fn {_issue_id, entry} -> Map.get(entry, :project_slug) end, fn {issue_id, _entry} -> issue_id end)
+      |> Enum.reduce(state, &reconcile_blocked_project/2)
+    end
+  end
 
-        {:error, reason} ->
-          Logger.debug("Failed to refresh blocked issue states: #{inspect(reason)}; keeping blocked issues")
+  defp reconcile_running_project({project_slug, project_issue_ids}, state_acc) do
+    case fetch_project_issue_states(project_slug, project_issue_ids) do
+      {:ok, issues} ->
+        issues
+        |> reconcile_running_issue_states(state_acc, active_state_set(), terminal_state_set())
+        |> reconcile_missing_running_issue_ids(project_issue_ids, issues)
 
-          state
-      end
+      {:error, reason} ->
+        Logger.debug("Failed to refresh running issue states: #{inspect(reason)}; keeping active workers")
+        state_acc
+    end
+  end
+
+  defp reconcile_blocked_project({project_slug, project_issue_ids}, state_acc) do
+    case fetch_project_issue_states(project_slug, project_issue_ids) do
+      {:ok, issues} ->
+        issues
+        |> reconcile_blocked_issue_states(state_acc, active_state_set(), terminal_state_set())
+        |> reconcile_missing_blocked_issue_ids(project_issue_ids, issues)
+
+      {:error, reason} ->
+        Logger.debug("Failed to refresh blocked issue states: #{inspect(reason)}; keeping blocked issues")
+        state_acc
     end
   end
 
@@ -961,6 +1082,8 @@ defmodule SymphonyElixir.Orchestrator do
         |> terminate_running_issue(issue_id, false)
         |> schedule_issue_retry(issue_id, next_attempt, %{
           identifier: identifier,
+          project_slug: Map.get(running_entry, :project_slug),
+          gate_project_id: Map.get(running_entry, :storage_project_id),
           error: "stalled for #{elapsed_ms}ms without codex activity"
         })
       end
@@ -1178,7 +1301,8 @@ defmodule SymphonyElixir.Orchestrator do
     |> sort_work_runs_for_dispatch()
     |> Enum.reduce(state, fn
       %WorkRun{type: "implementation", payload: %{issue: %Issue{} = issue}} = run, state_acc ->
-        if should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) and
+        if implementation_authorized?(issue, payload_value(run.payload, :project_id)) and
+             should_dispatch_issue?(issue, state_acc, active_state_set(), terminal_state_set()) and
              not durable_open_blocker_exists?(run, issue) do
           dispatch_issue(state_acc, issue, nil, nil, run)
         else
@@ -1300,7 +1424,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp review_run_prompt(%WorkRun{type: "address_review"} = run),
-    do: SymphonyElixir.Workflows.AddressReviewPrompt.build(run)
+    do: AddressReviewPrompt.build(run)
 
   defp review_run_prompt(%WorkRun{} = run), do: ReviewPrompt.build(run)
 
@@ -1615,14 +1739,16 @@ defmodule SymphonyElixir.Orchestrator do
     |> MapSet.new()
   end
 
-  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host) do
-    dispatch_issue(state, issue, attempt, preferred_worker_host, nil)
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
+    dispatch_issue(state, issue, attempt, preferred_worker_host, work_run, nil)
   end
 
-  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
-    case revalidate_issue_for_dispatch(issue, &Tracker.fetch_issue_states_by_ids/1, terminal_state_set()) do
+  defp dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run, gate_project_id) do
+    issue_fetcher = &fetch_project_issue_states(issue.project_slug, &1)
+
+    case revalidate_issue_for_dispatch(issue, issue_fetcher, terminal_state_set()) do
       {:ok, %Issue{} = refreshed_issue} ->
-        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host, work_run)
+        do_dispatch_issue(state, refreshed_issue, attempt, preferred_worker_host, work_run, gate_project_id)
 
       {:skip, :missing} ->
         Logger.info("Skipping dispatch; issue no longer active or visible: #{issue_context(issue)}")
@@ -1639,7 +1765,7 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run) do
+  defp do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, work_run, gate_project_id) do
     recipient = self()
 
     case select_worker_host(state, preferred_worker_host) do
@@ -1648,7 +1774,10 @@ defmodule SymphonyElixir.Orchestrator do
         state
 
       worker_host ->
-        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, implementation_extra_opts(work_run))
+        extra_opts = implementation_extra_opts(work_run)
+        extra_opts = if is_binary(gate_project_id), do: Keyword.put(extra_opts, :storage_project_id, gate_project_id), else: extra_opts
+
+        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, extra_opts)
     end
   end
 
@@ -1663,8 +1792,27 @@ defmodule SymphonyElixir.Orchestrator do
   defp implementation_extra_opts(_work_run), do: []
 
   defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, extra_opts) do
+    case authorize_implementation(issue, Keyword.get(extra_opts, :storage_project_id)) do
+      :ok ->
+        start_agent_child(state, issue, attempt, recipient, worker_host, extra_opts)
+
+      {:error, reason} ->
+        Logger.warning("ExecutionGate denied implementation for #{issue_context(issue)} reason=#{inspect(reason)}")
+        state
+    end
+  end
+
+  defp start_agent_child(state, issue, attempt, recipient, worker_host, extra_opts) do
+    runner_opts =
+      [
+        attempt: attempt,
+        worker_host: worker_host,
+        execution_gate_fun: &ExecutionGate.authorize_implementation/2
+      ]
+      |> Keyword.merge(extra_opts)
+
     case Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn ->
-           agent_runner().(issue, recipient, Keyword.merge([attempt: attempt, worker_host: worker_host], extra_opts))
+           agent_runner().(issue, recipient, runner_opts)
          end) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
@@ -1718,6 +1866,7 @@ defmodule SymphonyElixir.Orchestrator do
           project_id: issue.project_id,
           project_name: issue.project_name,
           project_slug: issue.project_slug,
+          gate_project_id: Keyword.get(extra_opts, :storage_project_id),
           error: "failed to spawn agent: #{inspect(reason)}",
           worker_host: worker_host
         })
@@ -1726,6 +1875,25 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp agent_runner do
     Application.get_env(:symphony_elixir, :agent_runner_fun, &AgentRunner.run/3)
+  end
+
+  defp implementation_authorized?(issue, project_id) do
+    case authorize_implementation(issue, project_id) do
+      :ok ->
+        true
+
+      {:error, reason} ->
+        Logger.warning("ExecutionGate filtered implementation candidate for #{issue_context(issue)} reason=#{inspect(reason)}")
+        false
+    end
+  end
+
+  defp authorize_implementation(issue, project_id) do
+    ExecutionGate.authorize_implementation(issue, project_id)
+  rescue
+    _exception -> {:error, :database_unavailable}
+  catch
+    _kind, _reason -> {:error, :database_unavailable}
   end
 
   defp ci_fix_handoff do
@@ -1754,7 +1922,7 @@ defmodule SymphonyElixir.Orchestrator do
     Application.get_env(
       :symphony_elixir,
       :address_review_handoff_fun,
-      &SymphonyElixir.Workflows.AddressReviewHandoff.publish/3
+      &AddressReviewHandoff.publish/3
     )
   end
 
@@ -1822,6 +1990,7 @@ defmodule SymphonyElixir.Orchestrator do
             project_id: metadata[:project_id],
             project_name: metadata[:project_name],
             project_slug: metadata[:project_slug],
+            gate_project_id: metadata[:gate_project_id],
             error: error,
             worker_host: worker_host,
             workspace_path: workspace_path
@@ -1835,6 +2004,8 @@ defmodule SymphonyElixir.Orchestrator do
         metadata = %{
           identifier: Map.get(retry_entry, :identifier),
           error: Map.get(retry_entry, :error),
+          project_slug: Map.get(retry_entry, :project_slug),
+          gate_project_id: Map.get(retry_entry, :gate_project_id),
           worker_host: Map.get(retry_entry, :worker_host),
           workspace_path: Map.get(retry_entry, :workspace_path)
         }
@@ -1847,7 +2018,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp handle_retry_issue(%State{} = state, issue_id, attempt, metadata) do
-    case Tracker.fetch_candidate_issues() do
+    case fetch_retry_candidate_issues(metadata[:project_slug]) do
       {:ok, issues} ->
         issues
         |> find_issue_by_id(issue_id)
@@ -1944,7 +2115,7 @@ defmodule SymphonyElixir.Orchestrator do
     if retry_candidate_issue?(issue, terminal_state_set()) and
          dispatch_slots_available?(issue, state) and
          worker_slots_available?(state, metadata[:worker_host]) do
-      {:noreply, dispatch_issue(state, issue, attempt, metadata[:worker_host])}
+      {:noreply, dispatch_issue(state, issue, attempt, metadata[:worker_host], nil, metadata[:gate_project_id])}
     else
       Logger.debug("No available slots for retrying #{issue_context(issue)}; retrying again")
 
@@ -1958,6 +2129,7 @@ defmodule SymphonyElixir.Orchestrator do
            project_id: issue.project_id,
            project_name: issue.project_name,
            project_slug: issue.project_slug,
+           gate_project_id: metadata[:gate_project_id],
            error: "no available orchestrator slots"
          })
        )}
@@ -2135,7 +2307,8 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec stop_run(GenServer.server(), String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
   def stop_run(server, issue_id) do
-    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    # Process.whereis resolves locally registered names only (the app's single orchestrator);
+    # a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:stop_run, issue_id})
     else
@@ -2150,7 +2323,8 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec retry_now(GenServer.server(), String.t()) :: :ok | {:error, :not_retrying}
   def retry_now(server, issue_id) do
-    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    # Process.whereis resolves locally registered names only (the app's single orchestrator);
+    # a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:retry_now, issue_id})
     else
@@ -2205,7 +2379,8 @@ defmodule SymphonyElixir.Orchestrator do
 
         new_state = release_issue_claim(state, issue_id)
         new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
-        # No storage_work_run_id on retry entries (the running entry was cleaned up when the run entered retry) — channel/cache-only "stopped".
+        # No storage_work_run_id on retry entries; the running entry was cleaned up when the run entered retry.
+        # This is a channel/cache-only "stopped" event.
         ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
         notify_dashboard()
         {:reply, :ok, new_state}

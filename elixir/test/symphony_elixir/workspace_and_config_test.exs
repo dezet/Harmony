@@ -475,13 +475,17 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert_receive {:fetch_project_page, ^query, %{projectSlug: "billing", stateNames: ["Todo"]}}
   end
 
-  test "linear client logs response bodies for non-200 graphql responses" do
+  test "linear client omits response bodies from non-200 graphql logs" do
+    token = "secret-linear-token"
+    description = "sensitive issue description"
+
     log =
       ExUnit.CaptureLog.capture_log(fn ->
         assert {:error, {:linear_api_status, 400}} =
                  Client.graphql(
                    "query Viewer { viewer { id } }",
                    %{},
+                   token: token,
                    request_fun: fn _payload, _headers ->
                      {:ok,
                       %{
@@ -489,7 +493,7 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
                         body: %{
                           "errors" => [
                             %{
-                              "message" => "Variable \"$ids\" got invalid value",
+                              "message" => description,
                               "extensions" => %{"code" => "BAD_USER_INPUT"}
                             }
                           ]
@@ -500,8 +504,8 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
       end)
 
     assert log =~ "Linear GraphQL request failed status=400"
-    assert log =~ ~s(body=%{"errors" => [%{"extensions" => %{"code" => "BAD_USER_INPUT"})
-    assert log =~ "Variable \\\"$ids\\\" got invalid value"
+    refute log =~ token
+    refute log =~ description
   end
 
   test "orchestrator sorts dispatch by priority then oldest created_at" do
