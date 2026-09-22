@@ -634,6 +634,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   @doc false
+  @spec review_response_work_source_fetcher() :: (map() -> {:ok, [WorkRun.t()]} | {:error, term()})
   def review_response_work_source_fetcher do
     Application.get_env(
       :symphony_elixir,

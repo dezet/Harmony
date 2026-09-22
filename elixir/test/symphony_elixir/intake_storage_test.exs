@@ -171,7 +171,7 @@ defmodule SymphonyElixir.IntakeStorageTest do
     assert analysis.status == "needs_input"
     assert delivery.status == "pending"
     assert event.actor == "system"
-    assert Repo.aggregate(IntakeEvent, :count) == 1
+    assert Repo.get!(IntakeEvent, event.id).case_id == intake_case.id
   end
 
   test "two concurrent PostgreSQL inserts for one Jira issue leave one case" do

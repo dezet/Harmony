@@ -149,11 +149,13 @@ defmodule SymphonyElixir.RunDetailApiTest do
   test "show returns 200 for durable-only run" do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
-    run = insert_work_run(project.id, %{
-      linear_identifier: "COD-10",
-      linear_issue_id: "issue-cod-10-durable",
-      status: "completed"
-    })
+
+    run =
+      insert_work_run(project.id, %{
+        linear_identifier: "COD-10",
+        linear_issue_id: "issue-cod-10-durable",
+        status: "completed"
+      })
 
     conn = get(build_conn(), "/api/v1/runs/COD-10")
     body = json_response(conn, 200)
@@ -173,13 +175,14 @@ defmodule SymphonyElixir.RunDetailApiTest do
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
     run = insert_work_run(project.id, %{linear_identifier: "COD-10"})
 
-    {:ok, artifact} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: run.id,
-      kind: "screenshot",
-      path: "/artifacts/screen.png",
-      metadata: %{"width" => 1280}
-    })
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: "/artifacts/screen.png",
+        metadata: %{"width" => 1280}
+      })
 
     conn = get(build_conn(), "/api/v1/runs/COD-10")
     body = json_response(conn, 200)
@@ -198,34 +201,36 @@ defmodule SymphonyElixir.RunDetailApiTest do
     _run = insert_work_run(project.id, %{linear_identifier: "COD-10"})
 
     # PR for this run
-    {:ok, pr} = SymphonyElixir.Storage.upsert_pull_request_link(%{
-      project_id: project.id,
-      forge_owner: "acme",
-      forge_repo: "portal",
-      forge_pr_number: 42,
-      forge_head_sha: "abc123",
-      forge_head_ref: "cod-10-feature",
-      forge_base_ref: "main",
-      linear_issue_id: "issue-cod-10-durable",
-      linear_identifier: "COD-10",
-      linear_url: "https://linear.app/acme/issue/COD-10",
-      metadata: %{}
-    })
+    {:ok, pr} =
+      SymphonyElixir.Storage.upsert_pull_request_link(%{
+        project_id: project.id,
+        forge_owner: "acme",
+        forge_repo: "portal",
+        forge_pr_number: 42,
+        forge_head_sha: "abc123",
+        forge_head_ref: "cod-10-feature",
+        forge_base_ref: "main",
+        linear_issue_id: "issue-cod-10-durable",
+        linear_identifier: "COD-10",
+        linear_url: "https://linear.app/acme/issue/COD-10",
+        metadata: %{}
+      })
 
     # PR for another run — should not appear
-    {:ok, _other_pr} = SymphonyElixir.Storage.upsert_pull_request_link(%{
-      project_id: project.id,
-      forge_owner: "acme",
-      forge_repo: "portal",
-      forge_pr_number: 99,
-      forge_head_sha: "def456",
-      forge_head_ref: "cod-11-feature",
-      forge_base_ref: "main",
-      linear_issue_id: "issue-cod-11",
-      linear_identifier: "COD-11",
-      linear_url: "https://linear.app/acme/issue/COD-11",
-      metadata: %{}
-    })
+    {:ok, _other_pr} =
+      SymphonyElixir.Storage.upsert_pull_request_link(%{
+        project_id: project.id,
+        forge_owner: "acme",
+        forge_repo: "portal",
+        forge_pr_number: 99,
+        forge_head_sha: "def456",
+        forge_head_ref: "cod-11-feature",
+        forge_base_ref: "main",
+        linear_issue_id: "issue-cod-11",
+        linear_identifier: "COD-11",
+        linear_url: "https://linear.app/acme/issue/COD-11",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/runs/COD-10")
     body = json_response(conn, 200)
@@ -243,10 +248,12 @@ defmodule SymphonyElixir.RunDetailApiTest do
   test "show — live status wins over durable status" do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
-    _run = insert_work_run(project.id, %{
-      linear_identifier: "COD-10",
-      status: "completed"
-    })
+
+    _run =
+      insert_work_run(project.id, %{
+        linear_identifier: "COD-10",
+        status: "completed"
+      })
 
     seed_snapshot(%{running: [Map.put(@running_entry, :project_id, project.id)]})
 
@@ -420,39 +427,42 @@ defmodule SymphonyElixir.RunDetailApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    run = insert_work_run(project.id, %{
-      linear_identifier: "COD-10",
-      linear_issue_id: "issue-cod-10",
-      status: "running",
-      forge_owner: "acme",
-      forge_repo: "portal",
-      forge_pr_number: 42,
-      forge_head_sha: "abc123def456",
-      forge_head_ref: "cod-10-feature",
-      forge_base_ref: "main"
-    })
+    run =
+      insert_work_run(project.id, %{
+        linear_identifier: "COD-10",
+        linear_issue_id: "issue-cod-10",
+        status: "running",
+        forge_owner: "acme",
+        forge_repo: "portal",
+        forge_pr_number: 42,
+        forge_head_sha: "abc123def456",
+        forge_head_ref: "cod-10-feature",
+        forge_base_ref: "main"
+      })
 
-    {:ok, _pr} = SymphonyElixir.Storage.upsert_pull_request_link(%{
-      project_id: project.id,
-      forge_owner: "acme",
-      forge_repo: "portal",
-      forge_pr_number: 42,
-      forge_head_sha: "abc123def456",
-      forge_head_ref: "cod-10-feature",
-      forge_base_ref: "main",
-      linear_issue_id: "issue-cod-10",
-      linear_identifier: "COD-10",
-      linear_url: "https://linear.app/acme/issue/COD-10",
-      metadata: %{}
-    })
+    {:ok, _pr} =
+      SymphonyElixir.Storage.upsert_pull_request_link(%{
+        project_id: project.id,
+        forge_owner: "acme",
+        forge_repo: "portal",
+        forge_pr_number: 42,
+        forge_head_sha: "abc123def456",
+        forge_head_ref: "cod-10-feature",
+        forge_base_ref: "main",
+        linear_issue_id: "issue-cod-10",
+        linear_identifier: "COD-10",
+        linear_url: "https://linear.app/acme/issue/COD-10",
+        metadata: %{}
+      })
 
-    {:ok, _artifact} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: run.id,
-      kind: "screenshot",
-      path: "/artifacts/screen.png",
-      metadata: %{}
-    })
+    {:ok, _artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: "/artifacts/screen.png",
+        metadata: %{}
+      })
 
     _event = insert_work_event(project.id, run.id, %{type: "turn_start"})
 
@@ -507,6 +517,7 @@ defmodule SymphonyElixir.RunDetailApiTest do
     # pull_request item keys
     assert [actual_pr | _] = actual["pull_requests"]
     assert [fixture_pr | _] = fixture["pull_requests"]
+
     assert MapSet.equal?(
              MapSet.new(Map.keys(actual_pr)),
              MapSet.new(Map.keys(fixture_pr))
@@ -516,6 +527,7 @@ defmodule SymphonyElixir.RunDetailApiTest do
     # artifact item keys
     assert [actual_art | _] = actual["artifacts"]
     assert [fixture_art | _] = fixture["artifacts"]
+
     assert MapSet.equal?(
              MapSet.new(Map.keys(actual_art)),
              MapSet.new(Map.keys(fixture_art))
@@ -570,6 +582,7 @@ defmodule SymphonyElixir.RunDetailApiTest do
     # item keys
     assert [actual_item | _] = actual["items"]
     assert [fixture_item | _] = fixture["items"]
+
     assert MapSet.equal?(
              MapSet.new(Map.keys(actual_item)),
              MapSet.new(Map.keys(fixture_item))

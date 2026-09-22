@@ -81,22 +81,24 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, run} = SymphonyElixir.Storage.create_work_run(%{
-      project_id: project.id,
-      type: "implementation",
-      status: "completed",
-      linear_identifier: "COD-42",
-      agent_backend: "codex",
-      payload: %{}
-    })
+    {:ok, run} =
+      SymphonyElixir.Storage.create_work_run(%{
+        project_id: project.id,
+        type: "implementation",
+        status: "completed",
+        linear_identifier: "COD-42",
+        agent_backend: "codex",
+        payload: %{}
+      })
 
-    {:ok, artifact} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: run.id,
-      kind: "screenshot",
-      path: "/workspace/screenshot.png",
-      metadata: %{"label" => "Homepage"}
-    })
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: "/workspace/screenshot.png",
+        metadata: %{"label" => "Homepage"}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
@@ -125,13 +127,14 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, artifact} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: nil,
-      kind: "report",
-      path: "/workspace/report.html",
-      metadata: %{}
-    })
+    {:ok, artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: nil,
+        kind: "report",
+        path: "/workspace/report.html",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
@@ -151,13 +154,14 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, _artifact} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: nil,
-      kind: "screenshot",
-      path: "/workspace/secret.png",
-      metadata: %{}
-    })
+    {:ok, _artifact} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: nil,
+        kind: "screenshot",
+        path: "/workspace/secret.png",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
@@ -175,30 +179,33 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, run} = SymphonyElixir.Storage.create_work_run(%{
-      project_id: project.id,
-      type: "implementation",
-      status: "completed",
-      linear_identifier: "COD-42",
-      agent_backend: "codex",
-      payload: %{}
-    })
+    {:ok, run} =
+      SymphonyElixir.Storage.create_work_run(%{
+        project_id: project.id,
+        type: "implementation",
+        status: "completed",
+        linear_identifier: "COD-42",
+        agent_backend: "codex",
+        payload: %{}
+      })
 
-    {:ok, _art1} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: run.id,
-      kind: "screenshot",
-      path: "/workspace/shot.png",
-      metadata: %{"label" => "Homepage"}
-    })
+    {:ok, _art1} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: "/workspace/shot.png",
+        metadata: %{"label" => "Homepage"}
+      })
 
-    {:ok, _art2} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: nil,
-      kind: "report",
-      path: "/workspace/report.html",
-      metadata: %{}
-    })
+    {:ok, _art2} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: nil,
+        kind: "report",
+        path: "/workspace/report.html",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
@@ -253,21 +260,23 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
         config: %{}
       })
 
-    {:ok, mine} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: nil,
-      kind: "screenshot",
-      path: "/workspace/mine.png",
-      metadata: %{}
-    })
+    {:ok, mine} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: nil,
+        kind: "screenshot",
+        path: "/workspace/mine.png",
+        metadata: %{}
+      })
 
-    {:ok, _theirs} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: other_project.id,
-      work_run_id: nil,
-      kind: "screenshot",
-      path: "/workspace/theirs.png",
-      metadata: %{}
-    })
+    {:ok, _theirs} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: other_project.id,
+        work_run_id: nil,
+        kind: "screenshot",
+        path: "/workspace/theirs.png",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
@@ -304,32 +313,35 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     :ok = checkout_repo(%{})
     {:ok, project} = SymphonyElixir.Storage.upsert_project(@valid_project)
 
-    {:ok, run} = SymphonyElixir.Storage.create_work_run(%{
-      project_id: project.id,
-      type: "implementation",
-      status: "completed",
-      linear_identifier: "COD-42",
-      agent_backend: "codex",
-      payload: %{}
-    })
+    {:ok, run} =
+      SymphonyElixir.Storage.create_work_run(%{
+        project_id: project.id,
+        type: "implementation",
+        status: "completed",
+        linear_identifier: "COD-42",
+        agent_backend: "codex",
+        payload: %{}
+      })
 
     # Artifact with work_run
-    {:ok, _art1} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: run.id,
-      kind: "screenshot",
-      path: "/workspace/shot.png",
-      metadata: %{"label" => "Homepage"}
-    })
+    {:ok, _art1} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: run.id,
+        kind: "screenshot",
+        path: "/workspace/shot.png",
+        metadata: %{"label" => "Homepage"}
+      })
 
     # Artifact without work_run
-    {:ok, _art2} = SymphonyElixir.Storage.create_artifact(%{
-      project_id: project.id,
-      work_run_id: nil,
-      kind: "report",
-      path: "/workspace/report.html",
-      metadata: %{}
-    })
+    {:ok, _art2} =
+      SymphonyElixir.Storage.create_artifact(%{
+        project_id: project.id,
+        work_run_id: nil,
+        kind: "report",
+        path: "/workspace/report.html",
+        metadata: %{}
+      })
 
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     actual = json_response(conn, 200)

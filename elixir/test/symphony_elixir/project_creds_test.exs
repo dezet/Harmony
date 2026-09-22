@@ -40,10 +40,16 @@ defmodule SymphonyElixir.Forge.ProjectCredsTest do
 
     {:ok, project} =
       SymphonyElixir.Storage.upsert_project(%{
-        slug: "portal", linear_project_slug: "p", linear_team_key: "COD",
-        linear_human_review_state: "Human Review", forge_type: "github",
-        forge_owner: "dezet", forge_repo: "portal", forge_base_branch: "main",
-        config_version: 1, config: %{}
+        slug: "portal",
+        linear_project_slug: "p",
+        linear_team_key: "COD",
+        linear_human_review_state: "Human Review",
+        forge_type: "github",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "main",
+        config_version: 1,
+        config: %{}
       })
 
     {:ok, _} = SymphonyElixir.Storage.update_project_secrets(project, %{"forge_secret" => "run-tok"})
