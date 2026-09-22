@@ -56,6 +56,75 @@ defmodule SymphonyElixir.Jira.CloudClientTest do
     assert Issue.browse_url(first, @site_url) == "#{@site_url}/browse/OPS-1"
   end
 
+  test "page callback runs after each enhanced-search page is normalized" do
+    parent = self()
+
+    request_fun = fn request ->
+      body =
+        case request[:json][:nextPageToken] do
+          nil ->
+            %{
+              "issues" => [jira_issue("101", "OPS-1", "First")],
+              "nextPageToken" => "cursor-1",
+              "isLast" => false
+            }
+
+          "cursor-1" ->
+            %{"issues" => [jira_issue("102", "OPS-2", "Second")], "isLast" => true}
+        end
+
+      {:ok, %Req.Response{status: 200, body: body}}
+    end
+
+    page_fun = fn [issue] ->
+      send(parent, {:page, issue.id, issue.key})
+      :ok
+    end
+
+    assert {:ok, [_first, _second]} =
+             CloudClient.search_issues("project = OPS",
+               site_url: @site_url,
+               auth_mode: :classic,
+               account_email: "agent@example.org",
+               token: "api-token",
+               request_fun: request_fun,
+               page_fun: page_fun
+             )
+
+    assert_receive {:page, "101", "OPS-1"}
+    assert_receive {:page, "102", "OPS-2"}
+  end
+
+  test "page callback errors stop token pagination and propagate unchanged" do
+    calls = :counters.new(1, [:atomics])
+
+    request_fun = fn _request ->
+      page = :counters.get(calls, 1)
+      :counters.add(calls, 1, 1)
+
+      body =
+        if page == 0 do
+          %{"issues" => [jira_issue("101", "OPS-1", "First")], "nextPageToken" => "cursor-1", "isLast" => false}
+        else
+          %{"issues" => [jira_issue("102", "OPS-2", "Second")], "isLast" => true}
+        end
+
+      {:ok, %Req.Response{status: 200, body: body}}
+    end
+
+    assert {:error, :page_rejected} =
+             CloudClient.search_issues("project = OPS",
+               site_url: @site_url,
+               auth_mode: :classic,
+               account_email: "agent@example.org",
+               token: "api-token",
+               request_fun: request_fun,
+               page_fun: fn [_issue] -> {:error, :page_rejected} end
+             )
+
+    assert :counters.get(calls, 1) == 1
+  end
+
   test "maps a board to its saved filter before using enhanced JQL search" do
     request_fun = fn request ->
       assert request[:redirect] == false

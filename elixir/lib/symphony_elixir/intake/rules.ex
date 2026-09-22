@@ -102,24 +102,19 @@ defmodule SymphonyElixir.Intake.Rules do
           {:ok, AutomationRule.t()} | {:error, :source_conflict | Ecto.Changeset.t()}
   def activate(%AutomationRule{} = rule) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    baseline_ready? = not is_nil(rule.baseline_generation) and not is_nil(rule.baseline_complete_at)
 
     changeset =
       rule
       |> changeset(%{
-        enabled: true,
-        activation_status: "activating",
+        enabled: baseline_ready?,
+        activation_status: if(baseline_ready?, do: "idle", else: "activating"),
         activated_at: rule.activated_at || now,
         lock_version: rule.lock_version + 1
       })
 
-    with {:ok, changeset} <- validate_connection_kinds(changeset),
-         {:ok, activating} <- Repo.update(changeset) do
-      activating
-      |> changeset(%{activation_status: "idle", lock_version: activating.lock_version + 1})
-      |> Repo.update()
-      |> normalize_activation_error()
-    else
-      {:error, changeset} -> normalize_activation_error({:error, changeset})
+    with {:ok, changeset} <- validate_connection_kinds(changeset) do
+      Repo.update(changeset) |> normalize_activation_error()
     end
   end
 
@@ -197,6 +192,7 @@ defmodule SymphonyElixir.Intake.Rules do
       |> Map.put(:enabled, false)
       |> Map.put(:activation_status, "idle")
       |> Map.put(:baseline_generation, nil)
+      |> Map.put(:baseline_complete_at, nil)
     else
       attrs
     end

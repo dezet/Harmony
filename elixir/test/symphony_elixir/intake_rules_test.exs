@@ -123,10 +123,13 @@ defmodule SymphonyElixir.IntakeRulesTest do
 
     assert {:ok, rule} = Rules.create(attrs)
     assert {:ok, active} = Rules.activate(rule)
+    refute active.enabled
+    assert active.activation_status == "activating"
     assert {:ok, filtered} = Rules.patch(active, %{source_type: "filter"})
     refute filtered.enabled
     assert filtered.source_type == "filter"
     assert is_nil(filtered.baseline_generation)
+    assert is_nil(filtered.baseline_complete_at)
     assert filtered.config_version == active.config_version + 1
   end
 
@@ -141,7 +144,8 @@ defmodule SymphonyElixir.IntakeRulesTest do
     assert {:ok, active} = Rules.activate(rule)
     assert {:ok, renamed} = Rules.patch(active, %{"name" => "Renamed via string key"})
     assert renamed.name == "Renamed via string key"
-    assert renamed.enabled
+    refute renamed.enabled
+    assert renamed.activation_status == "activating"
     assert renamed.config_version == active.config_version + 1
   end
 
@@ -188,7 +192,8 @@ defmodule SymphonyElixir.IntakeRulesTest do
   test "changing source disables an active rule and target fields stay immutable" do
     assert {:ok, rule} = Rules.create(rule_attrs())
     assert {:ok, active} = Rules.activate(rule)
-    assert active.enabled
+    refute active.enabled
+    assert active.activation_status == "activating"
     assert active.activated_at
 
     assert {:error, :immutable_after_activation} =

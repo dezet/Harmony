@@ -113,7 +113,8 @@ defmodule SymphonyElixir.Jira.CloudClient do
           end
         end)
 
-      with {:ok, page} <- parsed do
+      with {:ok, page} <- parsed,
+           :ok <- notify_page(opts, Enum.reverse(page)) do
         all = acc ++ Enum.reverse(page)
 
         cond do
@@ -122,6 +123,24 @@ defmodule SymphonyElixir.Jira.CloudClient do
           true -> search_page(opts, jql, next_token, all, MapSet.put(seen_tokens, next_token))
         end
       end
+    end
+  end
+
+  defp notify_page(opts, issues) do
+    case Keyword.get(opts, :page_fun) do
+      nil ->
+        :ok
+
+      fun when is_function(fun, 1) ->
+        case fun.(issues) do
+          :ok -> :ok
+          {:ok, _value} -> :ok
+          {:error, _reason} = error -> error
+          _other -> {:error, %{kind: :invalid_page_callback}}
+        end
+
+      _other ->
+        {:error, %{kind: :invalid_page_callback}}
     end
   end
 
