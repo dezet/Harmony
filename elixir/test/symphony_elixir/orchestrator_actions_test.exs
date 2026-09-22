@@ -2,7 +2,7 @@ defmodule SymphonyElixir.OrchestratorActionsTest do
   use SymphonyElixir.TestSupport
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias SymphonyElixir.{Orchestrator, Repo, Storage}
+  alias SymphonyElixir.{Orchestrator, Repo, Storage, WorkRun}
   alias SymphonyElixirWeb.ObservabilityRunPubSub
 
   # ---------------------------------------------------------------------------
@@ -71,6 +71,38 @@ defmodule SymphonyElixir.OrchestratorActionsTest do
       error: "codex turn requires operator input",
       blocked_at: DateTime.utc_now()
     }
+  end
+
+  test "an unsafe CI repair remains blocked by repository policy" do
+    previous_handoff_enabled = Application.get_env(:symphony_elixir, :ci_fix_handoff_enabled)
+    Application.put_env(:symphony_elixir, :ci_fix_handoff_enabled, false)
+
+    on_exit(fn ->
+      case previous_handoff_enabled do
+        nil -> Application.delete_env(:symphony_elixir, :ci_fix_handoff_enabled)
+        value -> Application.put_env(:symphony_elixir, :ci_fix_handoff_enabled, value)
+      end
+    end)
+
+    parent = self()
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, _opts -> send(parent, {:runner_started, issue.id}) end)
+
+    run = %WorkRun{
+      type: "ci_fix",
+      dedupe_key: "ci-fix:example/repo:42",
+      forge_owner: "example",
+      forge_repo: "repo",
+      forge_pr_number: 42,
+      payload: %{repo_policy: "repair_branch_required"}
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+    {_name, pid} = start_orchestrator(RepoPolicyApproval)
+
+    send(pid, :run_poll_cycle)
+
+    refute_receive {:runner_started, _issue_id}, 500
+    assert Map.has_key?(:sys.get_state(pid).blocked, run.dedupe_key)
   end
 
   defp inject_state(pid, fun) do

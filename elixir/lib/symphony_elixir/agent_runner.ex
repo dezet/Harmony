@@ -7,6 +7,7 @@ defmodule SymphonyElixir.AgentRunner do
   alias SymphonyElixir.AgentBackend
   alias SymphonyElixir.AgentBackends.Codex
   alias SymphonyElixir.Config
+  alias SymphonyElixir.Intake.ExecutionGate
   alias SymphonyElixir.Linear.Issue
   alias SymphonyElixir.PromptBuilder
   alias SymphonyElixir.Tracker
@@ -132,14 +133,16 @@ defmodule SymphonyElixir.AgentRunner do
         {:continue, refreshed_issue} when turn_number < context.max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{context.max_turns}")
 
-          do_run_codex_turns(
-            backend,
-            app_session,
-            workspace,
-            refreshed_issue,
-            context,
-            turn_number + 1
-          )
+          with :ok <- authorize_continuation(refreshed_issue, context.opts) do
+            do_run_codex_turns(
+              backend,
+              app_session,
+              workspace,
+              refreshed_issue,
+              context,
+              turn_number + 1
+            )
+          end
 
         {:continue, refreshed_issue} ->
           Logger.info("Reached agent.max_turns for #{issue_context(refreshed_issue)} with issue still active; returning control to orchestrator")
@@ -178,16 +181,18 @@ defmodule SymphonyElixir.AgentRunner do
         {:continue, refreshed_issue} when turn_number < max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{max_turns}")
 
-          do_run_backend_turns(
-            backend,
-            workspace,
-            refreshed_issue,
-            codex_update_recipient,
-            opts,
-            issue_state_fetcher,
-            turn_number + 1,
-            max_turns
-          )
+          with :ok <- authorize_continuation(refreshed_issue, opts) do
+            do_run_backend_turns(
+              backend,
+              workspace,
+              refreshed_issue,
+              codex_update_recipient,
+              opts,
+              issue_state_fetcher,
+              turn_number + 1,
+              max_turns
+            )
+          end
 
         {:continue, refreshed_issue} ->
           Logger.info("Reached agent.max_turns for #{issue_context(refreshed_issue)} with issue still active; returning control to orchestrator")
@@ -240,6 +245,20 @@ defmodule SymphonyElixir.AgentRunner do
   end
 
   defp continue_with_issue?(issue, _issue_state_fetcher), do: {:done, issue}
+
+  defp authorize_continuation(issue, opts) do
+    gate = Keyword.get(opts, :execution_gate_fun, &ExecutionGate.authorize_implementation/2)
+
+    case gate.(issue, Keyword.get(opts, :storage_project_id)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:execution_gate_denied, reason}}
+      other -> {:error, {:invalid_execution_gate_result, other}}
+    end
+  rescue
+    _exception -> {:error, {:execution_gate_denied, :database_unavailable}}
+  catch
+    _kind, _reason -> {:error, {:execution_gate_denied, :database_unavailable}}
+  end
 
   defp active_issue_state?(state_name) when is_binary(state_name) do
     normalized_state = normalize_issue_state(state_name)

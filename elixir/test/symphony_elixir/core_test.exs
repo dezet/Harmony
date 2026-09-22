@@ -1,6 +1,19 @@
 defmodule SymphonyElixir.CoreTest do
   use SymphonyElixir.TestSupport
 
+  defmodule ContinuationGateBackend do
+    @behaviour SymphonyElixir.AgentBackend
+
+    @impl true
+    def run(workspace, prompt, issue, opts) do
+      send(Keyword.fetch!(opts, :test_pid), {:continuation_backend_run, workspace, prompt, issue})
+      {:ok, %{session_id: "continuation-gate-session"}}
+    end
+
+    @impl true
+    def capability_check(_opts), do: :ok
+  end
+
   test "config defaults and validation checks" do
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_api_token: nil,
@@ -1388,6 +1401,49 @@ defmodule SymphonyElixir.CoreTest do
     after
       System.delete_env("SYMP_TEST_CODEx_TRACE")
       File.rm_rf(test_root)
+    end
+  end
+
+  test "agent runner rechecks ExecutionGate before starting a continuation turn" do
+    workspace_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-agent-runner-gate-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(), workspace_root: workspace_root)
+
+      issue = %Issue{
+        id: "execution-gate-continuation",
+        identifier: "MT-GATE",
+        title: "Stop before continuation",
+        description: "ExecutionGate revalidation",
+        state: "Todo",
+        labels: []
+      }
+
+      parent = self()
+
+      gate_fun = fn refreshed_issue, project_id ->
+        send(parent, {:continuation_gate_checked, refreshed_issue.id, project_id})
+        {:error, :analysis_only}
+      end
+
+      assert_raise RuntimeError, ~r/execution_gate_denied/, fn ->
+        AgentRunner.run(issue, nil,
+          agent_backend: ContinuationGateBackend,
+          test_pid: self(),
+          issue_state_fetcher: fn [_issue_id] -> {:ok, [issue]} end,
+          execution_gate_fun: gate_fun
+        )
+      end
+
+      assert_receive {:continuation_backend_run, _workspace, _prompt, ^issue}
+      assert_receive {:continuation_gate_checked, "execution-gate-continuation", nil}
+      refute_receive {:continuation_backend_run, _workspace, _prompt, ^issue}
+    after
+      File.rm_rf(workspace_root)
     end
   end
 
