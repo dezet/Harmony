@@ -1,0 +1,294 @@
+{
+  "items": [
+    {
+      "ref": "jira_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "kind": "jira_intake",
+      "project": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "slug": "portal-klienta",
+        "name": "Portal klienta",
+        "color": "purple"
+      },
+      "title": "Eksport raportu kończy się błędem 504",
+      "jira": {
+        "key": "OPS-142",
+        "url": "https://example.atlassian.net/browse/OPS-142"
+      },
+      "linear": {
+        "identifier": "LIN-284",
+        "url": "https://linear.example/issue/LIN-284/eksport-raportu"
+      },
+      "priority": {
+        "id": "1",
+        "label": "Krytyczny",
+        "tone": "critical"
+      },
+      "column": "decision",
+      "status_label": "Analiza gotowa",
+      "execution_mode": "analysis_only",
+      "detected_at": "2026-09-22T10:12:00Z",
+      "updated_at": "2026-09-22T10:31:00Z",
+      "attention": null
+    },
+    {
+      "ref": "jira_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "kind": "jira_intake",
+      "project": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "slug": "portal-klienta",
+        "name": "Portal klienta",
+        "color": "purple"
+      },
+      "title": "Brak wiadomości po zresetowaniu hasła",
+      "jira": {
+        "key": "OPS-139",
+        "url": "https://example.atlassian.net/browse/OPS-139"
+      },
+      "linear": {
+        "identifier": "LIN-285",
+        "url": "https://linear.example/issue/LIN-285/reset-hasla"
+      },
+      "priority": {
+        "id": "2",
+        "label": "Wysoki",
+        "tone": "high"
+      },
+      "column": "analyzing",
+      "status_label": "Analiza w toku",
+      "execution_mode": "analysis_only",
+      "detected_at": "2026-09-22T10:20:00Z",
+      "updated_at": "2026-09-22T10:24:00Z",
+      "attention": null
+    },
+    {
+      "ref": "jira_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "kind": "jira_intake",
+      "project": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "slug": "finanse",
+        "name": "Finanse",
+        "color": "gold"
+      },
+      "title": "Różnica w sumie faktur po imporcie",
+      "jira": {
+        "key": "FIN-87",
+        "url": "https://example.atlassian.net/browse/FIN-87"
+      },
+      "linear": {
+        "identifier": "LIN-281",
+        "url": "https://linear.example/issue/LIN-281/suma-faktur"
+      },
+      "priority": {
+        "id": "2",
+        "label": "Wysoki",
+        "tone": "high"
+      },
+      "column": "decision",
+      "status_label": "Brakuje danych",
+      "execution_mode": "analysis_only",
+      "detected_at": "2026-09-22T09:56:00Z",
+      "updated_at": "2026-09-22T10:08:00Z",
+      "attention": {
+        "code": "analysis_needs_input",
+        "message": "Do zakończenia analizy potrzebne są dodatkowe dane."
+      }
+    },
+    {
+      "ref": "jira_dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "kind": "jira_intake",
+      "project": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "slug": "portal-klienta",
+        "name": "Portal klienta",
+        "color": "purple"
+      },
+      "title": "Załącznik nie otwiera się w przeglądarce",
+      "jira": {
+        "key": "OPS-145",
+        "url": "https://example.atlassian.net/browse/OPS-145"
+      },
+      "linear": {
+        "identifier": "LIN-286",
+        "url": "https://linear.example/issue/LIN-286/zalacznik"
+      },
+      "priority": {
+        "id": "2",
+        "label": "Wysoki",
+        "tone": "high"
+      },
+      "column": "detected",
+      "status_label": "Oczekuje na analizę",
+      "execution_mode": "analysis_only",
+      "detected_at": "2026-09-22T10:30:00Z",
+      "updated_at": "2026-09-22T10:30:00Z",
+      "attention": null
+    },
+    {
+      "ref": "jira_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "kind": "jira_intake",
+      "project": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "slug": "hr",
+        "name": "HR",
+        "color": "teal"
+      },
+      "title": "Nieaktualny zespół w profilu pracownika",
+      "jira": {
+        "key": "HR-63",
+        "url": "https://example.atlassian.net/browse/HR-63"
+      },
+      "linear": {
+        "identifier": "LIN-279",
+        "url": "https://linear.example/issue/LIN-279/zespol"
+      },
+      "priority": {
+        "id": "2",
+        "label": "Wysoki",
+        "tone": "high"
+      },
+      "column": "handed_off",
+      "status_label": "Komentarz w Jira",
+      "execution_mode": "analysis_only",
+      "detected_at": "2026-09-22T09:50:00Z",
+      "updated_at": "2026-09-22T10:31:00Z",
+      "attention": null
+    },
+    {
+      "ref": "run_ffffffff-1111-4111-8111-111111111111",
+      "kind": "agent_work",
+      "project": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "slug": "portal-klienta",
+        "name": "Portal klienta",
+        "color": "purple"
+      },
+      "title": "Wdrożenie limitu czasu raportu",
+      "jira": null,
+      "linear": {
+        "identifier": "LIN-301",
+        "url": "https://linear.example/issue/LIN-301/limit-raportu"
+      },
+      "priority": {
+        "id": "1",
+        "label": "Krytyczny",
+        "tone": "critical"
+      },
+      "column": "analyzing",
+      "status_label": "Naprawa w toku",
+      "execution_mode": "existing_workflow",
+      "detected_at": "2026-09-22T08:00:00Z",
+      "updated_at": "2026-09-22T10:15:00Z",
+      "attention": null
+    },
+    {
+      "ref": "run_ffffffff-2222-4222-8222-222222222222",
+      "kind": "agent_work",
+      "project": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "slug": "portal-klienta",
+        "name": "Portal klienta",
+        "color": "purple"
+      },
+      "title": "Naprawa nieudanego CI dla portalu",
+      "jira": null,
+      "linear": {
+        "identifier": "LIN-302",
+        "url": "https://linear.example/issue/LIN-302/ci-portal"
+      },
+      "priority": {
+        "id": "2",
+        "label": "Wysoki",
+        "tone": "high"
+      },
+      "column": "decision",
+      "status_label": "Błąd przebiegu",
+      "execution_mode": "existing_workflow",
+      "detected_at": "2026-09-22T07:45:00Z",
+      "updated_at": "2026-09-22T10:12:00Z",
+      "attention": {
+        "code": "work_run_failed",
+        "message": "Przebieg ci_fix zakończył się błędem."
+      }
+    },
+    {
+      "ref": "run_ffffffff-3333-4333-8333-333333333333",
+      "kind": "agent_work",
+      "project": {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "slug": "finanse",
+        "name": "Finanse",
+        "color": "gold"
+      },
+      "title": "Przegląd zmian eksportu",
+      "jira": null,
+      "linear": {
+        "identifier": "LIN-303",
+        "url": "https://linear.example/issue/LIN-303/przeglad"
+      },
+      "priority": {
+        "id": null,
+        "label": "Brak priorytetu",
+        "tone": "normal"
+      },
+      "column": "handed_off",
+      "status_label": "Zakończony",
+      "execution_mode": "existing_workflow",
+      "detected_at": "2026-09-22T06:30:00Z",
+      "updated_at": "2026-09-22T09:00:00Z",
+      "attention": null
+    },
+    {
+      "ref": "run_ffffffff-4444-4444-8444-444444444444",
+      "kind": "agent_work",
+      "project": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "slug": "hr",
+        "name": "HR",
+        "color": "teal"
+      },
+      "title": "LIN-304",
+      "jira": null,
+      "linear": null,
+      "priority": {
+        "id": null,
+        "label": "Brak priorytetu",
+        "tone": "normal"
+      },
+      "column": "decision",
+      "status_label": "awaiting_owner",
+      "execution_mode": "existing_workflow",
+      "detected_at": "2026-09-22T06:10:00Z",
+      "updated_at": "2026-09-22T08:00:00Z",
+      "attention": {
+        "code": "unknown_status",
+        "message": "Nieznany status przebiegu: awaiting_owner"
+      }
+    }
+  ],
+  "meta": {
+    "next_cursor": null,
+    "total": 9,
+    "page_size": 25
+  },
+  "counts": {
+    "all": 9,
+    "decision": 4,
+    "analysis": 2,
+    "done": 2,
+    "detected": 1
+  },
+  "project_counts": [
+    {
+      "project_id": "11111111-1111-4111-8111-111111111111",
+      "total": 5
+    },
+    {
+      "project_id": "22222222-2222-4222-8222-222222222222",
+      "total": 2
+    },
+    {
+      "project_id": "33333333-3333-4333-8333-333333333333",
+      "total": 2
+    }
+  ]
+}

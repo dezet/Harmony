@@ -415,6 +415,268 @@ export interface ProjectActivityPage {
   };
 }
 
+// ─── Intake cases endpoint (/api/v1/cases) ─────────────────────────────────
+
+export type CaseColumn = "detected" | "analyzing" | "decision" | "handed_off";
+export type CaseKind = "jira_intake" | "agent_work";
+export type ProjectColor = "purple" | "gold" | "teal";
+export type CaseExecutionMode = "analysis_only" | "repair_approved" | "existing_workflow";
+export type CasePriorityTone = "critical" | "high" | "normal";
+
+export interface CaseProject {
+  id: string;
+  slug: string;
+  name: string;
+  color: ProjectColor;
+}
+
+export interface CaseJiraLink {
+  key: string;
+  url: string;
+}
+
+export interface CaseLinearLink {
+  identifier: string;
+  url: string;
+}
+
+export interface CasePriority {
+  id: string | null;
+  label: string;
+  tone: CasePriorityTone;
+}
+
+export interface CaseAttention {
+  code: string;
+  message: string;
+}
+
+export interface CaseSummary {
+  ref: string;
+  kind: CaseKind;
+  project: CaseProject;
+  title: string;
+  jira: CaseJiraLink | null;
+  linear: CaseLinearLink | null;
+  priority: CasePriority;
+  column: CaseColumn;
+  status_label: string;
+  execution_mode: CaseExecutionMode;
+  detected_at: string;
+  updated_at: string;
+  attention: CaseAttention | null;
+}
+
+export interface CaseCounts {
+  all: number;
+  decision: number;
+  analysis: number;
+  done: number;
+  detected: number;
+}
+
+export interface CaseProjectCount {
+  project_id: string;
+  total: number;
+}
+
+export interface CasesPage {
+  items: CaseSummary[];
+  meta: {
+    next_cursor: string | null;
+    total: number;
+    page_size: number;
+  };
+  counts: CaseCounts;
+  project_counts: CaseProjectCount[];
+}
+
+export type IntakeCaseStatus = "queued" | "running" | "ready" | "needs_input" | "failed";
+export type AnalysisStatus = "queued" | "running" | "succeeded" | "failed" | "needs_input";
+export type AnalysisConfidence = "low" | "medium" | "high";
+export type AnalysisContextScope = "issue_only" | "issue_and_repository";
+
+export interface CaseRuleSnapshot {
+  name: string;
+  source_type: "board" | "filter";
+  source_id: string;
+  priority_ids: string[];
+  initial_policy: "new_matches_only" | "include_existing";
+  qualified_at: string;
+}
+
+export interface CaseDetailCase extends CaseSummary {
+  project_id: string;
+  rule_id: string;
+  jira_connection_id: string;
+  jira_issue_id: string;
+  description_text: string;
+  jira_updated_at: string;
+  linear_state_name: string | null;
+  analysis_version: number;
+  analysis_status: IntakeCaseStatus;
+  acknowledged_at: string | null;
+  repair_approved_at: string | null;
+  repair_approved_version: number | null;
+  rule_snapshot: CaseRuleSnapshot;
+}
+
+export interface AnalysisInputSnapshot {
+  context_scope: AnalysisContextScope;
+  jira_key: string;
+  repo_sha: string | null;
+}
+
+export interface AnalysisFact {
+  text: string;
+  source: string;
+}
+
+export interface AnalysisHypothesis {
+  text: string;
+  confidence: AnalysisConfidence;
+  evidence: string[];
+}
+
+export interface AnalysisResult {
+  summary: string;
+  facts: AnalysisFact[];
+  hypotheses: AnalysisHypothesis[];
+  missing_data: string[];
+  next_steps: string[];
+  needs_input: boolean;
+  context_scope: AnalysisContextScope;
+}
+
+export interface AnalysisTokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface CaseAnalysis {
+  version: number;
+  status: AnalysisStatus;
+  input_snapshot: AnalysisInputSnapshot;
+  result: AnalysisResult | null;
+  model: string;
+  effort: string;
+  started_at: string | null;
+  completed_at: string | null;
+  token_usage: AnalysisTokenUsage | null;
+  error_code: string | null;
+  work_run_id: string | null;
+}
+
+export interface CaseDetailLinks {
+  jira: CaseJiraLink | null;
+  linear: CaseLinearLink | null;
+}
+
+export type DeliveryOperation = "linear_create" | "email" | "sms" | "analysis" | "jira_comment";
+export type DeliveryStatus = "pending" | "running" | "retry_wait" | "succeeded" | "failed" | "unknown" | "paused";
+
+export interface CaseDelivery {
+  id: string;
+  operation: DeliveryOperation;
+  status: DeliveryStatus;
+  attempts: number;
+  next_attempt_at: string | null;
+  provider_id: string | null;
+  first_attempt_at: string | null;
+  sent_at: string | null;
+  last_error_code: string | null;
+  retry_allowed: boolean;
+  duplicate_risk: boolean;
+}
+
+export interface CaseAction {
+  allowed: boolean;
+  reason: string | null;
+}
+
+export interface CaseActions {
+  acknowledge: CaseAction;
+  reanalyze: CaseAction;
+  approve_repair: CaseAction;
+}
+
+export type PublicationStatus = "pending" | "published" | "failed" | "unknown";
+
+export interface CasePublication {
+  status: PublicationStatus;
+  version: number;
+  comment_id: string | null;
+  marker: string | null;
+  published_at: string | null;
+  error_code: string | null;
+}
+
+export interface CaseDetail {
+  case: CaseDetailCase;
+  analysis: CaseAnalysis | null;
+  links: CaseDetailLinks;
+  deliveries: CaseDelivery[];
+  actions: CaseActions;
+  publication: CasePublication;
+  version: number;
+}
+
+// ─── Automation and integration endpoints ──────────────────────────────────
+
+export type AutomationSourceType = "board" | "filter";
+export type AutomationInitialPolicy = "new_matches_only" | "include_existing";
+export type AutomationActivationStatus = "idle" | "activating" | "error";
+
+export interface AutomationRule {
+  id: string;
+  project_id: string;
+  jira_connection_id: string;
+  name: string;
+  source_type: AutomationSourceType;
+  source_id: string;
+  priority_ids: string[];
+  interval_seconds: number;
+  initial_policy: AutomationInitialPolicy;
+  linear_team_id: string;
+  linear_project_id: string;
+  linear_todo_state_id: string;
+  linear_hold_label_id: string;
+  email_connection_id: string | null;
+  sms_connection_id: string | null;
+  email_recipients: string[];
+  sms_recipients: string[];
+  enabled: boolean;
+  config_version: number;
+  activation_status: AutomationActivationStatus;
+  activated_at: string | null;
+  baseline_complete_at: string | null;
+  baseline_generation: string | null;
+  last_started_at: string | null;
+  last_success_at: string | null;
+  next_poll_at: string | null;
+  last_error_code: string | null;
+  lease_until: string | null;
+  lock_version: number;
+}
+
+export type IntegrationKind = "jira_cloud" | "smtp" | "smsapi";
+export type IntegrationHealth = "unchecked" | "ok" | "error";
+
+export interface IntegrationConnection {
+  id: string;
+  kind: IntegrationKind;
+  name: string;
+  settings: Record<string, unknown>;
+  secret_state: SecretState;
+  secret_version: number;
+  enabled: boolean;
+  last_checked_at: string | null;
+  health: IntegrationHealth;
+  error_code: string | null;
+  lock_version: number;
+}
+
 // What the project form submits. `config` is an object parsed from the JSON textarea.
 export interface ForgeRepository {
   owner: string;
