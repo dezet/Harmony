@@ -118,7 +118,7 @@ defmodule SymphonyElixir.Intake.Connections do
           other -> other
         end
 
-      Map.put(acc, normalized_key, value)
+      if is_atom(normalized_key), do: Map.put(acc, normalized_key, value), else: acc
     end)
   end
 

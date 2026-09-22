@@ -109,6 +109,50 @@ defmodule SymphonyElixir.IntakeConfigTest do
     assert Connections.present(cleared).secret_status == "unset"
   end
 
+  test "string-key connection input ignores unknown fields and redacts nested secrets" do
+    assert {:ok, connection} =
+             Connections.create(%{
+               "kind" => "smtp",
+               "name" => "SMTP with nested credentials",
+               "settings" => %{
+                 host: "smtp.example.test",
+                 accounts: [%{token: "nested-token", password: "nested-password", label: "primary"}]
+               },
+               "secret" => "smtp-password",
+               "secret_version" => 2,
+               "enabled" => true,
+               "last_checked_at" => nil,
+               "health" => "ok",
+               "error_code" => "last-check-warning",
+               "lock_version" => 2,
+               "ignored_field" => "ignored"
+             })
+
+    presented = Connections.present(connection)
+    serialized = Jason.encode!(presented)
+
+    assert connection.enabled
+    assert connection.secret_version == 2
+    assert connection.error_code == "last-check-warning"
+    assert Connections.secret_set?(connection)
+    assert presented.settings == %{"host" => "smtp.example.test", "accounts" => [%{"label" => "primary"}]}
+    assert presented.secret_status == "set"
+    refute serialized =~ "smtp-password"
+    refute serialized =~ "nested-token"
+    refute serialized =~ "nested-password"
+  end
+
+  test "SMS connections require a sender and partial updates preserve settings" do
+    assert {:error, changeset} = Connections.create(%{kind: "smsapi", name: "SMS", settings: %{sender: " "}})
+    assert Keyword.has_key?(changeset.errors, :settings)
+
+    assert {:ok, sms} = Connections.create(%{kind: "smsapi", name: "SMS", settings: %{sender: "Harmony"}})
+    assert {:ok, renamed} = Connections.update(sms, %{name: "Primary SMS"})
+    assert renamed.name == "Primary SMS"
+    assert renamed.settings == %{"sender" => "Harmony"}
+    assert Connections.secret_set?(renamed) == false
+  end
+
   test "connection kind is validated and a Jira site URL cannot change after use" do
     assert {:error, changeset} =
              Connections.create(%{kind: "other", name: "Unknown", settings: %{}})

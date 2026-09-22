@@ -3,6 +3,7 @@ defmodule SymphonyElixir.IntakeRulesTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.Intake
+  alias SymphonyElixir.Intake.Connections
   alias SymphonyElixir.Intake.Rules
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, Project}
@@ -40,6 +41,46 @@ defmodule SymphonyElixir.IntakeRulesTest do
     attrs = Map.merge(rule_attrs(), %{jira_connection_id: jira.id, email_connection_id: jira.id, email_recipients: ["ops@example.test"]})
 
     assert {:error, changeset} = Rules.create(attrs)
+    assert Keyword.has_key?(changeset.errors, :email_connection_id)
+  end
+
+  test "string-key rule input ignores unknown fields and normalizes recipients" do
+    email = connection!("smtp", %{host: "smtp.example.test"})
+    sms = connection!("smsapi", %{sender: "Harmony"})
+
+    attrs =
+      rule_attrs()
+      |> Map.merge(%{
+        source_id: " 42 ",
+        email_connection_id: email.id,
+        email_recipients: [" Ops@EXAMPLE.TEST ", "Ops@example.test"],
+        sms_connection_id: sms.id,
+        sms_recipients: [" +48123123123 ", "+48123123123"]
+      })
+      |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+      |> Map.put("ignored_field", "ignored")
+
+    assert {:ok, rule} = Rules.create(attrs)
+    assert rule.source_id == "42"
+    assert rule.email_recipients == ["Ops@example.test"]
+    assert rule.sms_recipients == ["+48123123123"]
+  end
+
+  test "recipient limits and a missing delivery connection are rejected" do
+    email = connection!("smtp", %{host: "smtp.example.test"})
+    attrs = rule_attrs()
+
+    too_many_recipients =
+      Map.merge(attrs, %{
+        email_connection_id: email.id,
+        email_recipients: Enum.map(1..11, &"ops#{&1}@example.test")
+      })
+
+    assert {:error, changeset} = Rules.create(too_many_recipients)
+    assert Keyword.has_key?(changeset.errors, :email_recipients)
+
+    without_connection = Map.merge(attrs, %{email_recipients: ["ops@example.test"]})
+    assert {:error, changeset} = Rules.create(without_connection)
     assert Keyword.has_key?(changeset.errors, :email_connection_id)
   end
 
@@ -96,6 +137,57 @@ defmodule SymphonyElixir.IntakeRulesTest do
     refute disabled.enabled
     assert disabled.activation_status == "idle"
     assert disabled.config_version == active.config_version + 1
+  end
+
+  test "changing priority IDs disables an active rule for a new baseline" do
+    assert {:ok, rule} = Rules.create(rule_attrs())
+    assert {:ok, active} = Rules.activate(rule)
+
+    assert {:ok, disabled} = Rules.patch(active, %{priority_ids: ["2"]})
+    refute disabled.enabled
+    assert disabled.activation_status == "idle"
+    assert is_nil(disabled.baseline_generation)
+    assert disabled.config_version == active.config_version + 1
+  end
+
+  test "a Jira URL cannot change while a case references its connection" do
+    case_connection = connection!("jira_cloud", %{site_url: "https://case-jira.example.test"})
+    assert {:ok, rule} = Rules.create(rule_attrs())
+    time = now()
+
+    %IntakeCase{}
+    |> IntakeCase.changeset(%{
+      project_id: rule.project_id,
+      rule_id: rule.id,
+      jira_connection_id: case_connection.id,
+      jira_issue_id: "case-#{System.unique_integer([:positive])}",
+      jira_key: "OPS-1",
+      jira_url: "https://case-jira.example.test/browse/OPS-1",
+      title: "Case",
+      description_text: "Description",
+      priority_id: "1",
+      priority_name: "P1",
+      jira_updated_at: time,
+      detected_at: time,
+      rule_snapshot: %{},
+      analysis_version: 1,
+      analysis_status: "queued",
+      lock_version: 1
+    })
+    |> Repo.insert!()
+
+    assert Connections.site_url(%IntegrationConnection{settings: %{site_url: "https://atom-key.example.test"}}) ==
+             "https://atom-key.example.test"
+
+    assert {:error, changeset} =
+             Connections.update(case_connection, %{settings: %{site_url: "https://replacement.example.test"}})
+
+    assert Keyword.has_key?(changeset.errors, :site_url)
+  end
+
+  test "a rule remains active during its activation transition" do
+    rule = %AutomationRule{enabled: false, activation_status: "activating"}
+    assert Rules.active?(rule)
   end
 
   test "only one active rule may claim a source" do

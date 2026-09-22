@@ -10,7 +10,14 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{IntegrationConnection, IntegrationDelivery, IntakeAnalysis, IntakeCase, IntakeEvent}
+
+  alias SymphonyElixir.Storage.{
+    IntakeAnalysis,
+    IntakeCase,
+    IntakeEvent,
+    IntegrationConnection,
+    IntegrationDelivery
+  }
 
   @retry_intervals [30, 120, 600, 1_800]
   @max_automatic_attempts 5
@@ -30,33 +37,33 @@ defmodule SymphonyElixir.Intake.Outbox do
     now = current_time(opts)
     switches = switches(opts)
 
-    case Repo.transaction(fn ->
-           expired = recover_expired_in_transaction(now)
-           pause_disabled_connections(now)
-           resume_enabled_connections(now)
-
-           result =
-             if switches.intake_enabled do
-               claim_candidate(opts, now, switches, MapSet.new(), 0)
-             else
-               :empty
-             end
-
-           {result, expired}
-         end) do
+    case Repo.transaction(fn -> claim_in_transaction(opts, now, switches) end) do
       {:ok, {result, _expired}} -> result
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp claim_in_transaction(opts, now, switches) do
+    expired = recover_expired_in_transaction(now)
+    pause_disabled_connections(now)
+    resume_enabled_connections(now)
+
+    result = claim_if_enabled(opts, now, switches)
+    {result, expired}
+  end
+
+  defp claim_if_enabled(opts, now, %{intake_enabled: true} = switches) do
+    claim_candidate(opts, now, switches, [], 0)
+  end
+
+  defp claim_if_enabled(_opts, _now, _switches), do: :empty
 
   @spec heartbeat(binary(), String.t(), keyword()) :: delivery_result()
   def heartbeat(delivery_id, lease_token, opts \\ []) do
     now = current_time(opts)
     lease_until = DateTime.add(now, Keyword.get(opts, :lease_seconds, 120), :second)
 
-    with {:ok, delivery} <- cas_update(delivery_id, lease_token, now, lease_until: lease_until) do
-      {:ok, delivery}
-    end
+    cas_update(delivery_id, lease_token, now, lease_until: lease_until)
   end
 
   @spec complete(binary(), String.t()) :: delivery_result()
@@ -90,35 +97,45 @@ defmodule SymphonyElixir.Intake.Outbox do
   def retry(delivery_id, lease_token, error_code, retry_after \\ nil, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
-      with {:ok, current} <- leased_delivery(delivery_id, lease_token, now) do
-        budget = @max_automatic_attempts + manual_retries(current.payload)
-
-        {status, next_attempt_at} =
-          if current.attempts < budget do
-            {"retry_wait", next_attempt_at(now, current.attempts, retry_after, opts)}
-          else
-            {"failed", now}
-          end
-
-        with {:ok, delivery} <-
-               update_leased(delivery_id, lease_token, now,
-                 status: status,
-                 next_attempt_at: next_attempt_at,
-                 last_error_code: error_code,
-                 lease_token: nil,
-                 lease_until: nil,
-                 updated_at: now,
-                 inc: [lock_version: 1]
-               ) do
-          event = if status == "failed", do: "delivery_failed", else: "delivery_retry_scheduled"
-          record_event(delivery, event, %{error_code: error_code, next_attempt_at: next_attempt_at}, now)
-          {:ok, delivery}
-        end
-      end
-    end)
+    Repo.transaction(fn -> retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) end)
     |> flatten_transaction_result()
   end
+
+  defp retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) do
+    with {:ok, current} <- leased_delivery(delivery_id, lease_token, now) do
+      persist_retry(current, delivery_id, lease_token, error_code, retry_after, now, opts)
+    end
+  end
+
+  defp persist_retry(current, delivery_id, lease_token, error_code, retry_after, now, opts) do
+    budget = @max_automatic_attempts + manual_retries(current.payload)
+
+    {status, next_at} =
+      if current.attempts < budget do
+        {"retry_wait", next_attempt_at(now, current.attempts, retry_after, opts)}
+      else
+        {"failed", now}
+      end
+
+    event = retry_event(status)
+
+    with {:ok, delivery} <-
+           update_leased(delivery_id, lease_token, now,
+             status: status,
+             next_attempt_at: next_at,
+             last_error_code: error_code,
+             lease_token: nil,
+             lease_until: nil,
+             updated_at: now,
+             inc: [lock_version: 1]
+           ) do
+      record_event(delivery, event, %{error_code: error_code, next_attempt_at: next_at}, now)
+      {:ok, delivery}
+    end
+  end
+
+  defp retry_event("failed"), do: "delivery_failed"
+  defp retry_event(_status), do: "delivery_retry_scheduled"
 
   @spec fail(binary(), String.t(), String.t(), keyword()) :: delivery_result()
   def fail(delivery_id, lease_token, error_code, opts \\ []) do
@@ -186,37 +203,38 @@ defmodule SymphonyElixir.Intake.Outbox do
     with %IntegrationDelivery{} = initial <- Repo.get(IntegrationDelivery, delivery_id),
          :ok <- check_manual_retry(initial, opts),
          :ok <- reconcile_unknown(initial, opts) do
-      Repo.transaction(fn ->
-        delivery = Repo.one(from(d in IntegrationDelivery, where: d.id == ^delivery_id, lock: "FOR UPDATE"))
-
-        with %IntegrationDelivery{} <- delivery,
-             :ok <- check_retryable_status(delivery),
-             :ok <- ensure_connection_enabled(delivery) do
-          payload =
-            delivery.payload
-            |> Map.put("manual_retries", manual_retries(delivery.payload) + 1)
-
-          changes = %{
-            status: "retry_wait",
-            next_attempt_at: now,
-            payload: payload,
-            lease_token: nil,
-            lease_until: nil,
-            lock_version: delivery.lock_version + 1
-          }
-
-          updated = delivery |> IntegrationDelivery.changeset(changes) |> Repo.update!()
-          record_event(updated, "delivery_manual_retry", %{attempts: updated.attempts}, now, "operator")
-          {:ok, updated}
-        else
-          nil -> {:error, :not_found}
-          {:error, reason} -> {:error, reason}
-        end
-      end)
+      Repo.transaction(fn -> manual_retry_in_transaction(delivery_id, now) end)
       |> flatten_transaction_result()
     else
       nil -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp manual_retry_in_transaction(delivery_id, now) do
+    case Repo.one(from(d in IntegrationDelivery, where: d.id == ^delivery_id, lock: "FOR UPDATE")) do
+      %IntegrationDelivery{} = delivery -> retry_manually(delivery, now)
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp retry_manually(delivery, now) do
+    with :ok <- check_retryable_status(delivery),
+         :ok <- ensure_connection_enabled(delivery) do
+      payload = Map.put(delivery.payload, "manual_retries", manual_retries(delivery.payload) + 1)
+
+      changes = %{
+        status: "retry_wait",
+        next_attempt_at: now,
+        payload: payload,
+        lease_token: nil,
+        lease_until: nil,
+        lock_version: delivery.lock_version + 1
+      }
+
+      updated = delivery |> IntegrationDelivery.changeset(changes) |> Repo.update!()
+      record_event(updated, "delivery_manual_retry", %{attempts: updated.attempts}, now, "operator")
+      {:ok, updated}
     end
   end
 
@@ -235,29 +253,66 @@ defmodule SymphonyElixir.Intake.Outbox do
   defp claim_candidate(_opts, _now, _switches, _excluded, attempts) when attempts >= @max_candidate_scan,
     do: :empty
 
+  @spec claim_candidate(keyword(), DateTime.t(), map(), [binary()], non_neg_integer()) ::
+          delivery_result() | :empty
   defp claim_candidate(opts, now, switches, excluded, attempts) do
     case next_candidate(opts, now, switches, excluded) do
       nil ->
         :empty
 
       delivery ->
-        category = category(delivery.operation)
-        advisory_lock!(category)
-
-        if active_claim_count(category, now) >= category_limit(category, opts) do
-          claim_candidate(opts, now, switches, MapSet.put(excluded, delivery.id), attempts + 1)
-        else
-          case rate_limit_delivery(delivery, now, opts) do
-            :allowed ->
-              lease_delivery(delivery, now, opts)
-
-            {:delayed, _updated} ->
-              claim_candidate(opts, now, switches, MapSet.put(excluded, delivery.id), attempts + 1)
-          end
-        end
+        claim_selected_candidate(delivery, opts, now, switches, excluded, attempts)
     end
   end
 
+  @spec claim_selected_candidate(
+          IntegrationDelivery.t(),
+          keyword(),
+          DateTime.t(),
+          map(),
+          [binary()],
+          non_neg_integer()
+        ) :: delivery_result() | :empty
+  defp claim_selected_candidate(delivery, opts, now, switches, excluded, attempts) do
+    category = category(delivery.operation)
+    advisory_lock!(category)
+
+    if active_claim_count(category, now) >= category_limit(category, opts) do
+      skip_candidate(delivery, opts, now, switches, excluded, attempts)
+    else
+      rate_limit_or_lease(delivery, opts, now, switches, excluded, attempts)
+    end
+  end
+
+  @spec rate_limit_or_lease(
+          IntegrationDelivery.t(),
+          keyword(),
+          DateTime.t(),
+          map(),
+          [binary()],
+          non_neg_integer()
+        ) :: delivery_result() | :empty
+  defp rate_limit_or_lease(delivery, opts, now, switches, excluded, attempts) do
+    case rate_limit_delivery(delivery, now, opts) do
+      :allowed -> lease_delivery(delivery, now, opts)
+      {:delayed, _updated} -> skip_candidate(delivery, opts, now, switches, excluded, attempts)
+    end
+  end
+
+  @spec skip_candidate(
+          IntegrationDelivery.t(),
+          keyword(),
+          DateTime.t(),
+          map(),
+          [binary()],
+          non_neg_integer()
+        ) :: delivery_result() | :empty
+  defp skip_candidate(delivery, opts, now, switches, excluded, attempts) do
+    claim_candidate(opts, now, switches, [delivery.id | excluded], attempts + 1)
+  end
+
+  @spec next_candidate(keyword(), DateTime.t(), map(), [binary()]) ::
+          IntegrationDelivery.t() | nil
   defp next_candidate(opts, now, switches, excluded) do
     query =
       from(d in IntegrationDelivery,
@@ -300,11 +355,12 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   defp filter_switches(query, _switches), do: where(query, [d], false)
 
+  @spec exclude_delivery_ids(Ecto.Query.t(), [binary()]) :: Ecto.Query.t()
   defp exclude_delivery_ids(query, excluded) do
-    if MapSet.size(excluded) == 0 do
+    if excluded == [] do
       query
     else
-      where(query, [d], d.id not in ^MapSet.to_list(excluded))
+      where(query, [d], d.id not in ^excluded)
     end
   end
 
@@ -483,23 +539,29 @@ defmodule SymphonyElixir.Intake.Outbox do
           )
         )
 
-      Enum.each(deliveries, fn delivery ->
-        resume_status = Map.get(delivery.payload, "resume_status", "pending")
+      Enum.each(deliveries, &resume_delivery(&1, now))
+    end
+  end
 
-        status =
-          if resume_status in ~w(pending retry_wait unknown failed succeeded), do: resume_status, else: "pending"
+  defp resume_delivery(delivery, now) do
+    status = resumed_status(delivery.payload)
 
-        updated =
-          delivery
-          |> IntegrationDelivery.changeset(%{
-            status: status,
-            payload: Map.drop(delivery.payload, ["resume_status", :resume_status]),
-            lock_version: delivery.lock_version + 1
-          })
-          |> Repo.update!()
+    updated =
+      delivery
+      |> IntegrationDelivery.changeset(%{
+        status: status,
+        payload: Map.drop(delivery.payload, ["resume_status", :resume_status]),
+        lock_version: delivery.lock_version + 1
+      })
+      |> Repo.update!()
 
-        record_event(updated, "delivery_resumed", %{status: status}, now)
-      end)
+    record_event(updated, "delivery_resumed", %{status: status}, now)
+  end
+
+  defp resumed_status(payload) do
+    case Map.get(payload, "resume_status", "pending") do
+      status when status in ~w(pending retry_wait unknown failed succeeded) -> status
+      _status -> "pending"
     end
   end
 
@@ -786,25 +848,88 @@ defmodule SymphonyElixir.Intake.Outbox do
 
     case Integer.parse(value) do
       {seconds, ""} when seconds >= 0 -> DateTime.add(now, seconds, :second)
-      _ -> parse_http_date(value)
+      _ -> parse_http_date(value, now)
     end
   end
 
   defp parse_retry_after(_value, _now), do: nil
 
-  defp parse_http_date(value) do
-    case :httpd_util.convert_request_date(String.to_charlist(value)) do
-      {{year, month, day}, {hour, minute, second}} ->
-        gregorian_seconds = :calendar.datetime_to_gregorian_seconds({{year, month, day}, {hour, minute, second}})
-        unix_epoch = :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
-        DateTime.from_unix!(gregorian_seconds - unix_epoch)
+  defp parse_http_date(value, now) do
+    case String.split(value) do
+      [weekday, day, month, year, time, "GMT"] ->
+        with true <- weekday_token?(weekday, :short),
+             {year, ""} <- Integer.parse(year),
+             {day, ""} <- Integer.parse(day) do
+          build_http_datetime(year, month, day, time)
+        else
+          _invalid -> nil
+        end
 
-      _other ->
+      [weekday, date, time, "GMT"] ->
+        with true <- weekday_token?(weekday, :long),
+             [day, month, year] <- String.split(date, "-"),
+             {day, ""} <- Integer.parse(day),
+             {short_year, ""} <- Integer.parse(year) do
+          year = rfc850_year(short_year, now.year)
+          build_http_datetime(year, month, day, time)
+        else
+          _invalid -> nil
+        end
+
+      [weekday, month, day, time, year] ->
+        with true <- weekday_token?(weekday, :short),
+             {day, ""} <- Integer.parse(day),
+             {year, ""} <- Integer.parse(year) do
+          build_http_datetime(year, month, day, time)
+        else
+          _invalid -> nil
+        end
+
+      _invalid ->
         nil
     end
-  rescue
-    _error -> nil
   end
+
+  defp weekday_token?(weekday, :short), do: String.trim_trailing(weekday, ",") in ~w(Mon Tue Wed Thu Fri Sat Sun)
+
+  defp weekday_token?(weekday, :long) do
+    String.trim_trailing(weekday, ",") in ~w(Monday Tuesday Wednesday Thursday Friday Saturday Sunday)
+  end
+
+  defp rfc850_year(short_year, current_year) do
+    year = div(current_year, 100) * 100 + short_year
+    if year > current_year + 50, do: year - 100, else: year
+  end
+
+  defp build_http_datetime(year, month, day, time) do
+    with {:ok, month} <- month_number(month),
+         {:ok, date} <- Date.new(year, month, day),
+         [_, hour, minute, second] <- Regex.run(~r/\A(\d{2}):(\d{2}):(\d{2})\z/, time),
+         {hour, ""} <- Integer.parse(hour),
+         {minute, ""} <- Integer.parse(minute),
+         {second, ""} <- Integer.parse(second),
+         {:ok, time} <- Time.new(hour, minute, second),
+         {:ok, naive_datetime} <- NaiveDateTime.new(date, time),
+         {:ok, datetime} <- DateTime.from_naive(naive_datetime, "Etc/UTC") do
+      datetime
+    else
+      _invalid -> nil
+    end
+  end
+
+  defp month_number("Jan"), do: {:ok, 1}
+  defp month_number("Feb"), do: {:ok, 2}
+  defp month_number("Mar"), do: {:ok, 3}
+  defp month_number("Apr"), do: {:ok, 4}
+  defp month_number("May"), do: {:ok, 5}
+  defp month_number("Jun"), do: {:ok, 6}
+  defp month_number("Jul"), do: {:ok, 7}
+  defp month_number("Aug"), do: {:ok, 8}
+  defp month_number("Sep"), do: {:ok, 9}
+  defp month_number("Oct"), do: {:ok, 10}
+  defp month_number("Nov"), do: {:ok, 11}
+  defp month_number("Dec"), do: {:ok, 12}
+  defp month_number(_month), do: :error
 
   defp max_datetime(left, right) do
     if DateTime.compare(left, right) == :lt, do: right, else: left

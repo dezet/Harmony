@@ -120,6 +120,24 @@ defmodule SymphonyElixir.IntakeOutboxTest do
            |> DateTime.diff(now, :second) == 126
   end
 
+  test "Retry-After accepts all HTTP date formats and ignores invalid dates" do
+    now = ~U[2026-09-22 00:00:00Z]
+    expected_retry_at = DateTime.add(now, 3_600, :second)
+
+    retry_dates = [
+      "Tue, 22 Sep 2026 01:00:00 GMT",
+      "Tuesday, 22-Sep-26 01:00:00 GMT",
+      "Tue Sep 22 01:00:00 2026"
+    ]
+
+    for retry_date <- retry_dates do
+      assert Outbox.next_attempt_at(now, 1, retry_date, jitter: fn -> 0.5 end) == expected_retry_at
+    end
+
+    assert Outbox.next_attempt_at(now, 1, "not a valid HTTP date", jitter: fn -> 0.5 end) ==
+             DateTime.add(now, 32, :second)
+  end
+
   test "expired write-capable leases become unknown while analysis uses its recovery path" do
     email = delivery!("email")
     {analysis_case, analysis} = analysis_fixture!()

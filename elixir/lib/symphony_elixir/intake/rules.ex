@@ -50,27 +50,25 @@ defmodule SymphonyElixir.Intake.Rules do
   def patch(%AutomationRule{} = rule, attrs) when is_map(attrs) do
     attrs = normalize_attrs(attrs)
 
-    cond do
-      activated?(rule) and immutable_change?(attrs) ->
-        {:error, :immutable_after_activation}
+    if activated?(rule) and immutable_change?(attrs) do
+      {:error, :immutable_after_activation}
+    else
+      attrs =
+        attrs
+        |> Map.delete(:config_version)
+        |> Map.delete(:lock_version)
+        |> Map.put(:config_version, rule.config_version + 1)
+        |> Map.put(:lock_version, rule.lock_version + 1)
+        |> Map.put(:enabled, rule.enabled)
+        |> Map.put(:activation_status, rule.activation_status)
+        |> disable_for_source_change(rule)
 
-      true ->
-        attrs =
-          attrs
-          |> Map.delete(:config_version)
-          |> Map.delete(:lock_version)
-          |> Map.put(:config_version, rule.config_version + 1)
-          |> Map.put(:lock_version, rule.lock_version + 1)
-          |> Map.put(:enabled, rule.enabled)
-          |> Map.put(:activation_status, rule.activation_status)
-          |> disable_for_source_change(rule)
+      changeset = changeset(rule, attrs)
 
-        changeset = changeset(rule, attrs)
-
-        with {:ok, changeset} <- validate_connection_kinds(changeset),
-             {:ok, updated} <- Repo.update(changeset) do
-          {:ok, updated}
-        end
+      with {:ok, changeset} <- validate_connection_kinds(changeset),
+           {:ok, updated} <- Repo.update(changeset) do
+        {:ok, updated}
+      end
     end
   end
 
@@ -224,7 +222,7 @@ defmodule SymphonyElixir.Intake.Rules do
           other -> other
         end
 
-      Map.put(acc, key, value)
+      if is_atom(key), do: Map.put(acc, key, value), else: acc
     end)
   end
 

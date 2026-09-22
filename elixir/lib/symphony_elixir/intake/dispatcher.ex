@@ -36,13 +36,7 @@ defmodule SymphonyElixir.Intake.Dispatcher do
         Outbox.complete(delivery.id, delivery.lease_token, attrs, opts)
 
       {:retry, error_code, retry_after} ->
-        with {:ok, updated} <- Outbox.retry(delivery.id, delivery.lease_token, error_code, retry_after, opts) do
-          if updated.status == "retry_wait" do
-            {:retry_wait, updated}
-          else
-            {:failed, updated}
-          end
-        end
+        persist_retry(delivery, error_code, retry_after, opts)
 
       {:error, error_code} ->
         with {:ok, updated} <- Outbox.fail(delivery.id, delivery.lease_token, error_code, opts) do
@@ -58,6 +52,15 @@ defmodule SymphonyElixir.Intake.Dispatcher do
         {:error, {:invalid_adapter_result, result}}
     end
   end
+
+  defp persist_retry(delivery, error_code, retry_after, opts) do
+    with {:ok, updated} <- Outbox.retry(delivery.id, delivery.lease_token, error_code, retry_after, opts) do
+      retry_result(updated)
+    end
+  end
+
+  defp retry_result(%IntegrationDelivery{status: "retry_wait"} = delivery), do: {:retry_wait, delivery}
+  defp retry_result(%IntegrationDelivery{} = delivery), do: {:failed, delivery}
 
   defp call_adapter(adapter, delivery) when is_function(adapter, 1), do: adapter.(delivery)
   defp call_adapter(adapter, delivery) when is_atom(adapter), do: adapter.perform(delivery)
