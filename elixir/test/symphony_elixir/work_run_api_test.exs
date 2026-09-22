@@ -265,7 +265,7 @@ defmodule SymphonyElixir.WorkRunApiTest do
     conn = get(build_conn(), "/api/v1/work_runs?project=alpha")
     body = json_response(conn, 200)
 
-    assert length(body["work_runs"]) >= 1
+    assert [_ | _] = body["work_runs"]
     assert Enum.all?(body["work_runs"], fn r -> not Map.has_key?(r, "payload") end)
   end
 

@@ -2,14 +2,27 @@ defmodule SymphonyElixir.IntakeExecutionGateTest.UnavailableRepo do
   def get_by(_schema, _filters), do: raise("database unavailable")
 end
 
+defmodule SymphonyElixir.IntakeExecutionGateTest.UnexpectedRepo do
+  def get_by(_schema, _filters), do: :unexpected_response
+end
+
+defmodule SymphonyElixir.IntakeExecutionGateTest.ThrowingRepo do
+  def get_by(_schema, _filters), do: throw(:database_unavailable)
+end
+
+defmodule SymphonyElixir.IntakeExecutionGateTest.IncompleteRepo do
+  def get_by(_schema, _filters), do: %SymphonyElixir.Storage.IntakeCase{}
+end
+
 defmodule SymphonyElixir.IntakeExecutionGateTest do
   use SymphonyElixir.TestSupport
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.{Config, Orchestrator, Repo, RuntimePolicy, WorkRun}
   alias SymphonyElixir.Intake.ExecutionGate
-  alias SymphonyElixir.WorkSources.LinearIssueSource
+  alias SymphonyElixir.IntakeExecutionGateTest.{IncompleteRepo, ThrowingRepo, UnavailableRepo, UnexpectedRepo}
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, Project}
+  alias SymphonyElixir.WorkSources.LinearIssueSource
 
   setup do
     :ok = Sandbox.checkout(Repo)
@@ -115,20 +128,59 @@ defmodule SymphonyElixir.IntakeExecutionGateTest do
       labels: []
     }
 
-    assert {:error, :unlinked_managed_issue} = ExecutionGate.authorize_implementation(unlinked_marker_issue, project.id)
-    assert {:error, :project_mismatch} = ExecutionGate.authorize_implementation(label_removed_issue, Ecto.UUID.generate())
+    assert {:error, :unlinked_managed_issue} =
+             ExecutionGate.authorize_implementation(unlinked_marker_issue, project.id)
+
+    wrong_project_id = Ecto.UUID.generate()
+    assert {:error, :project_mismatch} = ExecutionGate.authorize_implementation(label_removed_issue, wrong_project_id)
 
     assert {:error, :database_unavailable} =
              ExecutionGate.authorize_implementation(
                %Issue{id: Ecto.UUID.generate(), identifier: "OPS-4", title: "Todo", state: "Todo", labels: []},
                project.id,
-               repo: SymphonyElixir.Intake.ExecutionGateTest.UnavailableRepo
+               repo: UnavailableRepo
              )
+  end
+
+  test "malformed issues and missing managed IDs fail closed while ordinary issues remain eligible" do
+    project_id = Ecto.UUID.generate()
+    assert {:error, :invalid_issue} = ExecutionGate.authorize_implementation(nil, project_id)
+    assert {:error, :invalid_issue} = ExecutionGate.authorize_implementation(%Issue{id: "x", labels: [123]}, project_id)
+    assert {:error, :invalid_issue} = ExecutionGate.authorize_implementation(%Issue{id: "x", labels: nil}, project_id)
+
+    assert :ok =
+             ExecutionGate.authorize_implementation(
+               %Issue{id: "external-id", identifier: "OPS-5", title: "Ordinary issue", labels: []},
+               project_id
+             )
+
+    route_marker = "https://harmony.example.test/cases/jira_#{Ecto.UUID.generate()}"
+
+    assert {:error, :unlinked_managed_issue} =
+             ExecutionGate.authorize_implementation(
+               %Issue{id: "external-id", description: route_marker, labels: []},
+               project_id
+             )
+  end
+
+  test "unexpected repositories, throws, and incomplete cases deny implementation" do
+    project_id = Ecto.UUID.generate()
+    issue = %Issue{id: Ecto.UUID.generate(), identifier: "OPS-6", title: "Imported", labels: []}
+
+    assert {:error, :database_unavailable} =
+             ExecutionGate.authorize_implementation(issue, project_id, repo: UnexpectedRepo)
+
+    assert {:error, :database_unavailable} =
+             ExecutionGate.authorize_implementation(issue, project_id, repo: ThrowingRepo)
+
+    assert {:error, :incomplete_case} =
+             ExecutionGate.authorize_implementation(issue, project_id, repo: IncompleteRepo)
   end
 
   test "approval is versioned and does not bypass ordinary dispatch conditions" do
     project = project!()
-    {_project, intake_case, issue} = imported_issue_fixture(project, repair_approved_at: now(), repair_approved_version: 1)
+    approval = [repair_approved_at: now(), repair_approved_version: 1]
+    {_project, intake_case, issue} = imported_issue_fixture(project, approval)
 
     assert :ok = ExecutionGate.authorize_implementation(issue, project.id)
 

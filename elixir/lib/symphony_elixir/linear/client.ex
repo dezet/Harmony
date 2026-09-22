@@ -257,32 +257,37 @@ defmodule SymphonyElixir.Linear.Client do
         post_graphql_request(request_payload, headers, Keyword.get(opts, :timeout_ms, 30_000))
       end)
 
-    with {:ok, headers} <- graphql_headers(Keyword.get(opts, :token)) do
-      case safely_request(request_fun, payload, headers) do
-        {:ok, %{status: 200, body: body}} when is_map(body) ->
-          if graphql_errors?(body) do
-            Logger.error("Linear GraphQL request failed with GraphQL errors")
-            {:error, :linear_graphql_errors}
-          else
-            {:ok, body}
-          end
+    case graphql_headers(Keyword.get(opts, :token)) do
+      {:ok, headers} ->
+        safely_request(request_fun, payload, headers) |> normalize_graphql_response()
 
-        {:ok, %{status: 200}} ->
-          Logger.error("Linear GraphQL request returned an invalid response")
-          {:error, :linear_unknown_payload}
-
-        {:ok, %{status: status}} ->
-          Logger.error("Linear GraphQL request failed status=#{status}")
-          {:error, {:linear_api_status, status}}
-
-        {:error, _reason} ->
-          Logger.error("Linear GraphQL request failed at transport")
-          {:error, {:linear_api_request, :transport_error}}
-      end
-    else
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp normalize_graphql_response({:ok, %{status: 200, body: body}}) when is_map(body) do
+    if graphql_errors?(body) do
+      Logger.error("Linear GraphQL request failed with GraphQL errors")
+      {:error, :linear_graphql_errors}
+    else
+      {:ok, body}
+    end
+  end
+
+  defp normalize_graphql_response({:ok, %{status: 200}}) do
+    Logger.error("Linear GraphQL request returned an invalid response")
+    {:error, :linear_unknown_payload}
+  end
+
+  defp normalize_graphql_response({:ok, %{status: status}}) do
+    Logger.error("Linear GraphQL request failed status=#{status}")
+    {:error, {:linear_api_status, status}}
+  end
+
+  defp normalize_graphql_response({:error, _reason}) do
+    Logger.error("Linear GraphQL request failed at transport")
+    {:error, {:linear_api_request, :transport_error}}
   end
 
   @doc false
@@ -436,7 +441,15 @@ defmodule SymphonyElixir.Linear.Client do
         with {:ok, issues} <- decode_linear_response(body, assignee_filter) do
           issues = filter_issues_by_project(issues, project_slug)
           updated_acc = prepend_page_issues(issues, acc_issues)
-          do_fetch_issue_states_page(rest_ids, assignee_filter, graphql_fun, project_slug, updated_acc, issue_order_index)
+
+          do_fetch_issue_states_page(
+            rest_ids,
+            assignee_filter,
+            graphql_fun,
+            project_slug,
+            updated_acc,
+            issue_order_index
+          )
         end
 
       {:error, reason} ->

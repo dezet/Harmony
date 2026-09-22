@@ -28,28 +28,32 @@ defmodule SymphonyElixir.Intake.ExecutionGate do
   def authorize_implementation(%Issue{id: id, labels: labels, description: description} = issue, project_id, opts)
       when is_binary(id) and id != "" and is_list(labels) and is_list(opts) and
              (is_binary(description) or is_nil(description)) do
-    if Enum.any?(labels, &(not is_binary(&1))) do
-      {:error, :invalid_issue}
-    else
-      cond do
-        not valid_uuid?(id) ->
-          if managed_marker?(issue), do: {:error, :unlinked_managed_issue}, else: :ok
-
-        true ->
-          with {:ok, intake_case} <- find_case(id, opts) do
-            authorize_case(intake_case, project_id, issue)
-          else
-            :not_found ->
-              if managed_marker?(issue), do: {:error, :unlinked_managed_issue}, else: :ok
-
-            {:error, reason} ->
-              {:error, reason}
-          end
-      end
-    end
+    if Enum.any?(labels, &(not is_binary(&1))),
+      do: {:error, :invalid_issue},
+      else: authorize_valid_labels(issue, project_id, opts)
   end
 
   def authorize_implementation(_issue, _project_id, _opts), do: {:error, :invalid_issue}
+
+  defp authorize_valid_labels(%Issue{id: id} = issue, project_id, opts) do
+    if valid_uuid?(id) do
+      authorize_linked_issue(id, issue, project_id, opts)
+    else
+      authorize_unlinked_issue(issue)
+    end
+  end
+
+  defp authorize_linked_issue(id, issue, project_id, opts) do
+    case find_case(id, opts) do
+      {:ok, intake_case} -> authorize_case(intake_case, project_id, issue)
+      :not_found -> authorize_unlinked_issue(issue)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp authorize_unlinked_issue(issue) do
+    if managed_marker?(issue), do: {:error, :unlinked_managed_issue}, else: :ok
+  end
 
   defp find_case(issue_id, opts) do
     repo = Keyword.get(opts, :repo, Repo)

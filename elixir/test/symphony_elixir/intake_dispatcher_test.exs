@@ -1,3 +1,7 @@
+defmodule SymphonyElixir.IntakeDispatcherTest.UnknownAdapter do
+  def perform(_delivery), do: {:unknown, "provider_timeout"}
+end
+
 defmodule SymphonyElixir.IntakeDispatcherTest do
   use SymphonyElixir.TestSupport
 
@@ -94,6 +98,89 @@ defmodule SymphonyElixir.IntakeDispatcherTest do
     assert failed.status == "failed"
     assert failed.last_error_code == "permission_denied"
     assert failed.attempts == 1
+  end
+
+  test "an expired adapter lease cannot overwrite a concurrent terminal result" do
+    delivery = delivery!("jira_comment")
+    now = now()
+
+    assert {:error, :stale_lease} =
+             Dispatcher.dispatch_one(
+               fn claimed ->
+                 assert {:ok, failed} =
+                          Outbox.fail(delivery.id, claimed.lease_token, "worker_timeout", now: now)
+
+                 assert failed.status == "failed"
+                 {:ok, %{provider_id: "late-ack"}}
+               end,
+               claim_opts(now, operation: "jira_comment")
+             )
+
+    stored = Repo.get!(IntegrationDelivery, delivery.id)
+    assert stored.status == "failed"
+    assert stored.provider_id == nil
+    assert stored.last_error_code == "worker_timeout"
+  end
+
+  test "invalid adapter results leave the delivery leased for recovery" do
+    delivery = delivery!("sms")
+    now = now()
+
+    assert {:error, {:invalid_adapter_result, :unexpected}} =
+             Dispatcher.dispatch_one(fn _delivery -> :unexpected end, claim_opts(now, operation: "sms"))
+
+    stored = Repo.get!(IntegrationDelivery, delivery.id)
+    assert stored.status == "running"
+    assert is_binary(stored.lease_token)
+    assert stored.attempts == 1
+  end
+
+  test "adapter-reported uncertain results remain unknown until reconciled" do
+    delivery = delivery!("jira_comment")
+    now = now()
+
+    assert {:unknown, unknown} =
+             Dispatcher.dispatch_one(
+               fn _delivery -> {:unknown, "provider_timeout"} end,
+               claim_opts(now, operation: "jira_comment")
+             )
+
+    assert unknown.id == delivery.id
+    assert unknown.status == "unknown"
+    assert unknown.last_error_code == "provider_timeout"
+    assert is_nil(unknown.lease_token)
+  end
+
+  test "dispatcher reports an exhausted automatic retry as failed" do
+    delivery = delivery!("sms", attempts: 4)
+    now = now()
+
+    assert {:failed, failed} =
+             Dispatcher.dispatch_one(
+               fn _delivery -> {:retry, "provider_unavailable", nil} end,
+               claim_opts(now, operation: "sms")
+             )
+
+    assert failed.id == delivery.id
+    assert failed.status == "failed"
+    assert failed.attempts == 5
+    assert failed.last_error_code == "provider_unavailable"
+  end
+
+  test "module adapters can report uncertain provider outcomes" do
+    delivery = delivery!("jira_comment")
+    now = now()
+
+    assert {:unknown, unknown} =
+             Dispatcher.dispatch_one(
+               SymphonyElixir.IntakeDispatcherTest.UnknownAdapter,
+               claim_opts(now, operation: "jira_comment")
+             )
+
+    assert unknown.id == delivery.id
+    assert unknown.status == "unknown"
+    assert unknown.last_error_code == "provider_timeout"
+    assert is_nil(unknown.lease_token)
   end
 
   test "analysis claims have their own concurrency slot apart from four concurrent I/O claims" do

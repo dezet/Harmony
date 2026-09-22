@@ -133,16 +133,7 @@ defmodule SymphonyElixir.AgentRunner do
         {:continue, refreshed_issue} when turn_number < context.max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{context.max_turns}")
 
-          with :ok <- authorize_continuation(refreshed_issue, context.opts) do
-            do_run_codex_turns(
-              backend,
-              app_session,
-              workspace,
-              refreshed_issue,
-              context,
-              turn_number + 1
-            )
-          end
+          continue_codex_turns(backend, app_session, workspace, refreshed_issue, context, turn_number + 1)
 
         {:continue, refreshed_issue} ->
           Logger.info("Reached agent.max_turns for #{issue_context(refreshed_issue)} with issue still active; returning control to orchestrator")
@@ -155,6 +146,12 @@ defmodule SymphonyElixir.AgentRunner do
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  defp continue_codex_turns(backend, app_session, workspace, issue, context, turn_number) do
+    with :ok <- authorize_continuation(issue, context.opts) do
+      do_run_codex_turns(backend, app_session, workspace, issue, context, turn_number)
     end
   end
 
@@ -181,18 +178,16 @@ defmodule SymphonyElixir.AgentRunner do
         {:continue, refreshed_issue} when turn_number < max_turns ->
           Logger.info("Continuing agent run for #{issue_context(refreshed_issue)} after normal turn completion turn=#{turn_number}/#{max_turns}")
 
-          with :ok <- authorize_continuation(refreshed_issue, opts) do
-            do_run_backend_turns(
-              backend,
-              workspace,
-              refreshed_issue,
-              codex_update_recipient,
-              opts,
-              issue_state_fetcher,
-              turn_number + 1,
-              max_turns
-            )
-          end
+          continue_backend_turns(
+            backend,
+            workspace,
+            refreshed_issue,
+            codex_update_recipient,
+            opts,
+            issue_state_fetcher,
+            turn_number + 1,
+            max_turns
+          )
 
         {:continue, refreshed_issue} ->
           Logger.info("Reached agent.max_turns for #{issue_context(refreshed_issue)} with issue still active; returning control to orchestrator")
@@ -205,6 +200,30 @@ defmodule SymphonyElixir.AgentRunner do
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  defp continue_backend_turns(
+         backend,
+         workspace,
+         issue,
+         codex_update_recipient,
+         opts,
+         issue_state_fetcher,
+         turn_number,
+         max_turns
+       ) do
+    with :ok <- authorize_continuation(issue, opts) do
+      do_run_backend_turns(
+        backend,
+        workspace,
+        issue,
+        codex_update_recipient,
+        opts,
+        issue_state_fetcher,
+        turn_number,
+        max_turns
+      )
     end
   end
 

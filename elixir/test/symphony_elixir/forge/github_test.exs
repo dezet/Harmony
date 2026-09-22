@@ -1,6 +1,7 @@
 defmodule SymphonyElixir.Forge.GithubTest do
   use ExUnit.Case, async: true
   alias SymphonyElixir.Forge.Github
+  alias SymphonyElixir.Github.Comment
 
   test "list_change_requests normalizes GitHub PRs and uses base_url" do
     fake = fn opts ->
@@ -42,7 +43,7 @@ defmodule SymphonyElixir.Forge.GithubTest do
     creds = %{token: "t", base_url: "https://ghe.example.com", request_fun: fake}
     ref = %{owner: "o", repo: "r", base_url: "https://ghe.example.com"}
 
-    assert {:ok, [%SymphonyElixir.Github.Comment{id: 11, body: "@hreview please", author: "octo"}]} =
-             SymphonyElixir.Forge.Github.list_change_request_comments(creds, ref, 7)
+    assert {:ok, [%Comment{id: 11, body: "@hreview please", author: "octo"}]} =
+             Github.list_change_request_comments(creds, ref, 7)
   end
 end

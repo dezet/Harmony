@@ -6,7 +6,16 @@ defmodule SymphonyElixir.IntakeOutboxTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.Intake.Outbox
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{AutomationRule, IntegrationConnection, IntegrationDelivery, IntakeAnalysis, IntakeCase, IntakeEvent, Project}
+
+  alias SymphonyElixir.Storage.{
+    AutomationRule,
+    IntakeAnalysis,
+    IntakeCase,
+    IntakeEvent,
+    IntegrationConnection,
+    IntegrationDelivery,
+    Project
+  }
 
   setup do
     :ok = Sandbox.checkout(Repo)
@@ -138,6 +147,19 @@ defmodule SymphonyElixir.IntakeOutboxTest do
              DateTime.add(now, 32, :second)
   end
 
+  test "Retry-After HTTP dates parse every calendar month" do
+    now = ~U[2026-01-01 00:00:00Z]
+
+    for month <- 1..12 do
+      date = Date.new!(2026, month, 15)
+      weekday = Calendar.strftime(date, "%a")
+      retry_after = "#{weekday}, 15 #{Calendar.strftime(date, "%b")} 2026 12:30:00 GMT"
+
+      assert Outbox.next_attempt_at(now, 1, retry_after, jitter: fn -> 0.0 end) ==
+               DateTime.new!(date, ~T[12:30:00], "Etc/UTC")
+    end
+  end
+
   test "expired write-capable leases become unknown while analysis uses its recovery path" do
     email = delivery!("email")
     {analysis_case, analysis} = analysis_fixture!()
@@ -166,6 +188,29 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     assert Repo.get!(IntegrationDelivery, analysis_claim.id).status == "pending"
     assert Repo.get!(IntakeAnalysis, analysis.id).status == "queued"
     assert Repo.get!(IntakeCase, analysis_case.id).analysis_status == "queued"
+  end
+
+  test "claim switches select only their enabled effect class" do
+    email = delivery!("email")
+    analysis = delivery!("analysis")
+    now = now()
+
+    assert {:ok, email_claim} =
+             Outbox.claim(claim_opts(now, effects_enabled: true, analysis_enabled: false))
+
+    assert email_claim.id == email.id
+
+    assert {:ok, analysis_claim} =
+             Outbox.claim(claim_opts(now, effects_enabled: false, analysis_enabled: true))
+
+    assert analysis_claim.id == analysis.id
+
+    remaining_email = delivery!("email")
+
+    assert :empty =
+             Outbox.claim(claim_opts(now, effects_enabled: false, analysis_enabled: false))
+
+    assert Repo.get!(IntegrationDelivery, remaining_email.id).status == "pending"
   end
 
   test "disabled connections pause deliveries and re-enabling resumes their saved state" do
@@ -204,6 +249,22 @@ defmodule SymphonyElixir.IntakeOutboxTest do
 
     assert "delivery_paused" in event_types
     assert "delivery_resumed" in event_types
+  end
+
+  test "an unrecognized saved resume status safely returns to pending" do
+    connection = connection!("smtp", enabled: false)
+    delivery = delivery!("email", connection_id: connection.id, status: "paused", payload: %{"resume_status" => "future_state"})
+
+    connection
+    |> IntegrationConnection.changeset(%{enabled: true})
+    |> Repo.update!()
+
+    assert :empty =
+             Outbox.claim(claim_opts(now(), effects_enabled: false, analysis_enabled: false))
+
+    resumed = Repo.get!(IntegrationDelivery, delivery.id)
+    assert resumed.status == "pending"
+    refute Map.has_key?(resumed.payload, "resume_status")
   end
 
   test "rate limits are isolated per connection and leave a retry time and attempt history" do
@@ -327,6 +388,72 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     assert {:ok, retrying} = result
     assert retrying.status == "retry_wait"
     assert retrying.attempts == 1
+  end
+
+  test "manual retry rejects missing, active, paused, and disconnected deliveries" do
+    assert {:error, :not_found} = Outbox.manual_retry(Ecto.UUID.generate())
+
+    pending = delivery!("email")
+    assert {:error, :not_retryable} = Outbox.manual_retry(pending.id)
+
+    paused = delivery!("email", status: "paused")
+    assert {:error, :dependency_paused} = Outbox.manual_retry(paused.id)
+
+    connection = connection!("smtp", enabled: false)
+    failed = delivery!("email", connection_id: connection.id, status: "failed")
+    assert {:error, :dependency_paused} = Outbox.manual_retry(failed.id)
+    assert Repo.get!(IntegrationDelivery, failed.id).status == "failed"
+
+    ambiguous_email = delivery!("email", status: "unknown")
+    assert {:error, :confirmation_required} = Outbox.manual_retry(ambiguous_email.id)
+
+    assert {:ok, retried_email} =
+             Outbox.manual_retry(ambiguous_email.id, confirm_duplicate_risk: true)
+
+    assert retried_email.status == "retry_wait"
+    assert retried_email.payload["manual_retries"] == 1
+  end
+
+  test "unknown results release the lease and emit an event while stale tokens are rejected" do
+    delivery = delivery!("jira_comment")
+    now = now()
+    assert {:ok, claimed} = Outbox.claim(claim_opts(now, operation: "jira_comment"))
+
+    assert {:ok, unknown} = Outbox.mark_unknown(delivery.id, claimed.lease_token, "provider_timeout", now: now)
+    assert unknown.status == "unknown"
+    assert is_nil(unknown.lease_token)
+    assert {:error, :stale_lease} = Outbox.mark_unknown(delivery.id, claimed.lease_token, "late_timeout", now: now)
+
+    assert Repo.exists?(
+             from(event in IntakeEvent,
+               where: event.type == "delivery_unknown" and event.payload["delivery_id"] == ^delivery.id
+             )
+           )
+  end
+
+  test "a missing analysis version is recovered after its hard deadline despite a live lease" do
+    {intake_case, analysis} = analysis_fixture!()
+    delivery = Repo.one!(from(d in IntegrationDelivery, where: d.case_id == ^intake_case.id and d.operation == "analysis"))
+    start = now()
+
+    delivery
+    |> IntegrationDelivery.changeset(%{payload: %{version: 2}})
+    |> Repo.update!()
+
+    assert {:ok, claimed} = Outbox.claim(claim_opts(start, operation: "analysis"))
+
+    claimed
+    |> IntegrationDelivery.changeset(%{lease_until: DateTime.add(start, 1_000, :second)})
+    |> Repo.update!()
+
+    recovery_at = DateTime.add(start, 601, :second)
+    assert 1 == Outbox.recover_expired_analyses(recovery_at)
+
+    recovered = Repo.get!(IntegrationDelivery, delivery.id)
+    assert recovered.status == "pending"
+    assert recovered.last_error_code == "analysis_lease_expired"
+    assert Repo.get!(IntakeAnalysis, analysis.id).status == "running"
+    assert Repo.get!(IntakeCase, intake_case.id).analysis_status == "queued"
   end
 
   defp claim_opts(now, overrides) do

@@ -12,6 +12,9 @@ defmodule SymphonyElixir.Intake.Connections do
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection}
 
+  @known_attr_keys ~w(kind name settings secret clear_secret secret_version enabled last_checked_at health error_code lock_version)a
+  @known_string_keys Map.new(@known_attr_keys, &{Atom.to_string(&1), &1})
+
   @type attrs :: map()
   @type presented :: %{
           id: binary(),
@@ -102,24 +105,9 @@ defmodule SymphonyElixir.Intake.Connections do
 
   defp atomize_known_keys(attrs) do
     Enum.reduce(attrs, %{}, fn {key, value}, acc ->
-      normalized_key =
-        case key do
-          "kind" -> :kind
-          "name" -> :name
-          "settings" -> :settings
-          "secret" -> :secret
-          "clear_secret" -> :clear_secret
-          "secret_version" -> :secret_version
-          "enabled" -> :enabled
-          "last_checked_at" -> :last_checked_at
-          "health" -> :health
-          "error_code" -> :error_code
-          "lock_version" -> :lock_version
-          atom when is_atom(atom) -> atom
-          other -> other
-        end
+      normalized_key = if is_atom(key), do: key, else: Map.get(@known_string_keys, key)
 
-      if is_atom(normalized_key), do: Map.put(acc, normalized_key, value), else: acc
+      if is_nil(normalized_key), do: acc, else: Map.put(acc, normalized_key, value)
     end)
   end
 

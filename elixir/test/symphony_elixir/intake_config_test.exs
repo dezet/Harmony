@@ -110,6 +110,60 @@ defmodule SymphonyElixir.IntakeConfigTest do
     assert Connections.present(cleared).secret_status == "unset"
   end
 
+  test "string-key clear_secret clears a credential while an unused Jira URL remains editable" do
+    assert {:ok, smtp} =
+             Connections.create(%{
+               kind: "smtp",
+               name: "SMTP with string clear flag",
+               settings: %{host: "smtp.example.test"},
+               secret: "smtp-password"
+             })
+
+    assert {:ok, cleared} = Connections.update(smtp, %{"clear_secret" => true})
+    assert is_nil(cleared.secret)
+    assert Connections.present(cleared).secret_status == "unset"
+
+    site_url = "https://editable-#{System.unique_integer([:positive])}.atlassian.net"
+
+    assert {:ok, jira} =
+             Connections.create(%{
+               kind: "jira_cloud",
+               name: "Unused Jira",
+               settings: %{site_url: site_url}
+             })
+
+    replacement_url = "https://replacement-#{System.unique_integer([:positive])}.atlassian.net"
+    assert {:ok, updated} = Connections.update(jira, %{settings: %{site_url: replacement_url}})
+    assert Connections.site_url(updated) == replacement_url
+  end
+
+  test "nil secrets remain unset and malformed connection settings are rejected by provider" do
+    assert {:ok, smtp} =
+             Connections.create(%{
+               kind: "smtp",
+               name: "SMTP without a secret",
+               settings: %{host: "smtp.example.test"},
+               secret: nil
+             })
+
+    refute Connections.secret_set?(smtp)
+
+    assert {:error, jira_changeset} =
+             Connections.create(%{kind: "jira_cloud", name: "Jira without settings", settings: nil})
+
+    assert Keyword.has_key?(jira_changeset.errors, :settings)
+
+    assert {:error, smtp_changeset} =
+             Connections.create(%{kind: "smtp", name: "SMTP without settings", settings: nil})
+
+    assert Keyword.has_key?(smtp_changeset.errors, :settings)
+
+    assert {:error, sms_changeset} =
+             Connections.create(%{kind: "smsapi", name: "SMS without settings", settings: nil})
+
+    assert Keyword.has_key?(sms_changeset.errors, :settings)
+  end
+
   test "string-key connection input ignores unknown fields and normalizes settings" do
     assert {:ok, connection} =
              Connections.create(%{

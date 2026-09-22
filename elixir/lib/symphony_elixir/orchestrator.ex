@@ -11,7 +11,15 @@ defmodule SymphonyElixir.Orchestrator do
   alias SymphonyElixir.Diagnostics.Sandbox
   alias SymphonyElixir.Intake.ExecutionGate
   alias SymphonyElixir.Linear.{Client, Issue}
-  alias SymphonyElixir.Workflows.{CiFixHandoff, CiFixPrompt, ReviewHandoff, ReviewPrompt}
+
+  alias SymphonyElixir.Workflows.{
+    AddressReviewHandoff,
+    AddressReviewPrompt,
+    CiFixHandoff,
+    CiFixPrompt,
+    ReviewHandoff,
+    ReviewPrompt
+  }
 
   alias SymphonyElixir.WorkSources.{
     GithubFailedCiSource,
@@ -550,7 +558,8 @@ defmodule SymphonyElixir.Orchestrator do
          {:ok, github_ci_runs} <- fetch_project_runs(projects, github_ci_work_source_fetcher()),
          {:ok, github_review_runs} <- fetch_project_runs(projects, github_review_work_source_fetcher()),
          {:ok, review_response_runs} <- fetch_project_runs(projects, review_response_work_source_fetcher()) do
-      persist_fetched_work_runs(pr_observations ++ linear_runs ++ github_ci_runs ++ github_review_runs ++ review_response_runs)
+      runs = Enum.concat([pr_observations, linear_runs, github_ci_runs, github_review_runs, review_response_runs])
+      persist_fetched_work_runs(runs)
     end
   end
 
@@ -772,18 +781,7 @@ defmodule SymphonyElixir.Orchestrator do
     else
       state.running
       |> Enum.group_by(fn {_issue_id, entry} -> Map.get(entry, :project_slug) end, fn {issue_id, _entry} -> issue_id end)
-      |> Enum.reduce(state, fn {project_slug, project_issue_ids}, state_acc ->
-        case fetch_project_issue_states(project_slug, project_issue_ids) do
-          {:ok, issues} ->
-            issues
-            |> reconcile_running_issue_states(state_acc, active_state_set(), terminal_state_set())
-            |> reconcile_missing_running_issue_ids(project_issue_ids, issues)
-
-          {:error, reason} ->
-            Logger.debug("Failed to refresh running issue states: #{inspect(reason)}; keeping active workers")
-            state_acc
-        end
-      end)
+      |> Enum.reduce(state, &reconcile_running_project/2)
     end
   end
 
@@ -795,18 +793,33 @@ defmodule SymphonyElixir.Orchestrator do
     else
       state.blocked
       |> Enum.group_by(fn {_issue_id, entry} -> Map.get(entry, :project_slug) end, fn {issue_id, _entry} -> issue_id end)
-      |> Enum.reduce(state, fn {project_slug, project_issue_ids}, state_acc ->
-        case fetch_project_issue_states(project_slug, project_issue_ids) do
-          {:ok, issues} ->
-            issues
-            |> reconcile_blocked_issue_states(state_acc, active_state_set(), terminal_state_set())
-            |> reconcile_missing_blocked_issue_ids(project_issue_ids, issues)
+      |> Enum.reduce(state, &reconcile_blocked_project/2)
+    end
+  end
 
-          {:error, reason} ->
-            Logger.debug("Failed to refresh blocked issue states: #{inspect(reason)}; keeping blocked issues")
-            state_acc
-        end
-      end)
+  defp reconcile_running_project({project_slug, project_issue_ids}, state_acc) do
+    case fetch_project_issue_states(project_slug, project_issue_ids) do
+      {:ok, issues} ->
+        issues
+        |> reconcile_running_issue_states(state_acc, active_state_set(), terminal_state_set())
+        |> reconcile_missing_running_issue_ids(project_issue_ids, issues)
+
+      {:error, reason} ->
+        Logger.debug("Failed to refresh running issue states: #{inspect(reason)}; keeping active workers")
+        state_acc
+    end
+  end
+
+  defp reconcile_blocked_project({project_slug, project_issue_ids}, state_acc) do
+    case fetch_project_issue_states(project_slug, project_issue_ids) do
+      {:ok, issues} ->
+        issues
+        |> reconcile_blocked_issue_states(state_acc, active_state_set(), terminal_state_set())
+        |> reconcile_missing_blocked_issue_ids(project_issue_ids, issues)
+
+      {:error, reason} ->
+        Logger.debug("Failed to refresh blocked issue states: #{inspect(reason)}; keeping blocked issues")
+        state_acc
     end
   end
 
@@ -1411,7 +1424,7 @@ defmodule SymphonyElixir.Orchestrator do
   end
 
   defp review_run_prompt(%WorkRun{type: "address_review"} = run),
-    do: SymphonyElixir.Workflows.AddressReviewPrompt.build(run)
+    do: AddressReviewPrompt.build(run)
 
   defp review_run_prompt(%WorkRun{} = run), do: ReviewPrompt.build(run)
 
@@ -1909,7 +1922,7 @@ defmodule SymphonyElixir.Orchestrator do
     Application.get_env(
       :symphony_elixir,
       :address_review_handoff_fun,
-      &SymphonyElixir.Workflows.AddressReviewHandoff.publish/3
+      &AddressReviewHandoff.publish/3
     )
   end
 
@@ -2294,7 +2307,8 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec stop_run(GenServer.server(), String.t()) :: :ok | {:error, :run_not_found | :already_terminal}
   def stop_run(server, issue_id) do
-    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    # Process.whereis resolves locally registered names only (the app's single orchestrator);
+    # a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:stop_run, issue_id})
     else
@@ -2309,7 +2323,8 @@ defmodule SymphonyElixir.Orchestrator do
 
   @spec retry_now(GenServer.server(), String.t()) :: :ok | {:error, :not_retrying}
   def retry_now(server, issue_id) do
-    # Process.whereis resolves locally registered names only (the app's single orchestrator); a PID/global server would need a different liveness probe.
+    # Process.whereis resolves locally registered names only (the app's single orchestrator);
+    # a PID/global server would need a different liveness probe.
     if Process.whereis(server) do
       GenServer.call(server, {:retry_now, issue_id})
     else
@@ -2364,7 +2379,8 @@ defmodule SymphonyElixir.Orchestrator do
 
         new_state = release_issue_claim(state, issue_id)
         new_state = %{new_state | completed: MapSet.put(new_state.completed, issue_id)}
-        # No storage_work_run_id on retry entries (the running entry was cleaned up when the run entered retry) — channel/cache-only "stopped".
+        # No storage_work_run_id on retry entries; the running entry was cleaned up when the run entered retry.
+        # This is a channel/cache-only "stopped" event.
         ObservabilityRunPubSub.publish_run_status(issue_id, identifier, "stopped", nil)
         notify_dashboard()
         {:reply, :ok, new_state}

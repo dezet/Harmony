@@ -166,7 +166,7 @@ defmodule SymphonyElixir.ProjectArtifactsApiTest do
     conn = get(build_conn(), "/api/v1/projects/#{project.slug}/artifacts")
     body = json_response(conn, 200)
 
-    assert length(body["artifacts"]) >= 1
+    assert [_ | _] = body["artifacts"]
     assert Enum.all?(body["artifacts"], fn a -> not Map.has_key?(a, "path") end)
   end
 

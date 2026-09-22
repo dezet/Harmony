@@ -66,6 +66,29 @@ defmodule SymphonyElixir.IntakeRulesTest do
     assert rule.sms_recipients == ["+48123123123"]
   end
 
+  test "non-string recipient values are normalized to provider-ready text" do
+    email = connection!("smtp", %{host: "smtp.example.test"})
+    sms = connection!("smsapi", %{sender: "Harmony"})
+
+    attrs =
+      rule_attrs()
+      |> Map.merge(%{
+        email_connection_id: email.id,
+        email_recipients: [123],
+        sms_connection_id: sms.id,
+        sms_recipients: [48_123_123_123]
+      })
+
+    assert {:ok, rule} = Rules.create(attrs)
+    assert rule.email_recipients == ["123"]
+    assert rule.sms_recipients == ["48123123123"]
+  end
+
+  test "a missing referenced connection is rejected by the foreign key" do
+    assert {:error, changeset} = Rules.create(%{rule_attrs() | jira_connection_id: Ecto.UUID.generate()})
+    assert Keyword.has_key?(changeset.errors, :jira_connection)
+  end
+
   test "recipient limits and a missing delivery connection are rejected" do
     email = connection!("smtp", %{host: "smtp.example.test"})
     attrs = rule_attrs()
@@ -82,6 +105,44 @@ defmodule SymphonyElixir.IntakeRulesTest do
     without_connection = Map.merge(attrs, %{email_recipients: ["ops@example.test"]})
     assert {:error, changeset} = Rules.create(without_connection)
     assert Keyword.has_key?(changeset.errors, :email_connection_id)
+  end
+
+  test "SMS recipients require their provider and source type changes reset the baseline" do
+    attrs = rule_attrs()
+    sms = connection!("smsapi", %{sender: "Harmony"})
+
+    assert {:error, missing_recipients} =
+             Rules.create(Map.merge(attrs, %{sms_connection_id: sms.id, sms_recipients: []}))
+
+    assert Keyword.has_key?(missing_recipients.errors, :sms_recipients)
+
+    assert {:error, missing_connection} =
+             Rules.create(Map.merge(attrs, %{sms_recipients: ["+48123123123"]}))
+
+    assert Keyword.has_key?(missing_connection.errors, :sms_connection_id)
+
+    assert {:ok, rule} = Rules.create(attrs)
+    assert {:ok, active} = Rules.activate(rule)
+    assert {:ok, filtered} = Rules.patch(active, %{source_type: "filter"})
+    refute filtered.enabled
+    assert filtered.source_type == "filter"
+    assert is_nil(filtered.baseline_generation)
+    assert filtered.config_version == active.config_version + 1
+  end
+
+  test "snapshot leaves optional destinations empty and PATCH preserves an active rule on display edits" do
+    assert {:ok, rule} = Rules.create(rule_attrs())
+    snapshot = Rules.snapshot(rule)
+    assert is_nil(snapshot.email_connection_id)
+    assert is_nil(snapshot.email_connection_name)
+    assert is_nil(snapshot.sms_connection_id)
+    assert is_nil(snapshot.sms_connection_name)
+
+    assert {:ok, active} = Rules.activate(rule)
+    assert {:ok, renamed} = Rules.patch(active, %{"name" => "Renamed via string key"})
+    assert renamed.name == "Renamed via string key"
+    assert renamed.enabled
+    assert renamed.config_version == active.config_version + 1
   end
 
   test "snapshot contains the target and recipients and PATCH increments its version" do

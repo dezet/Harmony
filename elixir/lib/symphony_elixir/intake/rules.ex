@@ -22,6 +22,33 @@ defmodule SymphonyElixir.Intake.Rules do
     initial_policy
   )a
 
+  @string_attr_keys %{
+    "project_id" => :project_id,
+    "jira_connection_id" => :jira_connection_id,
+    "name" => :name,
+    "source_type" => :source_type,
+    "source_id" => :source_id,
+    "priority_ids" => :priority_ids,
+    "interval_seconds" => :interval_seconds,
+    "initial_policy" => :initial_policy,
+    "linear_team_id" => :linear_team_id,
+    "linear_project_id" => :linear_project_id,
+    "linear_todo_state_id" => :linear_todo_state_id,
+    "linear_hold_label_id" => :linear_hold_label_id,
+    "email_connection_id" => :email_connection_id,
+    "sms_connection_id" => :sms_connection_id,
+    "email_recipients" => :email_recipients,
+    "sms_recipients" => :sms_recipients,
+    "enabled" => :enabled,
+    "config_version" => :config_version,
+    "activation_status" => :activation_status,
+    "activated_at" => :activated_at,
+    "baseline_generation" => :baseline_generation,
+    "lease_token" => :lease_token,
+    "lease_until" => :lease_until,
+    "lock_version" => :lock_version
+  }
+
   @type attrs :: map()
 
   @spec changeset(AutomationRule.t(), attrs()) :: Ecto.Changeset.t()
@@ -65,9 +92,8 @@ defmodule SymphonyElixir.Intake.Rules do
 
       changeset = changeset(rule, attrs)
 
-      with {:ok, changeset} <- validate_connection_kinds(changeset),
-           {:ok, updated} <- Repo.update(changeset) do
-        {:ok, updated}
+      with {:ok, changeset} <- validate_connection_kinds(changeset) do
+        Repo.update(changeset)
       end
     end
   end
@@ -192,39 +218,14 @@ defmodule SymphonyElixir.Intake.Rules do
 
   defp atomize_keys(attrs) do
     Enum.reduce(attrs, %{}, fn {key, value}, acc ->
-      key =
-        case key do
-          "project_id" -> :project_id
-          "jira_connection_id" -> :jira_connection_id
-          "name" -> :name
-          "source_type" -> :source_type
-          "source_id" -> :source_id
-          "priority_ids" -> :priority_ids
-          "interval_seconds" -> :interval_seconds
-          "initial_policy" -> :initial_policy
-          "linear_team_id" -> :linear_team_id
-          "linear_project_id" -> :linear_project_id
-          "linear_todo_state_id" -> :linear_todo_state_id
-          "linear_hold_label_id" -> :linear_hold_label_id
-          "email_connection_id" -> :email_connection_id
-          "sms_connection_id" -> :sms_connection_id
-          "email_recipients" -> :email_recipients
-          "sms_recipients" -> :sms_recipients
-          "enabled" -> :enabled
-          "config_version" -> :config_version
-          "activation_status" -> :activation_status
-          "activated_at" -> :activated_at
-          "baseline_generation" -> :baseline_generation
-          "lease_token" -> :lease_token
-          "lease_until" -> :lease_until
-          "lock_version" -> :lock_version
-          atom when is_atom(atom) -> atom
-          other -> other
-        end
+      key = normalize_attr_key(key)
 
       if is_atom(key), do: Map.put(acc, key, value), else: acc
     end)
   end
+
+  defp normalize_attr_key(key) when is_atom(key), do: key
+  defp normalize_attr_key(key), do: Map.get(@string_attr_keys, key)
 
   defp normalize_source_id(attrs) do
     case Map.fetch(attrs, :source_id) do
@@ -300,22 +301,27 @@ defmodule SymphonyElixir.Intake.Rules do
       {:sms_connection_id, "smsapi"}
     ]
 
-    changeset =
-      Enum.reduce(fields, changeset, fn {field, expected_kind}, acc ->
-        case get_field(acc, field) do
-          nil ->
-            acc
-
-          connection_id ->
-            case Repo.get(IntegrationConnection, connection_id) do
-              %IntegrationConnection{kind: ^expected_kind} -> acc
-              %IntegrationConnection{} -> add_error(acc, field, "must reference a #{expected_kind} connection")
-              nil -> acc
-            end
-        end
-      end)
+    changeset = Enum.reduce(fields, changeset, &validate_connection_kind/2)
 
     if changeset.valid?, do: {:ok, changeset}, else: {:error, changeset}
+  end
+
+  defp validate_connection_kind({field, expected_kind}, changeset) do
+    case get_field(changeset, field) do
+      nil ->
+        changeset
+
+      connection_id ->
+        validate_connection_record(changeset, field, expected_kind, connection_id)
+    end
+  end
+
+  defp validate_connection_record(changeset, field, expected_kind, connection_id) do
+    case Repo.get(IntegrationConnection, connection_id) do
+      %IntegrationConnection{kind: ^expected_kind} -> changeset
+      %IntegrationConnection{} -> add_error(changeset, field, "must reference a #{expected_kind} connection")
+      nil -> changeset
+    end
   end
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""

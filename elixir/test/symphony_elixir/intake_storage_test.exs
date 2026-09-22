@@ -5,11 +5,11 @@ defmodule SymphonyElixir.IntakeStorageTest do
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.AutomationRule
   alias SymphonyElixir.Storage.AutomationScan
-  alias SymphonyElixir.Storage.IntegrationConnection
-  alias SymphonyElixir.Storage.IntegrationDelivery
   alias SymphonyElixir.Storage.IntakeAnalysis
   alias SymphonyElixir.Storage.IntakeCase
   alias SymphonyElixir.Storage.IntakeEvent
+  alias SymphonyElixir.Storage.IntegrationConnection
+  alias SymphonyElixir.Storage.IntegrationDelivery
   alias SymphonyElixir.Storage.JiraObservation
   alias SymphonyElixir.Storage.Project
   alias SymphonyElixir.Storage.WorkRun

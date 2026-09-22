@@ -4,8 +4,8 @@ defmodule SymphonyElixir.Storage.IntegrationDelivery do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias SymphonyElixir.Storage.IntegrationConnection
   alias SymphonyElixir.Storage.IntakeCase
+  alias SymphonyElixir.Storage.IntegrationConnection
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
