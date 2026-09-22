@@ -40,42 +40,42 @@ Konflikt specyfikacji z kodem wymaga zgłoszenia; wykonawca nie rozstrzyga go sa
 Stan: commit z frontmatter; `git ls-remote origin refs/heads/main` wskazywał ten sam SHA.
 Repozytorium ma `origin=https://github.com/dezet/Harmony.git`, nie GitLab.
 
-| Obszar | Istniejące pliki względem katalogu głównego | Wniosek |
-| --- | --- | --- |
-| SPA | `elixir/assets/src/App.tsx`, `components/layout/{AppShell,Sidebar,Breadcrumbs}.tsx` | React Router, istniejący shell i głębokie linki |
-| UI | `elixir/assets/src/index.css`, `assets/CLAUDE.md`, `assets/AGENTS.md` | shadcn Base UI/base-nova, Tailwind; obecna zasada domyślnego motywu wymaga jawnej aktualizacji |
-| Dane UI | `elixir/assets/src/lib/{api,socket}.ts`, `types/contract.ts` | React Query + Phoenix Channels; brak fetch w komponentach |
-| Projekty | `storage/project.ex`, `project_config/{schema,loader,sync}.ex` pod `elixir/lib/symphony_elixir/` | PostgreSQL, YAML, szyfrowane sekrety forge i Linear |
-| Praca | `elixir/lib/symphony_elixir/{work_run,storage,orchestrator}.ex` | Trwałe przebiegi, deduplikacja, istniejące retry/reconciliation |
-| Linear | `tracker.ex`, `linear/{client,adapter,issue}.ex`, `work_sources/linear_issue_source.ex` | Tracker Linear/memory; kandydat staje się `implementation` |
-| Statusy | `elixir/lib/symphony_elixir/config/schema.ex` | `Todo` i `In Progress` są domyślnie aktywne |
-| Agent | `agent_runner.ex`, `workspace.ex`, `codex/{app_server,dynamic_tool}.ex` | Hooki workspace i narzędzie GraphQL mogą wykonywać zapisy; nie wolno użyć ich bez ograniczeń dla analizy |
-| Historia | `elixir/lib/symphony_elixir_web/controllers/{run_detail,work_run,project_activity,artifact}_controller.ex` | Zachować historię, artefakty, stop/retry i diagnostykę |
-| Start | `elixir/lib/symphony_elixir.ex` | Tutaj znajduje się `SymphonyElixir.Application`; nie tworzyć drugiego Application |
-| Testy | `elixir/Makefile`, `elixir/assets/package.json`, `elixir/assets/playwright.config.ts` | ExUnit, Vitest, RTL, istniejący deterministyczny Playwright |
+| Obszar   | Istniejące pliki względem katalogu głównego                                                                | Wniosek                                                                                                  |
+| -------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| SPA      | `elixir/assets/src/App.tsx`, `components/layout/{AppShell,Sidebar,Breadcrumbs}.tsx`                        | React Router, istniejący shell i głębokie linki                                                          |
+| UI       | `elixir/assets/src/index.css`, `assets/CLAUDE.md`, `assets/AGENTS.md`                                      | shadcn Base UI/base-nova, Tailwind; obecna zasada domyślnego motywu wymaga jawnej aktualizacji           |
+| Dane UI  | `elixir/assets/src/lib/{api,socket}.ts`, `types/contract.ts`                                               | React Query + Phoenix Channels; brak fetch w komponentach                                                |
+| Projekty | `storage/project.ex`, `project_config/{schema,loader,sync}.ex` pod `elixir/lib/symphony_elixir/`           | PostgreSQL, YAML, szyfrowane sekrety forge i Linear                                                      |
+| Praca    | `elixir/lib/symphony_elixir/{work_run,storage,orchestrator}.ex`                                            | Trwałe przebiegi, deduplikacja, istniejące retry/reconciliation                                          |
+| Linear   | `tracker.ex`, `linear/{client,adapter,issue}.ex`, `work_sources/linear_issue_source.ex`                    | Tracker Linear/memory; kandydat staje się `implementation`                                               |
+| Statusy  | `elixir/lib/symphony_elixir/config/schema.ex`                                                              | `Todo` i `In Progress` są domyślnie aktywne                                                              |
+| Agent    | `agent_runner.ex`, `workspace.ex`, `codex/{app_server,dynamic_tool}.ex`                                    | Hooki workspace i narzędzie GraphQL mogą wykonywać zapisy; nie wolno użyć ich bez ograniczeń dla analizy |
+| Historia | `elixir/lib/symphony_elixir_web/controllers/{run_detail,work_run,project_activity,artifact}_controller.ex` | Zachować historię, artefakty, stop/retry i diagnostykę                                                   |
+| Start    | `elixir/lib/symphony_elixir.ex`                                                                            | Tutaj znajduje się `SymphonyElixir.Application`; nie tworzyć drugiego Application                        |
+| Testy    | `elixir/Makefile`, `elixir/assets/package.json`, `elixir/assets/playwright.config.ts`                      | ExUnit, Vitest, RTL, istniejący deterministyczny Playwright                                              |
 
 Nie dodawać drugiego frameworka frontendowego, drugiej bazy, Redis ani osobnego serwisu HTTP.
 Nie przepisywać całego orchestratora. Nowa funkcja ma własny kontekst domenowy `Intake`.
 
 ## 3. Zamknięte decyzje
 
-| ID | Decyzja |
-| --- | --- |
-| D01 | Wygląd A, jasny domyślnie; Lista i Kanban są dwoma widokami tych samych spraw. |
-| D02 | Jira Cloud, REST v3; Jira Data Center/Server i webhooki Jira poza zakresem. |
-| D03 | Reguła wybiera jedno połączenie Jira, tablicę albo zapisany filtr, priorytety i interwał. |
-| D04 | Reagujemy na pierwsze zaobserwowane dopasowanie, również po podniesieniu priorytetu starego zgłoszenia. |
-| D05 | Jedna sprawa na stabilne ID zgłoszenia w instancji Jira; ponowne dopasowanie nie tworzy kopii. |
-| D06 | Alert e-mail/SMS powstaje po wykryciu; nie czeka na Linear ani analizę. Kanały są niezależne. |
-| D07 | E-mail przez firmowy SMTP, SMS przez SMSAPI; wybór potwierdzony przez użytkownika. |
-| D08 | Linear otrzymuje Todo i trwałą ochronę przed implementacją. Sama zmiana statusu nie jest zgodą na naprawę. |
-| D09 | Analiza i publikacja komentarza nie uruchamiają implementacji. „Przyjmij sprawę” też jej nie uruchamia. |
-| D10 | Naprawa wymaga osobnej, potwierdzonej akcji „Rozpocznij naprawę”; korzysta z istniejącej ścieżki Linear. |
-| D11 | Reguły, sprawy, wyniki i kolejka efektów są trwałe w PostgreSQL, nie w pamięci procesu. |
-| D12 | Trwała kolejka jest małym modułem Ecto z leasingiem; nie wprowadzamy Oban ani ogólnej platformy workflow. |
-| D13 | W pierwszym wydaniu brak drag-and-drop Kanbana. Kolumny pokazują fakty, nie nadają uprawnień. |
-| D14 | UI po polsku; identyfikatory, nazwy projektów i treść zgłoszeń pozostają oryginalne. |
-| D15 | Obecne funkcje pracy agentów, konfiguracja, historia, logi i dowody pozostają dostępne. |
+| ID  | Decyzja                                                                                                                |
+| --- | ---------------------------------------------------------------------------------------------------------------------- |
+| D01 | Wygląd A, jasny domyślnie; Lista i Kanban są dwoma widokami tych samych spraw.                                         |
+| D02 | Jira Cloud, REST v3; Jira Data Center/Server i webhooki Jira poza zakresem.                                            |
+| D03 | Reguła wybiera jedno połączenie Jira, tablicę albo zapisany filtr, priorytety i interwał.                              |
+| D04 | Reagujemy na pierwsze zaobserwowane dopasowanie, również po podniesieniu priorytetu starego zgłoszenia.                |
+| D05 | Jedna sprawa na stabilne ID zgłoszenia w instancji Jira; ponowne dopasowanie nie tworzy kopii.                         |
+| D06 | Alert e-mail/SMS powstaje po wykryciu; nie czeka na Linear ani analizę. Kanały są niezależne.                          |
+| D07 | E-mail przez firmowy SMTP, SMS przez SMSAPI; wybór potwierdzony przez użytkownika.                                     |
+| D08 | Linear otrzymuje Todo i trwałą ochronę przed implementacją. Sama zmiana statusu nie jest zgodą na naprawę.             |
+| D09 | Analiza i publikacja komentarza nie uruchamiają implementacji. „Przyjmij sprawę” też jej nie uruchamia.                |
+| D10 | Naprawa wymaga osobnej, potwierdzonej akcji „Rozpocznij naprawę”; korzysta z istniejącej ścieżki Linear.               |
+| D11 | Reguły, sprawy, wyniki i kolejka efektów są trwałe w PostgreSQL, nie w pamięci procesu.                                |
+| D12 | Trwała kolejka jest małym modułem Ecto z leasingiem; nie wprowadzamy Oban ani ogólnej platformy workflow.              |
+| D13 | W pierwszym wydaniu brak drag-and-drop Kanbana. Kolumny pokazują fakty, nie nadają uprawnień.                          |
+| D14 | UI po polsku; identyfikatory, nazwy projektów i treść zgłoszeń pozostają oryginalne.                                   |
+| D15 | Obecne funkcje pracy agentów, konfiguracja, historia, logi i dowody pozostają dostępne.                                |
 | D16 | Model analizy i model wykonujący ten plan są oddzielnymi wyborami; plan nie zmienia automatycznie konfiguracji modelu. |
 
 Rozważone alternatywy: zastąpienie Linear przez Jira odrzucono, ponieważ zmieniłoby
@@ -97,25 +97,25 @@ Aktualizacja `elixir/assets/AGENTS.md` i `CLAUDE.md` ma jawnie zastąpić wymaga
 Pozostają shadcn Base UI i zakaz ręcznego modyfikowania `components/ui/*`.
 Motyw realizować tokenami `index.css`, układ klasami Tailwind i komponentami feature.
 
-| Token/element | Wartość jasnego wariantu |
-| --- | --- |
-| Tło | `#f8f9fb` |
-| Powierzchnia | `#ffffff` |
-| Sidebar/kolumny | `#f3f4f7` |
-| Tekst główny | `#20242f` |
-| Tekst pomocniczy | `#687183` |
-| Obramowanie | `#e6e8ee` |
-| Akcent | `#6052d5` |
-| Jasny akcent | `#efedfc` |
-| Sukces | `#237655` na `#eaf5ee` |
-| Ostrzeżenie | `#936018` na `#fcf3df` |
-| Błąd | `#b74551` na `#fcecee` |
-| Font | `Inter, Segoe UI, Arial, sans-serif`; bez pobierania fontów z zewnętrznego CDN |
-| Rozmiar bazowy / tytuł strony | 14 px / 29 px, nagłówek 650, line-height 1.2 |
-| Sidebar desktop | 218 px; 185 px w zakresie 851–1150 px |
-| Padding strony | 32 px desktop, 25×22 px do 1150 px, 22×16 px do 600 px |
-| List-detail | `minmax(270px, .82fr) minmax(0, 1.3fr)`; proporcje z makiety |
-| Karty / panel listy | promień 7–11 px zgodnie z odpowiednim selektorem makiety |
+| Token/element                 | Wartość jasnego wariantu                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| Tło                           | `#f8f9fb`                                                                      |
+| Powierzchnia                  | `#ffffff`                                                                      |
+| Sidebar/kolumny               | `#f3f4f7`                                                                      |
+| Tekst główny                  | `#20242f`                                                                      |
+| Tekst pomocniczy              | `#687183`                                                                      |
+| Obramowanie                   | `#e6e8ee`                                                                      |
+| Akcent                        | `#6052d5`                                                                      |
+| Jasny akcent                  | `#efedfc`                                                                      |
+| Sukces                        | `#237655` na `#eaf5ee`                                                         |
+| Ostrzeżenie                   | `#936018` na `#fcf3df`                                                         |
+| Błąd                          | `#b74551` na `#fcecee`                                                         |
+| Font                          | `Inter, Segoe UI, Arial, sans-serif`; bez pobierania fontów z zewnętrznego CDN |
+| Rozmiar bazowy / tytuł strony | 14 px / 29 px, nagłówek 650, line-height 1.2                                   |
+| Sidebar desktop               | 218 px; 185 px w zakresie 851–1150 px                                          |
+| Padding strony                | 32 px desktop, 25×22 px do 1150 px, 22×16 px do 600 px                         |
+| List-detail                   | `minmax(270px, .82fr) minmax(0, 1.3fr)`; proporcje z makiety                   |
+| Karty / panel listy           | promień 7–11 px zgodnie z odpowiednim selektorem makiety                       |
 
 Nie dodawać fontu Inter jako nowej zależności: w środowisku bez Inter używać tego samego
 fallbacku co makieta. Istniejący dark mode zachować jako drugorzędny: te same układy,
@@ -154,18 +154,18 @@ Focus ring ma pozostać widoczny; stan aktywny ma `aria-current`, nie tylko kolo
 
 ### 4.3. Trasy i stan widoku
 
-| Trasa | Zawartość |
-| --- | --- |
-| `/` | Centrum spraw; domyślnie Lista, wszystkie projekty |
-| `/?project=&view=&filter=&q=&case=&tab=` | Ten sam ekran z odtwarzalnym wyborem |
-| `/cases/:ref` | Samodzielny szczegół sprawy; kanoniczny link z powiadomień |
-| `/automations` | Lista reguł i ich stan |
-| `/automations/new`, `/automations/:id` | Edytor reguły |
-| `/integrations` | Jira, Linear, SMTP, SMSAPI i ich testy połączenia |
-| `/projects`, `/projects/new`, `/projects/:id/edit` | Istniejący CRUD w nowym wyglądzie |
-| `/projects/:slug` | Istniejące Praca/Dowody/Aktywność/Konfiguracja |
-| `/projects/:slug/runs/:identifier` | Zachowany szczegół przebiegu |
-| `/overview`, `/runtime` | Istniejące podsumowanie techniczne i diagnostyka |
+| Trasa                                              | Zawartość                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `/`                                                | Centrum spraw; domyślnie Lista, wszystkie projekty         |
+| `/?project=&view=&filter=&q=&case=&tab=`           | Ten sam ekran z odtwarzalnym wyborem                       |
+| `/cases/:ref`                                      | Samodzielny szczegół sprawy; kanoniczny link z powiadomień |
+| `/automations`                                     | Lista reguł i ich stan                                     |
+| `/automations/new`, `/automations/:id`             | Edytor reguły                                              |
+| `/integrations`                                    | Jira, Linear, SMTP, SMSAPI i ich testy połączenia          |
+| `/projects`, `/projects/new`, `/projects/:id/edit` | Istniejący CRUD w nowym wyglądzie                          |
+| `/projects/:slug`                                  | Istniejące Praca/Dowody/Aktywność/Konfiguracja             |
+| `/projects/:slug/runs/:identifier`                 | Zachowany szczegół przebiegu                               |
+| `/overview`, `/runtime`                            | Istniejące podsumowanie techniczne i diagnostyka           |
 
 `view=list|kanban`, `filter=all|decision|analysis|done`,
 `tab=analysis|issue|history`. Nieprawidłowy enum normalizować przez replace do domyślnego.
@@ -293,16 +293,16 @@ Nie kopiować sekretów do `config`, JSON API, audit event ani snapshotu reguły
 
 ### 6.1. Tabele
 
-| Tabela | Wymagane pola poza PK/timestamps |
-| --- | --- |
-| `integration_connections` | `kind: jira_cloud/smtp/smsapi`, `name`, `settings: jsonb`, `secret: encrypted binary`, `secret_version`, `enabled=false`, `last_checked_at?`, `health: unchecked/ok/error`, `error_code?`, `lock_version` |
-| `automation_rules` | `project_id`, `jira_connection_id`, `name`, `source_type: board/filter`, `source_id`, `priority_ids: text[]`, `interval_seconds`, `initial_policy`, `linear_team_id`, `linear_project_id`, `linear_todo_state_id`, `linear_hold_label_id`, `email_connection_id?`, `sms_connection_id?`, `email_recipients: text[]`, `sms_recipients: text[]`, `enabled=false`, `config_version=1`, `activated_at?`, `baseline_complete_at?`, `last_started_at?`, `last_success_at?`, `next_poll_at?`, `last_error_code?`, `lease_token?`, `lease_until?`, `lock_version` |
-| `jira_observations` | `jira_connection_id`, `jira_issue_id`, `rule_id`, `first_seen_at`, `last_seen_at`, `last_priority_id?`, `baseline_excluded: boolean` |
-| `intake_cases` | `project_id`, `rule_id`, `jira_connection_id`, `jira_issue_id`, `jira_key`, `jira_url`, `title`, `description_text`, `priority_id`, `priority_name`, `jira_updated_at`, `detected_at`, `rule_snapshot: jsonb`, `linear_issue_id` (rezerwowane UUID), `linear_identifier?`, `linear_url?`, `linear_state_name?`, `linear_confirmed_at?`, `analysis_version=1`, `analysis_status`, `acknowledged_at?`, `repair_approved_at?`, `repair_approved_version?`, `lock_version` |
-| `intake_analyses` | `case_id`, `version`, `status: queued/running/succeeded/failed/needs_input`, `input_snapshot: jsonb`, `result: jsonb?`, `model`, `effort`, `started_at?`, `completed_at?`, `token_usage: jsonb?`, `error_code?`, `work_run_id?` |
-| `integration_deliveries` | `case_id?`, `connection_id?`, `operation`, `dedupe_key`, `payload: jsonb`, `status`, `attempts=0`, `next_attempt_at`, `lease_token?`, `lease_until?`, `provider_id?`, `first_attempt_at?`, `sent_at?`, `last_error_code?` |
-| `intake_events` | `case_id?`, `rule_id?`, `type`, `payload: jsonb`, `actor: system/operator`, `occurred_at` |
-| `automation_scans` | `rule_id`, `rule_config_version`, `mode: baseline/poll/preview`, `status: pending/running/succeeded/failed/cancelled`, `generation` UUID, `started_at?`, `finished_at?`, `match_count=0`, `accepted_count=0`, `error_code?` |
+| Tabela                    | Wymagane pola poza PK/timestamps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integration_connections` | `kind: jira_cloud/smtp/smsapi`, `name`, `settings: jsonb`, `secret?: encrypted binary`, `secret_version=1`, `enabled=false`, `last_checked_at?`, `health: unchecked/ok/error`, `error_code?`, `lock_version`                                                                                                                                                                                                                                                                                                                                              |
+| `automation_rules`        | `project_id`, `jira_connection_id`, `name`, `source_type: board/filter`, `source_id`, `priority_ids: text[]`, `interval_seconds`, `initial_policy`, `linear_team_id`, `linear_project_id`, `linear_todo_state_id`, `linear_hold_label_id`, `email_connection_id?`, `sms_connection_id?`, `email_recipients: text[]`, `sms_recipients: text[]`, `enabled=false`, `config_version=1`, `activated_at?`, `baseline_complete_at?`, `last_started_at?`, `last_success_at?`, `next_poll_at?`, `last_error_code?`, `lease_token?`, `lease_until?`, `lock_version` |
+| `jira_observations`       | `jira_connection_id`, `jira_issue_id`, `rule_id`, `first_seen_at`, `last_seen_at`, `last_priority_id?`, `baseline_excluded: boolean`                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `intake_cases`            | `project_id`, `rule_id`, `jira_connection_id`, `jira_issue_id`, `jira_key`, `jira_url`, `title`, `description_text`, `priority_id`, `priority_name`, `jira_updated_at`, `detected_at`, `rule_snapshot: jsonb`, `linear_issue_id` (rezerwowane UUID), `linear_identifier?`, `linear_url?`, `linear_state_name?`, `linear_confirmed_at?`, `analysis_version=1`, `analysis_status`, `acknowledged_at?`, `repair_approved_at?`, `repair_approved_version?`, `lock_version`                                                                                    |
+| `intake_analyses`         | `case_id`, `version`, `status: queued/running/succeeded/failed/needs_input`, `input_snapshot: jsonb`, `result: jsonb?`, `model`, `effort`, `started_at?`, `completed_at?`, `token_usage: jsonb?`, `error_code?`, `work_run_id?`                                                                                                                                                                                                                                                                                                                           |
+| `integration_deliveries`  | `case_id?`, `connection_id?`, `operation`, `dedupe_key`, `payload: jsonb`, `status`, `attempts=0`, `next_attempt_at`, `lease_token?`, `lease_until?`, `provider_id?`, `first_attempt_at?`, `sent_at?`, `last_error_code?`                                                                                                                                                                                                                                                                                                                                 |
+| `intake_events`           | `case_id?`, `rule_id?`, `type`, `payload: jsonb`, `actor: system/operator`, `occurred_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `automation_scans`        | `rule_id`, `rule_config_version`, `mode: baseline/poll/preview`, `status: pending/running/succeeded/failed/cancelled`, `generation` UUID, `started_at?`, `finished_at?`, `match_count=0`, `accepted_count=0`, `error_code?`                                                                                                                                                                                                                                                                                                                               |
 
 Uzupełniające pola: rule ma `activation_status: idle/activating/error`,
 `baseline_generation?`; observation ma `generation` skanu bazowego.
@@ -522,15 +522,15 @@ kandydatem zwykłego `choose_work_runs`; zarządza nią Intake.Dispatcher.
 
 Profil `analysis` w Config.Schema:
 
-| Pole | Kontrakt |
-| --- | --- |
-| `enabled` | false do zakończenia testu izolacji |
-| `model` | wymagany jawnie przy włączeniu; wybrany przez operatora z dostępnych modeli |
-| `effort` | `medium`; zapisywany jawnie w sesji i analizie |
-| `max_concurrent` | 1, zakres 1–4; osobna pula widoczna w diagnostyce |
-| `timeout_ms` | 600000, zakres 60000–900000, twardy czas ścienny |
-| `max_turns` | stałe 1; bez kontynuowania dlatego, że Linear pozostaje Todo |
-| `max_result_bytes` | 32768 |
+| Pole               | Kontrakt                                                                    |
+| ------------------ | --------------------------------------------------------------------------- |
+| `enabled`          | false do zakończenia testu izolacji                                         |
+| `model`            | wymagany jawnie przy włączeniu; wybrany przez operatora z dostępnych modeli |
+| `effort`           | `medium`; zapisywany jawnie w sesji i analizie                              |
+| `max_concurrent`   | 1, zakres 1–4; osobna pula widoczna w diagnostyce                           |
+| `timeout_ms`       | 600000, zakres 60000–900000, twardy czas ścienny                            |
+| `max_turns`        | stałe 1; bez kontynuowania dlatego, że Linear pozostaje Todo                |
+| `max_result_bytes` | 32768                                                                       |
 
 Nie dobierać automatycznie „najtańszego” modelu ani nie fallbackować na droższy.
 Brak modelu/uprawnień → reguła nieaktywna z konkretnym komunikatem.
@@ -582,8 +582,14 @@ Wynik JSON, wszystkie pola wymagane, `additionalProperties=false`:
 ```json
 {
   "summary": "Krótki opis ustaleń",
-  "facts": [{"text": "Zaobserwowany fakt", "source": "jira:OPS-142"}],
-  "hypotheses": [{"text": "Możliwa przyczyna", "confidence": "low", "evidence": ["jira:OPS-142"]}],
+  "facts": [{ "text": "Zaobserwowany fakt", "source": "jira:OPS-142" }],
+  "hypotheses": [
+    {
+      "text": "Możliwa przyczyna",
+      "confidence": "low",
+      "evidence": ["jira:OPS-142"]
+    }
+  ],
   "missing_data": ["Log błędu z czasem wystąpienia"],
   "next_steps": ["Sprawdzić czas wykonania zapytania"],
   "needs_input": true,
@@ -695,36 +701,44 @@ Walidacja 422, brak 404, konflikt wersji/stanu 409, niedostępność zależnośc
 błędne query/cursor 400, zła metoda 405. Żadnych surowych body dostawcy w API.
 Mutacje wymagają JSON, same-origin Origin, tokenu CSRF z sesji; nie poszerzać CORS.
 Browser API nie może przyjąć cross-origin POST wydającego pieniądze.
+Bootstrap SPA pobiera `GET /api/v1/csrf` z credentials same-origin. Kontroler
+wykonuje fetch_session i get_csrf_token, zwraca `{ "csrf_token": "..." }`
+oraz Cache-Control no-store. Token pozostaje tylko w pamięci api.ts i trafia do
+X-CSRF-Token każdej nowej mutacji. Brak/niepoprawny token lub Origin → 403,
+bez wykonania akcji. Po 403 odświeżyć token i poprosić o ponowienie przez człowieka;
+nie ponawiać automatycznie mutacji. Użyć istniejącego Plug.Session i losowego
+secret_key_base generowanego przez HttpServer; nie wstrzykiwać tokenu w statyczny index.html.
 Nie zmieniać webhooków forge na sesyjne ani nie uznawać CSRF za uwierzytelnianie.
 Wdrożenie pozostaje za zaufaną siecią/proxy; nie publikować API bez kontroli dostępu.
 
 ### 11.2. Endpointy
 
-| Metoda i ścieżka | Body/query | Odpowiedź |
-| --- | --- | --- |
-| GET `/cases` | project?, filter?, q?, column?, cursor?, page_size=25 (1–100) | items CaseSummary, meta next_cursor/total, counts, project_counts |
-| GET `/cases/:ref` | ref `jira_<uuid>` albo `run_<uuid>` | case, analysis?, links, deliveries, actions, version |
-| GET `/cases/:ref/events` | cursor?, page_size=50 | items, meta.next_cursor |
-| POST `/cases/:ref/acknowledge` | expected_version | case, version; tylko Jira case |
-| POST `/cases/:ref/approve-repair` | expected_version, analysis_version, confirmed=true | status approved, case; idempotentne |
-| POST `/cases/:ref/reanalyze` | expected_version, confirmed=true | 202 analysis_version |
-| POST `/deliveries/:id/retry` | expected_status, confirm_duplicate_risk=false | 202 delivery; nie retry succeeded |
-| GET/POST `/automations` | list / RuleInput | rules / 201 rule |
-| GET/PATCH `/automations/:id` | version przy PATCH | rule; nie aktywuje automatycznie |
-| POST `/automations/:id/preview` | brak; używa zapisanej wersji | sample max 20, match_count, truncated, warnings; zero efektów |
-| POST `/automations/:id/activate` | version, confirmed=true | 202 activating; enabled dopiero po poprawnym baseline |
-| POST `/automations/:id/pause` | version | rule disabled |
-| POST `/automations/:id/check` | brak | 202 scan_id albo 409 |
-| POST `/automations/check` | project? | 202 accepted_rule_ids, skipped z kodem powodu |
-| GET/POST `/integrations` | list / ConnectionInput | connections / 201 connection |
-| GET/PATCH `/integrations/:id` | version, secret? albo clear_secret=true | connection; secret_state set/unset, nigdy wartość |
-| POST `/integrations/:id/test` | brak | health, checked_at, error_code?; bez wysyłki |
-| POST `/integrations/:id/test-send` | recipient, confirmed=true | 202 test_delivery; tylko SMTP/SMSAPI |
-| GET `/integrations/:id/jira/boards` | q?, cursor? | items id/name, meta.next_cursor |
-| GET `/integrations/:id/jira/filters` | q?, cursor? | items id/name, meta.next_cursor |
-| GET `/integrations/:id/jira/priorities` | brak | items id/name |
-| GET `/projects/:id/linear-options` | brak | teams/projects/states/hold_label; jawne ID |
-| POST `/projects/:id/linear-hold-label` | team_id, confirmed=true | label_id; re-use istniejącej nazwy |
+| Metoda i ścieżka                        | Body/query                                                    | Odpowiedź                                                         |
+| --------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------- |
+| GET `/csrf`                             | brak                                                          | csrf_token; no-store, sesja same-origin                           |
+| GET `/cases`                            | project?, filter?, q?, column?, cursor?, page_size=25 (1–100) | items CaseSummary, meta next_cursor/total, counts, project_counts |
+| GET `/cases/:ref`                       | ref `jira_<uuid>` albo `run_<uuid>`                           | case, analysis?, links, deliveries, actions, version              |
+| GET `/cases/:ref/events`                | cursor?, page_size=50                                         | items, meta.next_cursor                                           |
+| POST `/cases/:ref/acknowledge`          | expected_version                                              | case, version; tylko Jira case                                    |
+| POST `/cases/:ref/approve-repair`       | expected_version, analysis_version, confirmed=true            | status approved, case; idempotentne                               |
+| POST `/cases/:ref/reanalyze`            | expected_version, confirmed=true                              | 202 analysis_version                                              |
+| POST `/deliveries/:id/retry`            | expected_status, confirm_duplicate_risk=false                 | 202 delivery; nie retry succeeded                                 |
+| GET/POST `/automations`                 | list / RuleInput                                              | rules / 201 rule                                                  |
+| GET/PATCH `/automations/:id`            | version przy PATCH                                            | rule; nie aktywuje automatycznie                                  |
+| POST `/automations/:id/preview`         | brak; używa zapisanej wersji                                  | sample max 20, match_count, truncated, warnings; zero efektów     |
+| POST `/automations/:id/activate`        | version, confirmed=true                                       | 202 activating; enabled dopiero po poprawnym baseline             |
+| POST `/automations/:id/pause`           | version                                                       | rule disabled                                                     |
+| POST `/automations/:id/check`           | brak                                                          | 202 scan_id albo 409                                              |
+| POST `/automations/check`               | project?                                                      | 202 accepted_rule_ids, skipped z kodem powodu                     |
+| GET/POST `/integrations`                | list / ConnectionInput                                        | connections / 201 connection                                      |
+| GET/PATCH `/integrations/:id`           | version, secret? albo clear_secret=true                       | connection; secret_state set/unset, nigdy wartość                 |
+| POST `/integrations/:id/test`           | brak                                                          | health, checked_at, error_code?; bez wysyłki                      |
+| POST `/integrations/:id/test-send`      | recipient, confirmed=true                                     | 202 test_delivery; tylko SMTP/SMSAPI                              |
+| GET `/integrations/:id/jira/boards`     | q?, cursor?                                                   | items id/name, meta.next_cursor                                   |
+| GET `/integrations/:id/jira/filters`    | q?, cursor?                                                   | items id/name, meta.next_cursor                                   |
+| GET `/integrations/:id/jira/priorities` | brak                                                          | items id/name                                                     |
+| GET `/projects/:id/linear-options`      | brak                                                          | teams/projects/states/hold_label; jawne ID                        |
+| POST `/projects/:id/linear-hold-label`  | team_id, confirmed=true                                       | label_id; re-use istniejącej nazwy                                |
 
 RuleInput zawiera edytowalne pola automation_rules z §6.1, poza metadanymi,
 lease/timestamps i enabled. Patch jest częściowy, whitelist pól, optimistic lock.
@@ -776,11 +790,20 @@ type CaseColumn = "detected" | "analyzing" | "decision" | "handed_off";
 type CaseSummary = {
   ref: string;
   kind: "jira_intake" | "agent_work";
-  project: { id: string; slug: string; name: string; color: "purple" | "gold" | "teal" };
+  project: {
+    id: string;
+    slug: string;
+    name: string;
+    color: "purple" | "gold" | "teal";
+  };
   title: string;
   jira: { key: string; url: string } | null;
   linear: { identifier: string; url: string } | null;
-  priority: { id: string | null; label: string; tone: "critical" | "high" | "normal" };
+  priority: {
+    id: string | null;
+    label: string;
+    tone: "critical" | "high" | "normal";
+  };
   column: CaseColumn;
   status_label: string;
   execution_mode: "analysis_only" | "repair_approved" | "existing_workflow";
@@ -806,20 +829,20 @@ Tytuł legacy: payload.title, następnie payload.issue.title, następnie identyf
 Linear lub `<type> · <skrócone run UUID>`; nigdy losowy przykładowy tytuł.
 detected_at dla agent_work = inserted_at WorkRun. UUID w coalesce rzutować do text.
 
-| Stan | Kolumna |
-| --- | --- |
-| Jira queued / czekanie na utworzenie Linear | Wykryte |
-| Jira running | W analizie |
-| Jira ready lub needs_input, nieprzyjęta | Do decyzji |
-| Dowolny Jira failed/unknown lub wymagany efekt w retry_wait | Do decyzji, błąd nie znika po acknowledge |
-| Jira przyjęta + komentarz opublikowany, bez problemów | Przekazane |
-| Jira naprawa zatwierdzona, oczekuje na dispatch | Wykryte |
-| Powiązana implementacja running | W analizie, tekst „Naprawa w toku”, nie „Analiza” |
-| Istniejąca praca queued/retrying bez błędu | Wykryte |
-| Istniejąca praca running | W analizie, tekst „Praca agenta” |
-| Istniejąca praca blocked/failed/retrying z błędem/stopped/human_review | Do decyzji |
-| Istniejąca praca completed/succeeded/handed_off/cancelled | Przekazane |
-| Nieznany status historyczny | Do decyzji z dosłownym statusem, nie ukrywać |
+| Stan                                                                   | Kolumna                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------- |
+| Jira queued / czekanie na utworzenie Linear                            | Wykryte                                           |
+| Jira running                                                           | W analizie                                        |
+| Jira ready lub needs_input, nieprzyjęta                                | Do decyzji                                        |
+| Dowolny Jira failed/unknown lub wymagany efekt w retry_wait            | Do decyzji, błąd nie znika po acknowledge         |
+| Jira przyjęta + komentarz opublikowany, bez problemów                  | Przekazane                                        |
+| Jira naprawa zatwierdzona, oczekuje na dispatch                        | Wykryte                                           |
+| Powiązana implementacja running                                        | W analizie, tekst „Naprawa w toku”, nie „Analiza” |
+| Istniejąca praca queued/retrying bez błędu                             | Wykryte                                           |
+| Istniejąca praca running                                               | W analizie, tekst „Praca agenta”                  |
+| Istniejąca praca blocked/failed/retrying z błędem/stopped/human_review | Do decyzji                                        |
+| Istniejąca praca completed/succeeded/handed_off/cancelled              | Przekazane                                        |
+| Nieznany status historyczny                                            | Do decyzji z dosłownym statusem, nie ukrywać      |
 
 Pierwszeństwo projekcji Jira: awaria required delivery/analizy → decision;
 następnie istniejąca zatwierdzona naprawa → mapping najnowszego implementation run
@@ -903,27 +926,27 @@ produkcyjnych nie uruchamiać jej jako „rollback aplikacji”.
 
 Każdy identyfikator AC ma odpowiadający test w planie; ręczny gate nie zastępuje unit testów.
 
-| ID | Weryfikowalny warunek |
-| --- | --- |
-| AC01 | A odtworzona w działającym React, desktop/mobile/dark, bez elementów demonstracyjnych. |
-| AC02 | Lista/Kanban zachowują stan URL i filtry; per-column paginacja nie gubi kart ani liczników. |
-| AC03 | Badge projektu, hover/focus w kolorze, biała kropka 200 ms i reduced motion. |
-| AC04 | Oba linki Jira/Linear identyczne wizualnie; brak URL nie daje aktywnego fałszywego linku. |
-| AC05 | Interwał i priorytety konfigurowalne; Todo w Linear sprawdzane po team ID. |
-| AC06 | Stare zgłoszenie po awansie priorytetu przyjęte raz; spadek/ponowny awans nie duplikuje. |
-| AC07 | Initial baseline, import istniejących, pauza/wznowienie i częściowa paginacja mają określone wyniki. |
-| AC08 | Równoległe skany/restart/timeout create dają jeden case i jedno docelowe Linear UUID. |
-| AC09 | Import nigdy nie startuje implementacji bez zgody, także retry/restart/DB down/usunięcie etykiety. |
-| AC10 | Analiza nie zapisuje kodu, nie ma sekretów/narzędzi zapisujących, nie wykonuje hooków ani pętli Todo. |
-| AC11 | Wynik ma fakty/hipotezy/braki/źródła; błąd walidacji nie staje się komentarzem. |
-| AC12 | Publikacja awaryjna ponawia tylko publikację; nie tworzy dodatkowego komentarza po niepewnym POST. |
-| AC13 | SMTP i SMSAPI działają niezależnie; unknown nie jest ślepo ponawiane; provider accepted ≠ delivered. |
-| AC14 | Sekrety szyfrowane i write-only; logi redagowane; CSRF/SSRF/XSS negatywne testy przechodzą. |
+| ID   | Weryfikowalny warunek                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------- |
+| AC01 | A odtworzona w działającym React, desktop/mobile/dark, bez elementów demonstracyjnych.                   |
+| AC02 | Lista/Kanban zachowują stan URL i filtry; per-column paginacja nie gubi kart ani liczników.              |
+| AC03 | Badge projektu, hover/focus w kolorze, biała kropka 200 ms i reduced motion.                             |
+| AC04 | Oba linki Jira/Linear identyczne wizualnie; brak URL nie daje aktywnego fałszywego linku.                |
+| AC05 | Interwał i priorytety konfigurowalne; Todo w Linear sprawdzane po team ID.                               |
+| AC06 | Stare zgłoszenie po awansie priorytetu przyjęte raz; spadek/ponowny awans nie duplikuje.                 |
+| AC07 | Initial baseline, import istniejących, pauza/wznowienie i częściowa paginacja mają określone wyniki.     |
+| AC08 | Równoległe skany/restart/timeout create dają jeden case i jedno docelowe Linear UUID.                    |
+| AC09 | Import nigdy nie startuje implementacji bez zgody, także retry/restart/DB down/usunięcie etykiety.       |
+| AC10 | Analiza nie zapisuje kodu, nie ma sekretów/narzędzi zapisujących, nie wykonuje hooków ani pętli Todo.    |
+| AC11 | Wynik ma fakty/hipotezy/braki/źródła; błąd walidacji nie staje się komentarzem.                          |
+| AC12 | Publikacja awaryjna ponawia tylko publikację; nie tworzy dodatkowego komentarza po niepewnym POST.       |
+| AC13 | SMTP i SMSAPI działają niezależnie; unknown nie jest ślepo ponawiane; provider accepted ≠ delivered.     |
+| AC14 | Sekrety szyfrowane i write-only; logi redagowane; CSRF/SSRF/XSS negatywne testy przechodzą.              |
 | AC15 | Przyjmij nie startuje naprawy; osobna zgoda wersjonowana jest idempotentna i respektuje capacity/policy. |
-| AC16 | Stare runy/projekty/artefakty/logi/stop/retry nadal dostępne; brak duplikatu case po naprawie. |
-| AC17 | Reconnect/refetch i stany empty/error/offline działają; brak pustej białej strony przy błędzie API. |
-| AC18 | Pełne bramki backend/frontend/E2E i manualny test kontrolowany mają surowe logi oraz kody wyjścia. |
-| AC19 | Rollback flag nie usuwa guard; brak nowych efektów przy wyłączonym intake/effects. |
+| AC16 | Stare runy/projekty/artefakty/logi/stop/retry nadal dostępne; brak duplikatu case po naprawie.           |
+| AC17 | Reconnect/refetch i stany empty/error/offline działają; brak pustej białej strony przy błędzie API.      |
+| AC18 | Pełne bramki backend/frontend/E2E i manualny test kontrolowany mają surowe logi oraz kody wyjścia.       |
+| AC19 | Rollback flag nie usuwa guard; brak nowych efektów przy wyłączonym intake/effects.                       |
 
 Ryzyka wymagające jawnej bramki: wersja protokołu Codex i realna izolacja procesu,
 uprawnienia Jira do komentarzy/filtra, dostępność Todo w Linear, niejednoznaczny
