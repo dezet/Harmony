@@ -55,7 +55,6 @@ defmodule SymphonyElixir.Intake.LinearBridge do
       end
     else
       {:error, code} when is_binary(code) -> {:error, code}
-      _other -> {:unknown, "linear_local_state_unavailable"}
     end
   end
 
