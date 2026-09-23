@@ -10,9 +10,10 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
           effort: String.t(),
           model: String.t(),
           output_schema: map(),
-          thread_sandbox: String.t(),
-          turn_sandbox_policy: map()
+          permission_profile: String.t()
         }
+
+  @permission_profile "analysis_ro"
 
   @output_schema %{
     "type" => "object",
@@ -126,16 +127,7 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
            effort: Map.fetch!(normalized_options, :effort),
            model: Map.fetch!(normalized_options, :model),
            output_schema: @output_schema,
-           thread_sandbox: "read-only",
-           turn_sandbox_policy: %{
-             "type" => "readOnly",
-             "networkAccess" => false,
-             "access" => %{
-               "type" => "restricted",
-               "includePlatformDefaults" => true,
-               "readableRoots" => []
-             }
-           }
+           permission_profile: @permission_profile
          }}
     end
   end
@@ -162,7 +154,8 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
          :ok <- File.chmod(runtime_root, 0o700),
          :ok <- create_private_dirs([home, codex_home, xdg_config_home, xdg_cache_home, xdg_data_home, tmp_dir]),
          :ok <- copy_auth_file(codex_home),
-         :ok <- write_codex_config(codex_home) do
+         {:ok, codex_executable_paths} <- codex_executable_paths(),
+         :ok <- write_codex_config(codex_home, codex_executable_paths) do
       {:ok,
        %{
          root: runtime_root,
@@ -240,19 +233,24 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
     end
   end
 
-  defp write_codex_config(codex_home) do
+  defp write_codex_config(codex_home, codex_executable_paths) do
     path = Path.join(codex_home, "config.toml")
 
-    with :ok <- File.write(path, codex_config()),
+    with :ok <- File.write(path, codex_config(codex_executable_paths)),
          :ok <- File.chmod(path, 0o600) do
       :ok
     end
   end
 
-  defp codex_config do
+  defp codex_config(codex_executable_paths) do
+    allowed_executables =
+      Enum.map_join(codex_executable_paths, "", fn path ->
+        "#{toml_string(path)} = \"read\"\n"
+      end)
+
     """
     approval_policy = "on-request"
-    sandbox_mode = "read-only"
+    default_permissions = "#{@permission_profile}"
     project_doc_max_bytes = 0
     web_search = "disabled"
     mcp_servers = {}
@@ -264,6 +262,16 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
     PATH = "include"
     HOME = "include"
     TMPDIR = "include"
+
+    [permissions.#{@permission_profile}.filesystem]
+    ":minimal" = "read"
+    #{String.trim_trailing(allowed_executables)}
+
+    [permissions.#{@permission_profile}.filesystem.\":workspace_roots\"]
+    "." = "read"
+
+    [permissions.#{@permission_profile}.network]
+    enabled = false
 
     [features]
     apps = false
@@ -278,6 +286,67 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
     skill_mcp_dependency_install = false
     skip_host_skill_discovery = true
     """
+  end
+
+  defp codex_executable_paths do
+    case System.find_executable("codex") do
+      nil ->
+        {:error, :codex_executable_not_found}
+
+      executable ->
+        # The sandbox executor re-executes Codex by its resolved path, not the PATH symlink.
+        case resolve_symlinks(Path.expand(executable), MapSet.new(), 0) do
+          {:ok, resolved} -> {:ok, [resolved]}
+          {:error, reason} -> {:error, {:codex_executable_resolution_failed, reason}}
+        end
+    end
+  end
+
+  defp resolve_symlinks(path, seen, depth) when depth < 40 do
+    case Enum.find(path_prefixes(path), fn prefix ->
+           match?({:ok, %File.Stat{type: :symlink}}, File.lstat(prefix))
+         end) do
+      nil ->
+        {:ok, path}
+
+      prefix ->
+        if MapSet.member?(seen, prefix) do
+          {:error, {:symlink_loop, prefix}}
+        else
+          with {:ok, target} <- File.read_link(prefix) do
+            target_path =
+              if Path.type(target) == :absolute do
+                target
+              else
+                Path.expand(target, Path.dirname(prefix))
+              end
+
+            suffix = Path.relative_to(path, prefix)
+            expanded = if suffix == ".", do: target_path, else: Path.join(target_path, suffix)
+            resolve_symlinks(expanded, MapSet.put(seen, prefix), depth + 1)
+          end
+        end
+    end
+  end
+
+  defp resolve_symlinks(_path, _seen, _depth), do: {:error, :too_many_symlink_levels}
+
+  defp path_prefixes(path) do
+    {_, prefixes} =
+      path
+      |> Path.split()
+      |> Enum.reject(&(&1 == "/"))
+      |> Enum.reduce({"/", []}, fn component, {current, acc} ->
+        next = Path.join(current, component)
+        {next, [next | acc]}
+      end)
+
+    Enum.reverse(prefixes)
+  end
+
+  defp toml_string(value) do
+    escaped = value |> String.replace("\\", "\\\\") |> String.replace("\"", "\\\"")
+    "\"#{escaped}\""
   end
 
   defp port_environment(runtime_values) do

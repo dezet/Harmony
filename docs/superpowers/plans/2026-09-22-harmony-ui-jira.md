@@ -321,19 +321,32 @@ Odbiór M2: AC05–AC09; jeden case, jeden UUID, zero implementacji przy symulow
 ### T11. Profil izolacji sesji analitycznej
 
 Spec: §9.1. Zależność: M2.
-Pliki: nowe `BE/intake/analysis_policy.ex`, `BT/intake_analysis_policy_test.exs`;
+Pliki: nowe `BE/intake/analysis_policy.ex`, `BT/intake_analysis_policy_test.exs`,
+`BT/intake_analysis_policy_giso_test.exs`;
 `BE/codex/app_server.ex`, `BE/agent_backends/codex.ex`;
 fixture protokołu pod `elixir/test/fixtures/intake/`.
 
-- [ ] T11.1 RED: profil analizy nie może odziedziczyć dynamicTools ani auto-approve.
-- [ ] T11.2 Osobne jawne session opts; istniejące implementacyjne wywołania bez zmiany zachowania.
-- [ ] T11.3 Test fake app-server potwierdza sandbox, restricted read, outputSchema, model i effort.
-- [ ] T11.4 Sanityzuj env, konfigurację MCP/pluginów/instrukcji, wyłącz login shell i network narzędzi.
-- [ ] T11.5 Próba eskalacji/dynamic tool → odmowa; nieobsługiwany policy field → błąd startu.
-- [ ] T11.6 Wstępny G-ISO: rzeczywisty test profilu izolacji z syntetycznym sekretem i plikiem-canary,
-      bez runnera z T13 i bez płatnego wywołania modelu. Pełny G-ISO ponownie w T29.
+- [x] T11.1 RED/GREEN: profil analizy ma puste `dynamicTools`, nie akceptuje eskalacji, a wymagane
+      model/effort i nieobsługiwane pola są walidowane przed startem.
+- [x] T11.2 Osobne jawne session opts; istniejące implementacyjne wywołania bez zmiany zachowania.
+- [x] T11.3 Test fake app-server potwierdza `permissions` w `thread/start` i `turn/start`,
+      brak starych pól sandbox, `outputSchema`, model i effort.
+- [x] T11.4 Sanityzuj env i prywatny `CODEX_HOME`; wyłącz MCP/pluginy/hooki i login shell.
+      Profil `analysis_ro` nie dziedziczy po `:read-only`, czyta tylko `:minimal`, runtime roots
+      i kanoniczny plik wykonywalny Codex; `network.enabled = false`.
+- [x] T11.5 Próba konfliktu `permissionProfile`/`sandboxPolicy` → odmowa; dynamic tool → odmowa;
+      nieobsługiwane policy field → błąd startu.
+- [x] T11.6 Wstępny G-ISO na aktualnie zainstalowanym Codex CLI (w tym przebiegu `0.155.1`),
+      bez turnu/modelu: workspace read; odmowa syntetycznego auth i operator config; app-server
+      dostaje wyłącznie testowe model API keys, integracyjne sekrety są wyczyszczone, a shell
+      nie widzi żadnych canary w env ani czytelnym `/proc/*/environ`; auth pozostaje niedostępny
+      przez `/proc/*/root` i `/proc/*/fd`; create/edit/delete blokowane z niezmienionym hashem;
+      config workspace próbuje też ustawić `:root = write` i `network.enabled = true` dla
+      `analysis_ro`, lecz loopback i zapisy nadal są blokowane. Konflikt override odrzucony;
+      test raportuje wersję; pełny G-ISO ponownie w T29.
 
-Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_analysis_policy_test.exs`.
+Testy: `cd elixir && CLOAK_KEY=<synthetic> mise exec -- mix test test/symphony_elixir/intake_analysis_policy_test.exs test/symphony_elixir/app_server_test.exs`;
+realny test bez inference: `cd elixir && CLOAK_KEY=<synthetic> mise exec -- mix test test/symphony_elixir/intake_analysis_policy_giso_test.exs`.
 Odbiór: AC10/AC14 oraz G-ISO z §10 planu. Bez G-ISO nie wolno włączyć analysis.enabled.
 
 ### T12. Snapshot kontekstu repozytorium
@@ -731,20 +744,33 @@ Restartować procesy testowego supervisora, nie usługę użytkownika.
 
 ### 10.3. G-ISO — rzeczywista izolacja analizatora
 
-Przygotować izolowany katalog testowy, syntetyczny plik-canary poza readable roots
-i syntetyczne zmienne sekretów. Wykonać jedną zatwierdzoną próbę analityczną lub
-narzędzie testujące ten sam sandbox/profile, które nie nalicza tokenów.
+Wstępna bramka T11.6 działa bez inference na izolowanym katalogu i syntetycznym
+`CODEX_HOME/auth.json`. Test używa lokalnego Codex CLI 0.155.1 i rzeczywistego `command/exec`
+z `permissionProfile = analysis_ro`; nie tworzy turnu ani `WorkRun` i nie nalicza tokenów.
 
-- [ ] Zapis/utworzenie/usunięcie pliku repo jest blokowane przez system, hash przed/po identyczny.
-- [ ] Shell nie może odczytać canary, env sekretów ani konfiguracji operatora.
-- [ ] Zewnętrzny request z narzędzia jest blokowany; inference modelu nie myli się z network narzędzi.
-- [ ] Brak dynamicTools/MCP/pluginów, brak autoodpowiedzi akceptującej eskalację.
-- [ ] Hook repo i instrukcja w Jira żądające zapisu/sendu nie są wykonane.
-- [ ] Timeout kończy sesję; późny wynik nie zapisuje sukcesu.
+- [x] `thread/start.permissions` wybiera istniejący profil; `permissionProfile/list` widzi go;
+      `command/exec` z tym profilem odczytuje plik workspace.
+- [x] Shell nie może odczytać syntetycznego `auth.json` ani operatorowego `config.toml` poza
+      root ani odziedziczyć żadnych syntetycznych kluczy API; skan czytelnych
+      `/proc/*/environ` też nie znajduje canary, a `/proc/*/root` i `/proc/*/fd` nie ujawniają
+      auth. Proces app-server otrzymuje klucze API modelu, a `CLOAK_KEY`, Jira, Linear i SMTP
+      canary są z niego usunięte.
+- [x] Utworzenie, edycja i usunięcie pliku-canary są blokowane przez system; hash pozostaje
+      identyczny, również gdy workspace zawiera testowy `.codex/config.toml` z `sandbox_mode`
+      ustawionym na `danger-full-access` i `[permissions.analysis_ro.filesystem]` ustawiającym
+      `:root = write`; override `analysis_ro.network.enabled = true` też nie otwiera loopback.
+- [x] Połączenie do host-side loopback listenera jest blokowane; listener nie przyjmuje połączenia.
+- [x] Konflikt `permissionProfile` z `sandboxPolicy` jest odrzucony; fake app-server potwierdza
+      brak dynamicTools i brakuje decyzji auto-approve dla eskalacji.
+- [ ] Pełny turn modelu: rzeczywiste polecenia generowane przez model, odmowa eskalacji oraz
+      oddzielenie network narzędzi od ruchu inference.
+- [ ] Runner T13/T29: hooki repo i instrukcja Jira żądające zapisu/sendu nie są wykonane;
+      timeout kończy sesję, a późny wynik nie zapisuje sukcesu.
 
-Dowód: wersja CLI, polityka sesji z redakcją danych, log testu, hashe plików,
-exit codes, case/work_run testowe. Brak możliwości testu oznacza otwartą bramkę,
-nie „bezpieczne, ponieważ napisano prompt”.
+Dowód T11.6: wersja CLI, `permissionProfile/list`, odpowiedzi `thread/start` i `command/exec`,
+syntetyczne canary, hashe pliku i exit codes w teście
+`elixir/test/symphony_elixir/intake_analysis_policy_giso_test.exs`. Otwarty pełny gate oznacza,
+że `analysis.enabled` pozostaje `false`; bezpieczny prompt nie zastępuje systemowej izolacji.
 
 ### 10.4. G-LIVE — kontrolowana integracja
 

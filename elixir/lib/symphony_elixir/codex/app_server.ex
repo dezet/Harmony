@@ -19,8 +19,9 @@ defmodule SymphonyElixir.Codex.AppServer do
           metadata: map(),
           approval_policy: String.t() | map(),
           auto_approve_requests: boolean(),
-          thread_sandbox: String.t(),
-          turn_sandbox_policy: map(),
+          thread_sandbox: String.t() | nil,
+          turn_sandbox_policy: map() | nil,
+          permission_profile: String.t() | nil,
           thread_id: String.t(),
           workspace: Path.t(),
           worker_host: String.t() | nil,
@@ -59,8 +60,9 @@ defmodule SymphonyElixir.Codex.AppServer do
                  metadata: metadata,
                  approval_policy: session_policies.approval_policy,
                  auto_approve_requests: session_policies.auto_approve_requests,
-                 thread_sandbox: session_policies.thread_sandbox,
-                 turn_sandbox_policy: session_policies.turn_sandbox_policy,
+                 thread_sandbox: Map.get(session_policies, :thread_sandbox),
+                 turn_sandbox_policy: Map.get(session_policies, :turn_sandbox_policy),
+                 permission_profile: Map.get(session_policies, :permission_profile),
                  thread_id: thread_id,
                  workspace: expanded_workspace,
                  worker_host: worker_host,
@@ -252,18 +254,12 @@ defmodule SymphonyElixir.Codex.AppServer do
 
       :analysis ->
         with {:ok, policy} <- AnalysisPolicy.build(Keyword.get(opts, :analysis_policy, %{})) do
-          turn_sandbox_policy =
-            Map.update!(policy.turn_sandbox_policy, "access", fn access ->
-              Map.put(access, "readableRoots", [workspace])
-            end)
-
           {:ok,
            Map.merge(policy, %{
              auto_approve_requests: false,
              profile: :analysis,
              runtime_workspace_roots: [workspace],
-             turn_timeout_ms: Config.analysis_settings().timeout_ms,
-             turn_sandbox_policy: turn_sandbox_policy
+             turn_timeout_ms: Config.analysis_settings().timeout_ms
            })}
         end
 
@@ -364,7 +360,6 @@ defmodule SymphonyElixir.Codex.AppServer do
   defp start_thread(port, workspace, session_policies) do
     params = %{
       "approvalPolicy" => session_policies.approval_policy,
-      "sandbox" => session_policies.thread_sandbox,
       "cwd" => workspace,
       "dynamicTools" => session_policies.dynamic_tools
     }
@@ -373,13 +368,14 @@ defmodule SymphonyElixir.Codex.AppServer do
       case session_policies.profile do
         :analysis ->
           Map.merge(params, %{
+            "permissions" => session_policies.permission_profile,
             "model" => session_policies.model,
             "config" => session_policies.app_config,
             "runtimeWorkspaceRoots" => session_policies.runtime_workspace_roots
           })
 
         :implementation ->
-          params
+          Map.put(params, "sandbox", session_policies.thread_sandbox)
       end
 
     send_message(port, %{
@@ -411,14 +407,14 @@ defmodule SymphonyElixir.Codex.AppServer do
       ],
       "cwd" => workspace,
       "title" => "#{issue.identifier}: #{issue.title}",
-      "approvalPolicy" => session_policies.approval_policy,
-      "sandboxPolicy" => session_policies.turn_sandbox_policy
+      "approvalPolicy" => session_policies.approval_policy
     }
 
     params =
       case session_policies.profile do
         :analysis ->
           Map.merge(params, %{
+            "permissions" => session_policies.permission_profile,
             "model" => session_policies.model,
             "effort" => session_policies.effort,
             "outputSchema" => session_policies.output_schema,
@@ -426,7 +422,7 @@ defmodule SymphonyElixir.Codex.AppServer do
           })
 
         :implementation ->
-          params
+          Map.put(params, "sandboxPolicy", session_policies.turn_sandbox_policy)
       end
 
     send_message(port, %{

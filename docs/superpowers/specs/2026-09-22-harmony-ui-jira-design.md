@@ -536,20 +536,45 @@ Nie dobierać automatycznie „najtańszego” modelu ani nie fallbackować na d
 Brak modelu/uprawnień → reguła nieaktywna z konkretnym komunikatem.
 To parametr wdrożenia, nie swoboda modelu wykonującego plan.
 
-Reuse `Codex.AppServer` wymaga jawnego profilu sesji: thread sandbox read-only,
-turn sandbox readOnly z ograniczonym odczytem, approval nigdy nie pozwala na
-eskalację, dynamic tools puste i executor odmawiający każdego żądania narzędzia.
-Usunąć powiązanie „approval_policy never oznacza auto-approve” dla tego profilu:
-żądanie zatwierdzenia ma być odrzucone, nie automatycznie zaakceptowane.
-Wyłączyć odziedziczone MCP, pluginy, umiejętności i instrukcje z katalogów domowych
-oraz repo; odizolowana konfiguracja tylko z uwierzytelnieniem modelu.
-Shell nie może odziedziczyć Jira/Linear/SMTP/SMS/forge tokenów, CLOAK_KEY ani DB credentials.
-Nie uruchamiać login shell odczytującego profile użytkownika dla tej ścieżki.
+Reuse `Codex.AppServer` wymaga nazwanego profilu uprawnień `analysis_ro` w prywatnym
+`CODEX_HOME/config.toml`. Profil nie dziedziczy po `:read-only`: daje `:minimal = read`,
+tylko kanonicznemu plikowi wykonywalnemu Codex niezbędny odczyt i `"." = read` pod
+`:workspace_roots`; sieć ma `enabled = false`. W konfiguracji nie wolno ustawiać
+`sandbox_mode` ani `sandbox_workspace_write`, bo starsza konfiguracja sandboxa może
+wyłączyć named profiles. Klient App Server wybiera ten sam profil przez `permissions`
+w `thread/start` i `turn/start`, a przez `permissionProfile` w `command/exec`; nie wysyła
+równocześnie starych pól `sandbox` ani `sandboxPolicy`. Nieznany profil lub błąd protokołu
+oznacza błąd startu, bez przejścia na słabszą politykę.
 
-Możliwości restricted-read i outputSchema sprawdzono w
-[oficjalnej dokumentacji App Server](https://developers.openai.com/codex/app-server).
-Dokładny kształt komunikatów należy utrwalić testem względem zainstalowanego CLI;
-nieznana/nieobsługiwana polityka oznacza odmowę startu, nigdy dangerFullAccess.
+Polityka akceptacji pozostaje `on-request`; `approval_policy = never` nie oznacza
+automatycznej akceptacji. Profil analizy ma puste `dynamicTools`, a executor odmawia
+wywołania dowolnego dynamicznego narzędzia. Wyłączyć odziedziczone MCP, pluginy,
+umiejętności i instrukcje z katalogów domowych oraz repo; prywatna konfiguracja zawiera
+wyłącznie uwierzytelnienie potrzebne do modelu. Proces app-server może otrzymać
+`OPENAI_API_KEY`/`CODEX_API_KEY` lub prywatny `auth.json`; te dane nie trafiają do
+środowiska poleceń shell. `CLOAK_KEY`, tokeny Jira/Linear/SMTP/SMS/forge i credentials
+bazy są usuwane przed startem app-servera. Proces Codex dla tej ścieżki uruchamia się
+bez login shell odczytującego profile użytkownika.
+
+Profile uprawnień Codex są beta. Dokładny kształt `permissions`, `permissionProfile`
+i lokalnej konfiguracji weryfikować względem zainstalowanego CLI oraz jego wygenerowanego
+schematu; test T11 uruchomiono z `codex-cli 0.155.1`, a testy raportują faktyczną wersję.
+Źródła: [App Server](https://developers.openai.com/codex/app-server)
+i [profile uprawnień](https://developers.openai.com/codex/permissions). Wstępny test
+rzeczywistego CLI bez turnu/modelu potwierdza `thread/start`, `command/exec`, odczyt
+workspace, odmowę dostępu do syntetycznego auth i operatorowej konfiguracji, brak zapisu,
+brak sieci oraz odrzucenie konfliktu `permissionProfile`/`sandboxPolicy`. Test sprawdza
+oddzielnie env procesu app-server i env poleceń: syntetyczne API keys są dostępne wyłącznie
+procesowi serwera; tokeny integracji są usunięte. Polecenia sprawdzają env i czytelne
+`/proc/*/environ`; nie widzą canary. Syntetyczny auth pozostaje niedostępny także przez
+`/proc/*/root` i deskryptory `/proc/*/fd`.
+W workspace znajduje się też
+syntetyczny `.codex/config.toml` proszący o `sandbox_mode = "danger-full-access"` i próbujący
+nadpisać `analysis_ro` przez `:root = "write"` oraz `network.enabled = true`; próby
+create/edit/delete i loopback nadal są blokowane przy jawnym `analysis_ro`. Nie sprawdza zachowania
+modelu w turnie. Pełny test wykonania turnu, runnera, timeoutu, późnego wyniku, hooków
+i instrukcji pozostaje warunkiem T13/T29 przed włączeniem `analysis.enabled`.
+
 Przed włączeniem konieczny rzeczywisty test braku zapisu, eskalacji i dostępu do
 sekretów; sam prompt „nie zmieniaj plików” nie spełnia wymagania.
 
