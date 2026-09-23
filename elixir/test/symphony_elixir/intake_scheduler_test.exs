@@ -22,6 +22,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     now = ~U[2026-09-23 10:00:00Z]
     first = active_rule!(project, connection, "first", DateTime.add(now, 60, :second), 60)
     second = active_rule!(project, connection, "second", DateTime.add(now, 300, :second), 300)
+    third = active_rule!(project, connection, "third", DateTime.add(now, 300, :second), 300)
     parent = self()
 
     runner = fn rule_id ->
@@ -47,6 +48,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert second_id == second.id
     assert_receive {:scan_started, ^second_id, second_worker}
     assert {:ok, []} = Scheduler.tick(scheduler, now: DateTime.add(now, 301, :second))
+    assert {:error, :scan_in_progress} = Scheduler.check_now(scheduler, third.id)
 
     send(first_worker, {:finish_scan, first_id, {:error, :jira_unavailable}})
     send(second_worker, {:finish_scan, second_id, {:ok, :completed}})
@@ -103,6 +105,44 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert_receive {:retry_scan_started, ^rule_id}
   end
 
+  test "due scans wait for an unexpired lease and start at the lease expiry", %{
+    project: project,
+    connection: connection
+  } do
+    now = ~U[2026-09-23 10:00:00.000000Z]
+    lease_until = DateTime.add(now, 60, :second)
+
+    rule =
+      active_rule!(project, connection, "leased", DateTime.add(now, -1, :second), 60)
+      |> lease_rule!(lease_until)
+
+    parent = self()
+
+    runner = fn rule_id ->
+      send(parent, {:leased_scan_started, rule_id, self()})
+
+      receive do
+        {:finish_leased_scan, ^rule_id} ->
+          send(parent, {:leased_scan_finished, rule_id})
+          :ok
+      end
+    end
+
+    {:ok, scheduler} = Scheduler.start_link(name: nil, poller: runner, tick_interval_ms: 0, enabled?: true)
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    assert {:ok, []} = Scheduler.tick(scheduler, now: DateTime.add(lease_until, -1, :microsecond))
+    refute_receive {:leased_scan_started, _rule_id, _worker}, 0
+
+    assert {:ok, [rule_id]} = Scheduler.tick(scheduler, now: lease_until)
+    assert rule_id == rule.id
+    assert_receive {:leased_scan_started, ^rule_id, worker}
+
+    send(worker, {:finish_leased_scan, rule_id})
+    assert_receive {:leased_scan_finished, ^rule_id}
+  end
+
   test "effects kill switch blocks automatic and manual scans", %{project: project, connection: connection} do
     now = ~U[2026-09-23 10:00:00Z]
     rule = active_rule!(project, connection, "effects-disabled", now, 60)
@@ -128,6 +168,34 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
 
     assert {:ok, []} = Scheduler.tick(scheduler, now: now)
     assert {:error, :effects_disabled} = Scheduler.check_now(scheduler, rule.id)
+    refute_receive :unexpected_scan, 0
+  end
+
+  test "periodic ticks and manual checks honor the intake kill switch", %{
+    project: project,
+    connection: connection
+  } do
+    now = ~U[2026-09-23 10:00:00Z]
+    rule = active_rule!(project, connection, "intake-disabled", now, 60)
+    parent = self()
+
+    {:ok, scheduler} =
+      Scheduler.start_link(
+        name: nil,
+        poller: fn _rule_id -> send(parent, :unexpected_scan) end,
+        tick_interval_ms: 60_000,
+        clock: fn -> now end,
+        enabled?: fn -> false end,
+        effects_enabled?: true
+      )
+
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    send(scheduler, :tick)
+
+    assert {:ok, []} = Scheduler.tick(scheduler, now: now)
+    assert {:error, :intake_disabled} = Scheduler.check_now(scheduler, rule.id)
     refute_receive :unexpected_scan, 0
   end
 
@@ -171,6 +239,54 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert rule_id == rule.id
   end
 
+  test "manual checks distinguish missing, inactive, leased, and activating rules", %{
+    project: project,
+    connection: connection
+  } do
+    now = ~U[2026-09-23 10:00:00.000000Z]
+    inactive = active_rule!(project, connection, "inactive-manual", now, 60) |> disable_rule!()
+
+    leased =
+      active_rule!(project, connection, "leased-manual", now, 60)
+      |> lease_rule!(DateTime.add(now, 60, :second))
+
+    activating = activating_rule!(project, connection, "activating-manual", DateTime.add(now, 300, :second), 300)
+    parent = self()
+
+    runner = fn rule_id ->
+      send(parent, {:activating_manual_started, rule_id, self()})
+
+      receive do
+        {:finish_activating_manual, ^rule_id} ->
+          send(parent, {:activating_manual_finished, rule_id})
+          {:ok, :completed}
+      end
+    end
+
+    {:ok, scheduler} =
+      Scheduler.start_link(
+        name: nil,
+        poller: runner,
+        tick_interval_ms: 0,
+        clock: fn -> now end,
+        enabled?: true,
+        effects_enabled?: true
+      )
+
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    assert {:error, :not_found} = Scheduler.check_now(scheduler, Ecto.UUID.generate())
+    assert {:error, :rule_not_active} = Scheduler.check_now(scheduler, inactive.id)
+    assert {:error, :scan_in_progress} = Scheduler.check_now(scheduler, leased.id)
+    assert :accepted = Scheduler.check_now(scheduler, activating.id)
+    assert_receive {:activating_manual_started, rule_id, worker}
+    assert rule_id == activating.id
+
+    send(worker, {:finish_activating_manual, rule_id})
+    assert_receive {:activating_manual_finished, ^rule_id}
+  end
+
   test "scheduler failure logs only a safe code and rule id", %{project: project, connection: connection} do
     rule = active_rule!(project, connection, "redacted", ~U[2026-09-23 09:59:59.000000Z], 60)
     parent = self()
@@ -194,6 +310,58 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
         assert {:ok, [rule_id]} = Scheduler.tick(scheduler, now: ~U[2026-09-23 10:00:00Z])
         assert rule_id == rule.id
         assert_receive {:scan_reported, ^rule_id, "scan_failed"}
+      end)
+
+    assert log =~ "rule_id=#{rule.id}"
+    assert log =~ "error_code=scan_failed"
+    refute log =~ secret
+  end
+
+  test "a crashed worker is isolated and releases capacity for a later scan", %{
+    project: project,
+    connection: connection
+  } do
+    now = ~U[2026-09-23 10:00:00Z]
+    rule = active_rule!(project, connection, "crashed-worker", DateTime.add(now, -1, :second), 60)
+    parent = self()
+    secret = "private Jira response"
+
+    runner = fn rule_id ->
+      send(parent, {:crash_test_scan_started, rule_id, self()})
+
+      receive do
+        :crash -> exit({:jira_error, secret})
+        :succeed -> {:ok, :completed}
+      after
+        5_000 -> {:error, :timeout}
+      end
+    end
+
+    {:ok, scheduler} =
+      Scheduler.start_link(
+        name: nil,
+        poller: runner,
+        tick_interval_ms: 0,
+        enabled?: true,
+        result_observer: fn rule_id, error_code -> send(parent, {:scan_reported, rule_id, error_code}) end
+      )
+
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    log =
+      capture_log(fn ->
+        assert {:ok, [rule_id]} = Scheduler.tick(scheduler, now: now)
+        assert rule_id == rule.id
+        assert_receive {:crash_test_scan_started, ^rule_id, failed_worker}
+        send(failed_worker, :crash)
+        assert_receive {:scan_reported, ^rule_id, "scan_failed"}
+        assert Process.alive?(scheduler)
+
+        assert {:ok, [^rule_id]} = Scheduler.tick(scheduler, now: now)
+        assert_receive {:crash_test_scan_started, ^rule_id, retry_worker}
+        send(retry_worker, :succeed)
+        assert_receive {:scan_reported, ^rule_id, nil}
       end)
 
     assert log =~ "rule_id=#{rule.id}"
@@ -229,6 +397,18 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
       baseline_generation: Ecto.UUID.generate(),
       next_poll_at: %{due_at | microsecond: {elem(due_at.microsecond, 0), 6}}
     })
+    |> Repo.update!()
+  end
+
+  defp lease_rule!(rule, lease_until) do
+    rule
+    |> Ecto.Changeset.change(lease_token: Ecto.UUID.generate(), lease_until: lease_until)
+    |> Repo.update!()
+  end
+
+  defp disable_rule!(rule) do
+    rule
+    |> Ecto.Changeset.change(enabled: false, activation_status: "idle")
     |> Repo.update!()
   end
 

@@ -188,7 +188,7 @@ defmodule SymphonyElixir.Intake.Scheduler do
   defp start_scan_task(state, rule_id) do
     task =
       Task.Supervisor.async_nolink(SymphonyElixir.TaskSupervisor, fn ->
-        run_poller(state.poller, rule_id, state.run_opts)
+        run_poller_safely(state.poller, rule_id, state.run_opts)
       end)
 
     put_in(state, [:running, task.ref], %{rule_id: rule_id, pid: task.pid})
@@ -197,6 +197,14 @@ defmodule SymphonyElixir.Intake.Scheduler do
   defp run_poller(poller, rule_id, opts) when is_function(poller, 2), do: poller.(rule_id, opts)
   defp run_poller(poller, rule_id, _opts) when is_function(poller, 1), do: poller.(rule_id)
   defp run_poller(poller, rule_id, opts), do: poller.run(rule_id, opts)
+
+  defp run_poller_safely(poller, rule_id, opts) do
+    run_poller(poller, rule_id, opts)
+  rescue
+    _error -> {:error, :scan_failed}
+  catch
+    _kind, _reason -> {:error, :scan_failed}
+  end
 
   defp report_scan_result(_rule_id, {:ok, _scan}), do: nil
   defp report_scan_result(_rule_id, :ok), do: nil
