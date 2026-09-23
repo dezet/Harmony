@@ -36,7 +36,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.Orchestrator,
         SymphonyElixir.HttpServer,
         SymphonyElixir.StatusDashboard
-      ] ++ intake_children()
+      ] ++ intake_children(SymphonyElixir.Intake.settings())
 
     Supervisor.start_link(
       children,
@@ -58,16 +58,18 @@ defmodule SymphonyElixir.Application do
     end
   end
 
-  defp intake_children do
-    case SymphonyElixir.Intake.settings() do
+  @doc false
+  @spec intake_children({:ok, SymphonyElixir.Config.Schema.t()} | {:error, term()}) :: [module()]
+  def intake_children(settings) do
+    case settings do
       {:ok, %{intake: %{enabled: true}}} ->
-        [SymphonyElixir.Intake.Scheduler]
+        [SymphonyElixir.Intake.Scheduler, SymphonyElixir.Intake.DispatcherRuntime]
 
       {:ok, _settings} ->
         []
 
       {:error, _reason} ->
-        Logger.warning("Jira intake scheduler not started error_code=invalid_intake_settings")
+        Logger.warning("Jira intake scheduler and dispatcher not started error_code=invalid_intake_settings")
         []
     end
   end

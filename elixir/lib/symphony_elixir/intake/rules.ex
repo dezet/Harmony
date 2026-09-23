@@ -10,6 +10,7 @@ defmodule SymphonyElixir.Intake.Rules do
   import Ecto.Changeset
 
   alias SymphonyElixir.Intake
+  alias SymphonyElixir.Notifications.Smsapi
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntegrationConnection, Project}
 
@@ -61,6 +62,7 @@ defmodule SymphonyElixir.Intake.Rules do
     |> validate_rule_values()
     |> validate_recipients(:email_connection_id, :email_recipients, "email")
     |> validate_recipients(:sms_connection_id, :sms_recipients, "sms")
+    |> validate_phone_recipients()
   end
 
   @spec create(attrs()) :: {:ok, AutomationRule.t()} | {:error, Ecto.Changeset.t()}
@@ -259,8 +261,26 @@ defmodule SymphonyElixir.Intake.Rules do
 
   defp normalize_email(value), do: to_string(value)
 
-  defp normalize_phone(value) when is_binary(value), do: String.trim(value)
-  defp normalize_phone(value), do: to_string(value)
+  # A number that is not valid E.164 is kept as typed so validation rejects it.
+  defp normalize_phone(value) when is_binary(value) do
+    case Smsapi.normalize_phone(value) do
+      {:ok, e164} -> e164
+      {:error, _code} -> String.trim(value)
+    end
+  end
+
+  defp normalize_phone(value), do: value |> to_string() |> normalize_phone()
+
+  # Only a changed list is checked, so legacy rows can still be disabled.
+  defp validate_phone_recipients(changeset) do
+    validate_change(changeset, :sms_recipients, fn :sms_recipients, recipients ->
+      if Enum.all?(recipients, &(Smsapi.normalize_phone(&1) == {:ok, &1})) do
+        []
+      else
+        [sms_recipients: "must contain E.164 phone numbers"]
+      end
+    end)
+  end
 
   defp validate_recipients(changeset, connection_field, recipient_field, channel) do
     recipients = get_field(changeset, recipient_field)
