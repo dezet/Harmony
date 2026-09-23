@@ -34,7 +34,8 @@ defmodule SymphonyElixir.Intake do
     settings.analysis.enabled
   end
 
-  @spec analysis_profile(keyword()) :: {:ok, %{model: String.t(), effort: String.t()}} | {:error, :analysis_profile_unavailable}
+  @spec analysis_profile(keyword()) ::
+          {:ok, %{model: String.t(), effort: String.t()}} | {:error, :analysis_profile_unavailable}
   def analysis_profile(opts \\ []) do
     settings = runtime_settings().analysis
     enabled? = Keyword.get(opts, :analysis_enabled, settings.enabled)

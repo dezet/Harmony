@@ -5,8 +5,8 @@ defmodule SymphonyElixir.Intake.Scheduler do
   import Ecto.Query
   require Logger
 
-  alias SymphonyElixir.Intake.Poller
   alias SymphonyElixir.Intake
+  alias SymphonyElixir.Intake.Poller
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.AutomationRule
 
@@ -80,36 +80,34 @@ defmodule SymphonyElixir.Intake.Scheduler do
   def handle_call({:check_now, rule_id}, _from, state) do
     now = state.clock.()
 
+    case check_now_error(state, rule_id) do
+      nil -> check_now_rule(state, rule_id, now)
+      error -> {:reply, {:error, error}, state}
+    end
+  end
+
+  defp check_now_error(state, rule_id) do
     cond do
-      not intake_enabled?(state) ->
-        {:reply, {:error, :intake_disabled}, state}
+      not intake_enabled?(state) -> :intake_disabled
+      not effects_enabled?(state) -> :effects_disabled
+      rule_running?(state, rule_id) -> :scan_in_progress
+      map_size(state.running) >= @max_concurrent_scans -> :scan_in_progress
+      true -> nil
+    end
+  end
 
-      not effects_enabled?(state) ->
-        {:reply, {:error, :effects_disabled}, state}
+  defp check_now_rule(state, rule_id, now) do
+    case Repo.get(AutomationRule, rule_id) do
+      nil -> {:reply, {:error, :not_found}, state}
+      %AutomationRule{} = rule -> check_now_active_rule(state, rule, now)
+    end
+  end
 
-      rule_running?(state, rule_id) ->
-        {:reply, {:error, :scan_in_progress}, state}
-
-      map_size(state.running) >= @max_concurrent_scans ->
-        {:reply, {:error, :scan_in_progress}, state}
-
-      true ->
-        case Repo.get(AutomationRule, rule_id) do
-          nil ->
-            {:reply, {:error, :not_found}, state}
-
-          %AutomationRule{} = rule ->
-            cond do
-              not active?(rule) ->
-                {:reply, {:error, :rule_not_active}, state}
-
-              lease_active?(rule, now) ->
-                {:reply, {:error, :scan_in_progress}, state}
-
-              true ->
-                {:reply, :accepted, start_scan_task(state, rule.id)}
-            end
-        end
+  defp check_now_active_rule(state, rule, now) do
+    cond do
+      not active?(rule) -> {:reply, {:error, :rule_not_active}, state}
+      lease_active?(rule, now) -> {:reply, {:error, :scan_in_progress}, state}
+      true -> {:reply, :accepted, start_scan_task(state, rule.id)}
     end
   end
 

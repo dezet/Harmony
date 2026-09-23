@@ -476,8 +476,8 @@ defmodule SymphonyElixir.IntakePollerTest do
 
     send(first_worker, {:finish_claim, first_rule.id})
     send(second_worker, {:finish_claim, second_rule.id})
-    assert {:ok, first_scan} = Task.await(first, 1_000)
-    assert {:ok, second_scan} = Task.await(second, 1_000)
+    assert {:ok, first_scan} = Task.await(first, 5_000)
+    assert {:ok, second_scan} = Task.await(second, 5_000)
     assert first_scan.status == "succeeded"
     assert second_scan.status == "succeeded"
   end

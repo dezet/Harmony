@@ -175,6 +175,12 @@ Codex session prompt.
 Project-specific production settings live in `projects/<slug>.yaml` and are synchronized into
 Postgres on application startup. `WORKFLOW.md` remains the global runtime contract and prompt.
 
+The Jira intake runtime reads rules from Postgres and scans each rule independently. It is disabled
+by default: `intake.enabled` controls scheduled scans, while `intake.effects_enabled` separately
+guards rule activation and external effects. A matched issue reserves its Linear UUID before any
+create request; analysis remains blocked until the matching Linear issue is confirmed. Keep both
+switches disabled until the intake rollout is explicitly approved.
+
 Minimal project config:
 
 ```yaml
