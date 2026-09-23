@@ -183,6 +183,18 @@ create request; analysis remains blocked until the matching Linear issue is conf
 one analysis at a time; new effects also require `intake.effects_enabled`, and analyses additionally
 `analysis.enabled`. Keep both switches disabled until the intake rollout is explicitly approved.
 
+The intake configuration API lives under `/api/v1/automations`, `/api/v1/integrations`,
+`/api/v1/cases/:ref/{acknowledge,approve-repair,reanalyze}`, `/api/v1/deliveries/:id/retry` and
+`/api/v1/projects/:id/{linear-options,linear-hold-label}`. Every mutation there needs a JSON body,
+a same-origin `Origin` and the session token from `GET /api/v1/csrf` in `X-CSRF-Token`; otherwise
+it returns 403 without running. This is not authentication: keep the API behind a trusted network
+or proxy. Forge webhooks keep their own signature checks. Secrets are write-only (`secret_state`
+only). While `intake.effects_enabled` is false, rule activation, reanalysis, delivery retry, Linear
+hold-label creation and test-send return 409 `effects_disabled`; test-send also needs
+`intake.enabled`. A connection test only reads identity (Jira `myself`, SMTP EHLO/TLS/AUTH without
+DATA, SMSAPI profile); test-send queues one case-less outbox delivery per `Idempotency-Key` that
+counts toward the hourly limit. SMTP hosts must be listed in `intake.smtp_allowed_hosts`.
+
 Minimal project config:
 
 ```yaml

@@ -243,6 +243,84 @@ defmodule SymphonyElixir.Intake.Outbox do
     end
   end
 
+  @spec fetch(term()) :: {:ok, IntegrationDelivery.t()} | {:error, :not_found}
+  def fetch(delivery_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(delivery_id),
+         %IntegrationDelivery{} = delivery <- Repo.get(IntegrationDelivery, uuid) do
+      {:ok, delivery}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Queues an operator test-send as a case-less e-mail or SMS delivery.
+
+  The idempotency key is part of the unique `dedupe_key`, so repeating the
+  request returns the same delivery. A key reused for another recipient is a
+  conflict. The delivery is sent by the dispatcher and counts toward the
+  hourly limit of its connection.
+  """
+  @spec enqueue_test_send(IntegrationConnection.t(), String.t(), String.t(), keyword()) ::
+          delivery_result() | {:error, :idempotency_key_conflict | :test_send_unsupported}
+  def enqueue_test_send(%IntegrationConnection{} = connection, recipient, idempotency_key, opts \\ [])
+      when is_binary(recipient) and is_binary(idempotency_key) do
+    with {:ok, operation} <- test_send_operation(connection.kind) do
+      dedupe_key = "test-send:#{connection.id}:#{String.downcase(idempotency_key)}"
+      now = current_time(opts)
+
+      fn -> insert_test_send(connection, operation, dedupe_key, recipient, now) end
+      |> Repo.transaction()
+      |> test_send_result(connection, dedupe_key, recipient)
+    end
+  end
+
+  defp test_send_result({:ok, delivery}, _connection, _dedupe_key, _recipient), do: {:ok, delivery}
+
+  defp test_send_result({:error, :duplicate}, connection, dedupe_key, recipient),
+    do: existing_test_send(connection, dedupe_key, recipient)
+
+  defp test_send_result({:error, reason}, _connection, _dedupe_key, _recipient), do: {:error, reason}
+
+  defp test_send_operation("smtp"), do: {:ok, "email"}
+  defp test_send_operation("smsapi"), do: {:ok, "sms"}
+  defp test_send_operation(_kind), do: {:error, :test_send_unsupported}
+
+  defp insert_test_send(connection, operation, dedupe_key, recipient, now) do
+    changeset =
+      IntegrationDelivery.changeset(%IntegrationDelivery{}, %{
+        case_id: nil,
+        connection_id: connection.id,
+        operation: operation,
+        dedupe_key: dedupe_key,
+        payload: %{"recipient" => recipient, "test_send" => true},
+        status: "pending",
+        attempts: 0,
+        next_attempt_at: now,
+        lock_version: 1
+      })
+
+    case Repo.insert(changeset) do
+      {:ok, delivery} ->
+        record_event(delivery, "test_send_queued", %{connection_id: connection.id, operation: operation}, now, "operator")
+        delivery
+
+      {:error, %Ecto.Changeset{errors: errors} = failed} ->
+        if Keyword.has_key?(errors, :dedupe_key), do: Repo.rollback(:duplicate), else: Repo.rollback(failed)
+    end
+  end
+
+  defp existing_test_send(connection, dedupe_key, recipient) do
+    case Repo.get_by(IntegrationDelivery, dedupe_key: dedupe_key) do
+      %IntegrationDelivery{connection_id: connection_id, case_id: nil, payload: %{"recipient" => ^recipient}} = delivery
+      when connection_id == connection.id ->
+        {:ok, delivery}
+
+      _other ->
+        {:error, :idempotency_key_conflict}
+    end
+  end
+
   @spec next_attempt_at(DateTime.t(), pos_integer(), String.t() | nil, keyword()) :: DateTime.t()
   def next_attempt_at(now, attempt, retry_after, opts \\ []) do
     base = Enum.at(@retry_intervals, attempt - 1, List.last(@retry_intervals))

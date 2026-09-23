@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Intake.Rules do
   """
 
   import Ecto.Changeset
+  import Ecto.Query, only: [from: 2, where: 3]
 
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Notifications.Smsapi
@@ -60,6 +61,7 @@ defmodule SymphonyElixir.Intake.Rules do
     rule
     |> AutomationRule.changeset(attrs)
     |> validate_rule_values()
+    |> validate_jira_ids()
     |> validate_recipients(:email_connection_id, :email_recipients, "email")
     |> validate_recipients(:sms_connection_id, :sms_recipients, "sms")
     |> validate_phone_recipients()
@@ -172,6 +174,79 @@ defmodule SymphonyElixir.Intake.Rules do
 
   @spec active?(AutomationRule.t()) :: boolean()
   def active?(%AutomationRule{} = rule), do: rule.enabled or rule.activation_status == "activating"
+
+  @spec fetch(term()) :: {:ok, AutomationRule.t()} | {:error, :not_found}
+  def fetch(rule_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(rule_id),
+         %AutomationRule{} = rule <- Repo.get(AutomationRule, uuid) do
+      {:ok, rule}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  One page of rules ordered by `(inserted_at, id)`, optionally for one project.
+  `:after` is the `{inserted_at, id}` of the last row of the previous page.
+  """
+  @spec list_page(keyword()) :: [AutomationRule.t()]
+  def list_page(opts) do
+    limit = Keyword.fetch!(opts, :limit)
+
+    from(rule in AutomationRule, order_by: [asc: rule.inserted_at, asc: rule.id], limit: ^limit)
+    |> maybe_project(Keyword.get(opts, :project_id))
+    |> after_position(Keyword.get(opts, :after))
+    |> Repo.all()
+  end
+
+  @doc "Rule IDs in scope of a bulk \"check now\", optionally for one project."
+  @spec list_ids(binary() | nil) :: [binary()]
+  def list_ids(project_id) do
+    from(rule in AutomationRule, order_by: [asc: rule.inserted_at, asc: rule.id], select: rule.id)
+    |> maybe_project(project_id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Applies a partial edit when `version` is the current `config_version`.
+  Background scans change only `lock_version`, so they never make an open
+  form stale.
+  """
+  @spec patch_versioned(binary(), pos_integer(), attrs()) ::
+          {:ok, AutomationRule.t()}
+          | {:error, :not_found | :stale_version | :immutable_after_activation | Ecto.Changeset.t()}
+  def patch_versioned(rule_id, version, attrs), do: with_config_version(rule_id, version, &patch(&1, attrs))
+
+  @spec activate_versioned(binary(), pos_integer()) ::
+          {:ok, AutomationRule.t()}
+          | {:error, :not_found | :stale_version | :effects_disabled | :source_conflict | Ecto.Changeset.t()}
+  def activate_versioned(rule_id, version), do: with_config_version(rule_id, version, &activate/1)
+
+  @spec pause_versioned(binary(), pos_integer()) ::
+          {:ok, AutomationRule.t()} | {:error, :not_found | :stale_version | Ecto.Changeset.t()}
+  def pause_versioned(rule_id, version), do: with_config_version(rule_id, version, &disable/1)
+
+  defp with_config_version(rule_id, version, fun) do
+    Repo.transaction(fn ->
+      case Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE")) do
+        nil -> Repo.rollback(:not_found)
+        %AutomationRule{config_version: ^version} = rule -> unwrap_or_rollback(fun.(rule))
+        %AutomationRule{} -> Repo.rollback(:stale_version)
+      end
+    end)
+  end
+
+  defp unwrap_or_rollback({:ok, rule}), do: rule
+  defp unwrap_or_rollback({:error, reason}), do: Repo.rollback(reason)
+
+  defp maybe_project(query, nil), do: query
+  defp maybe_project(query, project_id), do: where(query, [rule], rule.project_id == ^project_id)
+
+  defp after_position(query, nil), do: query
+
+  defp after_position(query, {inserted_at, id}) do
+    where(query, [rule], rule.inserted_at > ^inserted_at or (rule.inserted_at == ^inserted_at and rule.id > ^id))
+  end
 
   defp normalize_activation_error({:ok, rule}), do: {:ok, rule}
 
@@ -317,6 +392,24 @@ defmodule SymphonyElixir.Intake.Rules do
       add_error(changeset, :priority_ids, "must contain at least one non-empty ID")
     end
   end
+
+  # Jira IDs are interpolated into JQL, so only plain digits are accepted.
+  defp validate_jira_ids(changeset) do
+    changeset
+    |> validate_format(:source_id, ~r/\A[0-9]+\z/, message: "must contain only digits")
+    |> validate_change(:priority_ids, fn :priority_ids, ids -> priority_id_errors(ids) end)
+  end
+
+  defp priority_id_errors(ids) when is_list(ids) do
+    cond do
+      length(ids) > 100 -> [priority_ids: "must contain at most 100 IDs"]
+      not Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/\A[0-9]+\z/, &1))) -> [priority_ids: "must contain only digits"]
+      length(Enum.uniq(ids)) != length(ids) -> [priority_ids: "must not contain duplicates"]
+      true -> []
+    end
+  end
+
+  defp priority_id_errors(_ids), do: []
 
   defp validate_connection_kinds(changeset) do
     fields = [

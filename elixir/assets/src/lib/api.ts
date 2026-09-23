@@ -1,7 +1,29 @@
 import type {
   ApiErrorBody,
+  ApiPage,
+  AutomationActivation,
+  AutomationBulkCheck,
+  AutomationCheck,
+  AutomationPreview,
+  AutomationRule,
+  AutomationRuleInput,
+  AutomationRulePatch,
+  CaseActionResult,
+  CaseApproveResult,
+  CaseDelivery,
+  CaseReanalyzeResult,
+  CursorQuery,
+  DeliveryStatus,
   ForgeRepositoriesRequest,
   ForgeRepositoriesResponse,
+  IntegrationConnection,
+  IntegrationConnectionInput,
+  IntegrationConnectionPatch,
+  IntegrationTestResult,
+  IntegrationTestSend,
+  JiraPickerItem,
+  LinearHoldLabel,
+  LinearOptions,
   Project,
   ProjectActivityPage,
   ProjectArtifactsPage,
@@ -38,8 +60,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  return parseResponse<T>(res);
+}
+
+async function parseResponse<T>(res: Response): Promise<T> {
+  const data = parseJson(await res.text());
 
   if (!res.ok) {
     const body = data as ApiErrorBody | null;
@@ -53,6 +78,242 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return data as T;
+}
+
+// Error pages rendered outside a controller (e.g. a malformed body) may not be JSON.
+function parseJson(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// ─── Operator mutations (intake API) ───────────────────────────────────────
+//
+// The session CSRF token is fetched from GET /api/v1/csrf on the first
+// mutation and kept only in this module's memory: never in storage, the URL
+// or the static index.html. Paths are always relative to BASE, so the token
+// is only ever sent to the same-origin API. A 403 from the guard (for example
+// after a server restart invalidated the session) drops the token, fetches a
+// fresh one and rethrows: the mutation is never repeated automatically, the
+// operator has to act again.
+
+const GUARD_REJECTIONS = new Set(["csrf_invalid", "origin_rejected"]);
+
+let csrfToken: string | null = null;
+let csrfRequest: Promise<string> | null = null;
+
+async function loadCsrfToken(): Promise<string> {
+  const res = await fetch(`${BASE}/csrf`, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  const data = await parseResponse<{ csrf_token?: unknown } | null>(res);
+  const token = data?.csrf_token;
+  if (typeof token !== "string" || token === "") {
+    throw new ApiError(res.status, "csrf_unavailable", "CSRF token is unavailable");
+  }
+  return token;
+}
+
+function csrf(): Promise<string> {
+  if (csrfToken) return Promise.resolve(csrfToken);
+  csrfRequest ??= loadCsrfToken()
+    .then((token) => {
+      csrfToken = token;
+      return token;
+    })
+    .finally(() => {
+      csrfRequest = null;
+    });
+  return csrfRequest;
+}
+
+async function operatorMutation<T>(
+  method: "POST" | "PATCH",
+  path: string,
+  body: object = {},
+  headers: Record<string, string> = {},
+): Promise<T> {
+  const token = await csrf();
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: {
+      ...headers,
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-csrf-token": token,
+    },
+    body: JSON.stringify(body),
+  });
+
+  try {
+    return await parseResponse<T>(res);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403 && GUARD_REJECTIONS.has(error.code)) {
+      csrfToken = null;
+      await csrf().catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+function query(params: Record<string, string | number | undefined | null>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}
+
+const enc = encodeURIComponent;
+
+export function listAutomations(
+  params: CursorQuery & { project?: string } = {},
+): Promise<ApiPage<AutomationRule>> {
+  return request(`/automations${query({ project: params.project, cursor: params.cursor, page_size: params.page_size })}`);
+}
+
+export function getAutomation(id: string): Promise<AutomationRule> {
+  return request<{ rule: AutomationRule }>(`/automations/${enc(id)}`).then((r) => r.rule);
+}
+
+export function createAutomation(input: AutomationRuleInput): Promise<AutomationRule> {
+  return operatorMutation<{ rule: AutomationRule }>("POST", "/automations", input).then((r) => r.rule);
+}
+
+export function updateAutomation(id: string, patch: AutomationRulePatch): Promise<AutomationRule> {
+  return operatorMutation<{ rule: AutomationRule }>("PATCH", `/automations/${enc(id)}`, patch).then(
+    (r) => r.rule,
+  );
+}
+
+export function previewAutomation(id: string): Promise<AutomationPreview> {
+  return operatorMutation<AutomationPreview>("POST", `/automations/${enc(id)}/preview`);
+}
+
+export function activateAutomation(
+  id: string,
+  body: { version: number; confirmed: true },
+): Promise<AutomationActivation> {
+  return operatorMutation<AutomationActivation>("POST", `/automations/${enc(id)}/activate`, body);
+}
+
+export function pauseAutomation(id: string, body: { version: number }): Promise<AutomationRule> {
+  return operatorMutation<{ rule: AutomationRule }>("POST", `/automations/${enc(id)}/pause`, body).then(
+    (r) => r.rule,
+  );
+}
+
+export function checkAutomation(id: string): Promise<AutomationCheck> {
+  return operatorMutation<AutomationCheck>("POST", `/automations/${enc(id)}/check`);
+}
+
+export function checkAutomations(body: { project?: string } = {}): Promise<AutomationBulkCheck> {
+  return operatorMutation<AutomationBulkCheck>("POST", "/automations/check", body);
+}
+
+export function listIntegrations(params: CursorQuery = {}): Promise<ApiPage<IntegrationConnection>> {
+  return request(`/integrations${query({ cursor: params.cursor, page_size: params.page_size })}`);
+}
+
+export function getIntegration(id: string): Promise<IntegrationConnection> {
+  return request<{ connection: IntegrationConnection }>(`/integrations/${enc(id)}`).then((r) => r.connection);
+}
+
+export function createIntegration(input: IntegrationConnectionInput): Promise<IntegrationConnection> {
+  return operatorMutation<{ connection: IntegrationConnection }>("POST", "/integrations", input).then(
+    (r) => r.connection,
+  );
+}
+
+export function updateIntegration(
+  id: string,
+  patch: IntegrationConnectionPatch,
+): Promise<IntegrationConnection> {
+  return operatorMutation<{ connection: IntegrationConnection }>("PATCH", `/integrations/${enc(id)}`, patch).then(
+    (r) => r.connection,
+  );
+}
+
+export function testIntegration(id: string): Promise<IntegrationTestResult> {
+  return operatorMutation<IntegrationTestResult>("POST", `/integrations/${enc(id)}/test`);
+}
+
+// `idempotencyKey` is a UUID created when the form opens and kept until the
+// attempt is settled, so a double click never queues a second message.
+export function testSendIntegration(
+  id: string,
+  body: { recipient: string; confirmed: true; idempotencyKey: string },
+): Promise<IntegrationTestSend> {
+  return operatorMutation<IntegrationTestSend>(
+    "POST",
+    `/integrations/${enc(id)}/test-send`,
+    { recipient: body.recipient, confirmed: body.confirmed },
+    { "idempotency-key": body.idempotencyKey },
+  );
+}
+
+export function listJiraBoards(
+  id: string,
+  params: CursorQuery & { q?: string } = {},
+): Promise<ApiPage<JiraPickerItem>> {
+  return request(`/integrations/${enc(id)}/jira/boards${query({ q: params.q, cursor: params.cursor, page_size: params.page_size })}`);
+}
+
+export function listJiraFilters(
+  id: string,
+  params: CursorQuery & { q?: string } = {},
+): Promise<ApiPage<JiraPickerItem>> {
+  return request(`/integrations/${enc(id)}/jira/filters${query({ q: params.q, cursor: params.cursor, page_size: params.page_size })}`);
+}
+
+export function listJiraPriorities(id: string): Promise<ApiPage<JiraPickerItem>> {
+  return request(`/integrations/${enc(id)}/jira/priorities`);
+}
+
+export function getLinearOptions(projectId: string): Promise<LinearOptions> {
+  return request<LinearOptions>(`/projects/${enc(projectId)}/linear-options`);
+}
+
+export function createLinearHoldLabel(
+  projectId: string,
+  body: { team_id: string; confirmed: true },
+): Promise<LinearHoldLabel> {
+  return operatorMutation<LinearHoldLabel>("POST", `/projects/${enc(projectId)}/linear-hold-label`, body);
+}
+
+export function acknowledgeCase(ref: string, body: { expected_version: number }): Promise<CaseActionResult> {
+  return operatorMutation<CaseActionResult>("POST", `/cases/${enc(ref)}/acknowledge`, body);
+}
+
+export function approveRepair(
+  ref: string,
+  body: { expected_version: number; analysis_version: number; confirmed: true },
+): Promise<CaseApproveResult> {
+  return operatorMutation<CaseApproveResult>("POST", `/cases/${enc(ref)}/approve-repair`, body);
+}
+
+export function reanalyzeCase(
+  ref: string,
+  body: { expected_version: number; confirmed: true },
+): Promise<CaseReanalyzeResult> {
+  return operatorMutation<CaseReanalyzeResult>("POST", `/cases/${enc(ref)}/reanalyze`, body);
+}
+
+export function retryDelivery(
+  id: string,
+  body: { expected_status: DeliveryStatus; confirm_duplicate_risk?: boolean },
+): Promise<CaseDelivery> {
+  return operatorMutation<{ delivery: CaseDelivery }>("POST", `/deliveries/${enc(id)}/retry`, body).then(
+    (r) => r.delivery,
+  );
 }
 
 export function getState(): Promise<StatePayload> {

@@ -14,12 +14,16 @@ defmodule SymphonyElixir.Notifications.Smsapi do
   delivery, so it completes without a new message. Any outcome that cannot
   prove the SMS was not accepted (timeouts, 5xx, crashes, unexpected bodies)
   is `unknown` and is never resent automatically.
+
+  `check_account/2` is the read-only connection test: one GET of the account
+  profile (points balance). It never calls `sms.do`.
   """
 
   alias SymphonyElixir.Notifications.Templates
   alias SymphonyElixir.Storage.IntegrationConnection
 
   @endpoint "https://api.smsapi.pl/sms.do"
+  @profile_endpoint "https://api.smsapi.pl/profile"
   @default_timeout_ms 30_000
   @e164_pattern ~r/\A\+[1-9]\d{6,14}\z/
   @phone_separators ~r/[\s().-]/u
@@ -66,6 +70,28 @@ defmodule SymphonyElixir.Notifications.Smsapi do
       request_fun
       |> run_isolated(request, timeout_ms)
       |> classify()
+    end
+  end
+
+  @spec check_account(IntegrationConnection.t(), keyword()) :: :ok | {:error, String.t()}
+  def check_account(%IntegrationConnection{} = connection, opts \\ []) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
+
+    with {:ok, token, _sender} <- credentials(connection) do
+      request = [
+        method: :get,
+        url: @profile_endpoint,
+        headers: [{"authorization", "Bearer " <> token}],
+        retry: false,
+        redirect: false,
+        receive_timeout: timeout_ms,
+        connect_options: [timeout: timeout_ms]
+      ]
+
+      request_fun
+      |> run_isolated(request, timeout_ms)
+      |> classify_account()
     end
   end
 
@@ -159,6 +185,20 @@ defmodule SymphonyElixir.Notifications.Smsapi do
         end
     end
   end
+
+  defp classify_account({:done, {:ok, %{status: 200} = response}}) do
+    case decode_body(Map.get(response, :body)) do
+      %{"error" => code} -> account_error(error_code(code))
+      %{} -> :ok
+      nil -> {:error, "sms_unavailable"}
+    end
+  end
+
+  defp classify_account({:done, {:ok, %{status: status}}}) when status in [401, 403], do: {:error, "sms_auth_failed"}
+  defp classify_account(_result), do: {:error, "sms_unavailable"}
+
+  defp account_error(code) when code in [101, 102, 105], do: {:error, "sms_auth_failed"}
+  defp account_error(_code), do: {:error, "sms_unavailable"}
 
   defp classify(:timeout), do: {:unknown, "sms_timeout"}
   defp classify(:crashed), do: {:unknown, "sms_outcome_unknown"}

@@ -393,43 +393,92 @@ defmodule SymphonyElixir.NotificationsSmtpTest do
                )
     end
 
-    test "test-send requires a separate explicit confirmation" do
-      no_call = fn _, _ -> flunk("sent without confirmation") end
+    test "the test e-mail carries only fixed text and a Message-ID stable per delivery" do
+      assert {:ok, email} =
+               Templates.render_test_email(%{
+                 delivery_id: @delivery_id,
+                 recipient: "oncall@example.test",
+                 from_email: "alerts@example.test",
+                 from_name: "Harmony",
+                 message_id_domain: "example.test",
+                 jira_key: "OPS-142",
+                 title: "tajny tytuł"
+               })
 
-      assert {:error, :confirmation_required} =
-               Smtp.test_send(smtp_connection(), alert_attrs(), smtp_fun: no_call)
+      assert email.subject == "[Harmony] Wiadomość testowa"
+      assert email.from == {"Harmony", "alerts@example.test"}
+      assert email.to == [{"", "oncall@example.test"}]
+      assert email.cc == [] and email.bcc == []
+      assert email.headers["Message-ID"] == @message_id
+      assert email.text_body =~ "wiadomość testowa"
 
-      for confirmation <- ["true", 1, :yes] do
-        assert {:error, :confirmation_required} =
-                 Smtp.test_send(smtp_connection(), alert_attrs(),
-                   smtp_fun: no_call,
-                   smtp_allowed_hosts: @allowed,
-                   confirm_test_send: confirmation
-                 )
+      for body <- [email.text_body, email.html_body] do
+        refute body =~ "OPS-142"
+        refute body =~ "tajny tytuł"
       end
+
+      assert {:error, :invalid_header_value} =
+               Templates.render_test_email(%{
+                 delivery_id: @delivery_id,
+                 recipient: "oncall@example.test\r\nBcc: x@example.test",
+                 from_email: "alerts@example.test",
+                 message_id_domain: "example.test"
+               })
+
+      assert {:error, {:missing_field, :recipient}} =
+               Templates.render_test_email(%{delivery_id: @delivery_id, from_email: "alerts@example.test", message_id_domain: "example.test"})
     end
 
-    test "a confirmed test-send delivers exactly one message using the connection sender" do
+    test "a case-less e-mail test-send is dispatched once and counts toward the hourly limit" do
+      :ok = Sandbox.checkout(Repo)
+      connection = persisted_smtp_connection!() |> Ecto.Changeset.change(secret: "synthetic-smtp-password") |> Repo.update!()
       parent = self()
+
+      assert {:ok, first} = Outbox.enqueue_test_send(connection, "oncall@example.test", Ecto.UUID.generate())
+      assert {:ok, second} = Outbox.enqueue_test_send(connection, "oncall@example.test", Ecto.UUID.generate())
+      assert first.case_id == nil and first.payload["test_send"] == true
 
       smtp_fun = fn email, _smtp_options ->
         send(parent, {:sent, email})
         {:ok, "250 queued"}
       end
 
-      attrs = alert_attrs(%{from_email: "spoofed@example.test", from_name: "Spoofed"})
+      opts = [
+        smtp_opts: [smtp_fun: smtp_fun, smtp_allowed_hosts: @allowed],
+        rate_limits: %{email: 1, sms: 20},
+        intake_enabled: true,
+        effects_enabled: true,
+        analysis_enabled: true
+      ]
 
-      assert {:ok, %{provider_id: @message_id}} =
-               Smtp.test_send(smtp_connection(), attrs,
-                 smtp_fun: smtp_fun,
-                 smtp_allowed_hosts: @allowed,
-                 confirm_test_send: true
-               )
-
+      assert {:ok, %IntegrationDelivery{status: "succeeded"} = sent} = Dispatcher.dispatch_one(opts)
       assert_received {:sent, email}
-      assert email.from == {"Harmony", "alerts@example.test"}
-      assert email.to == [{"", "oncall@example.test"}]
+      assert email.subject == "[Harmony] Wiadomość testowa"
+      assert email.headers["Message-ID"] == "<harmony.#{sent.id}@example.test>"
+
+      Dispatcher.dispatch_one(opts)
       refute_received {:sent, _email}
+
+      pending_id = if sent.id == first.id, do: second.id, else: first.id
+      assert %IntegrationDelivery{status: "retry_wait", last_error_code: "rate_limited"} = Repo.get!(IntegrationDelivery, pending_id)
+    end
+
+    test "an e-mail delivery without a case that is not a test-send is refused" do
+      :ok = Sandbox.checkout(Repo)
+      connection = persisted_smtp_connection!() |> Ecto.Changeset.change(secret: "synthetic-smtp-password") |> Repo.update!()
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      delivery = pending_email_delivery!(connection, now)
+
+      opts = [
+        smtp_opts: [smtp_fun: fn _email, _options -> flunk("must not send") end, smtp_allowed_hosts: @allowed],
+        intake_enabled: true,
+        effects_enabled: true,
+        analysis_enabled: true
+      ]
+
+      assert {:failed, failed} = Dispatcher.dispatch_one(opts)
+      assert failed.id == delivery.id
+      assert failed.last_error_code == "notification_case_required"
     end
   end
 

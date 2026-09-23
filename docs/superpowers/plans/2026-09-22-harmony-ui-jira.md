@@ -452,15 +452,15 @@ Pliki: nowe `WEB/controllers/{automation,integration,case_action,delivery,linear
 `WEB/router.ex`, `WEB/endpoint.ex`, `FE/lib/api.ts`, nowe `FE/lib/api.test.ts`;
 nowe `BT/intake_api_test.exs`, `BT/intake_api_security_test.exs`.
 
-- [ ] T17.1 RED: brak CSRF/obcy Origin/body secret w response → test odmawia przejścia.
-- [ ] T17.2 Zaimplementuj endpointy i whitelist params; routes przed catch-all.
-- [ ] T17.3 GET /api/v1/csrf, fetch_session/get_csrf_token i no-store zgodnie z §11.1;
+- [x] T17.1 RED: brak CSRF/obcy Origin/body secret w response → test odmawia przejścia.
+- [x] T17.2 Zaimplementuj endpointy i whitelist params; routes przed catch-all.
+- [x] T17.3 GET /api/v1/csrf, fetch_session/get_csrf_token i no-store zgodnie z §11.1;
       api.ts bootstrapuje token i wysyła wyłącznie do same-origin API. Nie zmieniaj statycznego HTML.
       Test restartu sesji: 403 nie ponawia mutacji, odświeża token i wymaga ponownego działania użytkownika.
-- [ ] T17.4 Test formularza PATCH, optimistic lock, 404/409/422/405 oraz brak surowych wyjątków.
-- [ ] T17.5 Preview ma zero mutacji zewnętrznych i pokazuje limit/truncated; aktywacja osobna.
-- [ ] T17.6 Test-send idempotentny, potwierdzony, limitowany; read-only test nie wysyła wiadomości.
-- [ ] T17.7 Nowy guard nie blokuje istniejących webhooków forge wymagających własnej weryfikacji.
+- [x] T17.4 Test formularza PATCH, optimistic lock, 404/409/422/405 oraz brak surowych wyjątków.
+- [x] T17.5 Preview ma zero mutacji zewnętrznych i pokazuje limit/truncated; aktywacja osobna.
+- [x] T17.6 Test-send idempotentny, potwierdzony, limitowany; read-only test nie wysyła wiadomości.
+- [x] T17.7 Nowy guard nie blokuje istniejących webhooków forge wymagających własnej weryfikacji.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_api_test.exs test/symphony_elixir/intake_api_security_test.exs`;
 `cd elixir/assets && npm run test -- --run src/lib/api.test.ts`.

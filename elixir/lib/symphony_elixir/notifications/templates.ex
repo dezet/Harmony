@@ -10,6 +10,9 @@ defmodule SymphonyElixir.Notifications.Templates do
   The SMS carries only the Jira key, priority and Harmony case link. It is
   limited to 134 UTF-16 units (two Unicode segments); a longer message is a
   validation error, never a truncated link.
+
+  Operator test-sends use fixed texts that carry no case data: the test e-mail
+  has only the sender, one recipient and a Message-ID stable per delivery.
   """
 
   alias Phoenix.HTML
@@ -19,6 +22,9 @@ defmodule SymphonyElixir.Notifications.Templates do
   @sms_unit_limit 134
   @sms_fields [:jira_key, :priority_name, :case_url]
   @test_sms "Harmony: wiadomość testowa SMSAPI. Nie wymaga działania."
+  @test_email_subject "[Harmony] Wiadomość testowa"
+  @test_email_text "To jest wiadomość testowa Harmony wysłana przez operatora. Nie wymaga działania."
+  @test_email_fields ~w(delivery_id message_id_domain recipient from_email)a
   @title_limit 120
   @header_fields ~w(delivery_id message_id_domain recipient from_email from_name priority_name jira_key project_name)a
   @required_fields (@header_fields -- [:from_name]) ++ [:title, :jira_url, :harmony_url]
@@ -55,6 +61,20 @@ defmodule SymphonyElixir.Notifications.Templates do
       not Enum.all?(@sms_fields, &safe_header_value?(fields[&1])) -> {:error, :invalid_header_value}
       not https_url?(fields.case_url) -> {:error, :invalid_link}
       true -> within_sms_limit("Harmony: #{fields.jira_key}, #{fields.priority_name}. Nowa sprawa: #{fields.case_url}")
+    end
+  end
+
+  @spec render_test_email(map()) :: {:ok, Email.t()} | {:error, error()}
+  def render_test_email(attrs) when is_map(attrs) do
+    fields =
+      Map.new([:from_name | @test_email_fields], fn key -> {key, Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))} end)
+      |> Map.update!(:from_name, &(&1 || "Harmony"))
+
+    cond do
+      missing = Enum.find(@test_email_fields, &blank?(fields[&1])) -> {:error, {:missing_field, missing}}
+      Ecto.UUID.cast(fields.delivery_id) == :error -> {:error, {:missing_field, :delivery_id}}
+      not Enum.all?([:from_name | @test_email_fields], &safe_header_value?(fields[&1])) -> {:error, :invalid_header_value}
+      true -> with :ok <- validate_addresses(fields), do: {:ok, build_test_email(fields)}
     end
   end
 
@@ -132,6 +152,16 @@ defmodule SymphonyElixir.Notifications.Templates do
     |> Email.header("Message-ID", "<harmony.#{fields.delivery_id}@#{fields.message_id_domain}>")
     |> Email.text_body(text_body(fields, title, detected_at))
     |> Email.html_body(html_body(fields, title, detected_at))
+  end
+
+  defp build_test_email(fields) do
+    Email.new()
+    |> Email.from({fields.from_name, fields.from_email})
+    |> Email.to(fields.recipient)
+    |> Email.subject(@test_email_subject)
+    |> Email.header("Message-ID", "<harmony.#{fields.delivery_id}@#{fields.message_id_domain}>")
+    |> Email.text_body(@test_email_text <> "\n")
+    |> Email.html_body("<!DOCTYPE html>\n<html lang=\"pl\">\n<body>\n<p>#{escape(@test_email_text)}</p>\n</body>\n</html>\n")
   end
 
   defp text_body(fields, title, detected_at) do

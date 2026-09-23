@@ -7,7 +7,9 @@ defmodule SymphonyElixir.Intake.Dispatcher do
   snapshot and the configured Harmony `intake.public_url`, then handed to
   `Notifications.Smtp` or `Notifications.Smsapi`. A missing public URL or
   connection is an explicit failure; no link or credential is invented.
-  An SMS test-send is a case-less delivery with `payload.test_send == true`.
+  An operator test-send (e-mail or SMS) is a case-less delivery with
+  `payload.test_send == true`; it renders a fixed test text instead of an alert
+  and is subject to the same per-connection hourly limit.
   """
 
   alias SymphonyElixir.Config
@@ -126,6 +128,22 @@ defmodule SymphonyElixir.Intake.Dispatcher do
 
   # Everything below runs before any message is handed to a transport, so a
   # local failure (database, configuration) is safe to retry.
+  defp email_message(%IntegrationDelivery{case_id: nil} = delivery) do
+    if payload_value(delivery.payload, "test_send") == true do
+      with {:ok, connection} <- notification_connection(delivery, "smtp"),
+           attrs = test_email_attrs(delivery, connection),
+           {:ok, email} <- attrs |> Templates.render_test_email() |> template_result() do
+        {:ok, email, connection}
+      end
+    else
+      {:error, "notification_case_required"}
+    end
+  rescue
+    _exception -> {:retry, "notification_local_state_unavailable"}
+  catch
+    :exit, _reason -> {:retry, "notification_local_state_unavailable"}
+  end
+
   defp email_message(%IntegrationDelivery{} = delivery) do
     with {:ok, connection} <- notification_connection(delivery, "smtp"),
          {:ok, intake_case} <- notification_case(delivery),
@@ -218,6 +236,18 @@ defmodule SymphonyElixir.Intake.Dispatcher do
       jira_url: intake_case.jira_url,
       harmony_url: harmony_url,
       detected_at: intake_case.detected_at
+    }
+  end
+
+  defp test_email_attrs(delivery, connection) do
+    settings = connection.settings || %{}
+
+    %{
+      delivery_id: delivery.id,
+      recipient: payload_value(delivery.payload, "recipient"),
+      from_email: payload_value(settings, "from_email"),
+      from_name: payload_value(settings, "from_name"),
+      message_id_domain: payload_value(settings, "message_id_domain")
     }
   end
 

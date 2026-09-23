@@ -5,10 +5,15 @@ defmodule SymphonyElixirWeb.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :symphony_elixir
 
+  # The session only carries the CSRF state for operator mutations. It is
+  # signed with the per-boot secret_key_base from `SymphonyElixir.HttpServer`
+  # and never sent on cross-site requests.
   @session_options [
     store: :cookie,
     key: "_symphony_elixir_key",
-    signing_salt: "symphony-session"
+    signing_salt: "symphony-session",
+    same_site: "Strict",
+    http_only: true
   ]
 
   # Socket for the React client (observability dashboard channel).

@@ -17,7 +17,6 @@ defmodule SymphonyElixir.Notifications.Smtp do
   alias Swoosh.Adapters.SMTP, as: SwooshSmtp
   alias Swoosh.Email
   alias SymphonyElixir.Config
-  alias SymphonyElixir.Notifications.Templates
   alias SymphonyElixir.Storage.IntegrationConnection
 
   @default_port 587
@@ -56,18 +55,6 @@ defmodule SymphonyElixir.Notifications.Smtp do
         :timeout -> {:error, "smtp_timeout"}
         :crashed -> {:error, "smtp_unavailable"}
       end
-    end
-  end
-
-  @spec test_send(IntegrationConnection.t(), map(), keyword()) ::
-          delivery_result() | {:error, :confirmation_required | Templates.error()}
-  def test_send(%IntegrationConnection{} = connection, attrs, opts \\ []) when is_map(attrs) do
-    if Keyword.get(opts, :confirm_test_send) === true do
-      with {:ok, email} <- Templates.render_email(Map.merge(attrs, sender_attrs(connection))) do
-        deliver_email(email, connection, opts)
-      end
-    else
-      {:error, :confirmation_required}
     end
   end
 
@@ -284,19 +271,6 @@ defmodule SymphonyElixir.Notifications.Smtp do
   defp session_error_code({_type, {:missing_requirement, _host, :auth}}), do: "smtp_auth_unavailable"
   defp session_error_code({_type, {:temporary_failure, _host, :tls_failed}}), do: "smtp_tls_failed"
   defp session_error_code(_reason), do: "smtp_unavailable"
-
-  defp sender_attrs(%IntegrationConnection{settings: settings}) do
-    settings = settings || %{}
-
-    [:from_email, :from_name, :message_id_domain]
-    |> Enum.flat_map(fn key ->
-      case setting(settings, key) do
-        nil -> []
-        value -> [{key, value}]
-      end
-    end)
-    |> Map.new()
-  end
 
   defp setting(settings, key), do: Map.get(settings, Atom.to_string(key), Map.get(settings, key))
 
