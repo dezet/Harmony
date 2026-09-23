@@ -174,6 +174,27 @@ defmodule SymphonyElixir.IntakeAnalysisContextTest do
     assert File.ls!(snapshot_path) == []
   end
 
+  test "cleanup removes only the validated snapshot version and refuses a linked snapshot", context do
+    snapshots = Path.join([context.workspace_root, "intake", "case-cleanup"])
+    snapshot_v1 = Path.join(snapshots, "1")
+    snapshot_v2 = Path.join(snapshots, "2")
+    outside = Path.join(context.test_root, "outside-snapshot")
+
+    File.mkdir_p!(snapshot_v1)
+    File.write!(Path.join(snapshot_v1, "source.ex"), "synthetic source")
+    File.mkdir_p!(snapshot_v2)
+    File.write!(Path.join(snapshot_v2, "source.ex"), "sibling version")
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "outside-canary"), "preserve")
+    File.ln_s!(outside, Path.join(snapshots, "3"))
+
+    assert :ok = AnalysisContext.cleanup(context.workspace_root, "case-cleanup", 1)
+    refute File.exists?(snapshot_v1)
+    assert File.read!(Path.join(snapshot_v2, "source.ex")) == "sibling version"
+    assert {:error, _reason} = AnalysisContext.cleanup(context.workspace_root, "case-cleanup", 3)
+    assert File.read!(Path.join(outside, "outside-canary")) == "preserve"
+  end
+
   test "falls back to issue_only when the unpacked file limit is exceeded", context do
     files =
       Enum.map(1..20_001, fn index ->

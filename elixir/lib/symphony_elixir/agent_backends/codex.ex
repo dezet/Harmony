@@ -14,6 +14,7 @@ defmodule SymphonyElixir.AgentBackends.Codex do
     run.(workspace, prompt, issue, opts)
   end
 
+  @spec run_analysis(Path.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
   @spec run_analysis(Path.t(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run_analysis(workspace, prompt, issue, opts \\ []) do
     {run, opts} = Keyword.pop(opts, :run, &AppServer.run/4)

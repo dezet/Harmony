@@ -11,6 +11,7 @@ defmodule SymphonyElixir.Codex.AppServer do
   @thread_start_id 2
   @turn_start_id 3
   @port_line_bytes 1_048_576
+  @analysis_heartbeat_interval_ms 30_000
   @max_stream_log_bytes 1_000
   @non_interactive_tool_input_answer "This is a non-interactive session. Operator input is unavailable."
 
@@ -32,6 +33,17 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   @spec run(Path.t(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run(workspace, prompt, issue, opts \\ []) do
+    deadline_ms = analysis_deadline(opts)
+    opts = if deadline_ms, do: Keyword.put(opts, :deadline_ms, deadline_ms), else: opts
+
+    with_deadline(deadline_ms, fn ->
+      with_analysis_heartbeat(Keyword.get(opts, :heartbeat_fun), fn ->
+        run_session(workspace, prompt, issue, opts)
+      end)
+    end)
+  end
+
+  defp run_session(workspace, prompt, issue, opts) do
     with {:ok, session} <- start_session(workspace, opts) do
       try do
         run_turn(session, prompt, issue, opts)
@@ -48,39 +60,45 @@ defmodule SymphonyElixir.Codex.AppServer do
     with {:ok, expanded_workspace} <- validate_workspace_cwd(workspace, worker_host),
          {:ok, session_policies} <- session_policies(expanded_workspace, worker_host, opts),
          {:ok, runtime} <- prepare_runtime(session_policies) do
-      case start_port(expanded_workspace, worker_host, runtime) do
-        {:ok, port} ->
-          metadata = port_metadata(port, worker_host)
+      with_deadline(Map.get(session_policies, :deadline_ms), fn ->
+        start_session_port(expanded_workspace, worker_host, runtime, session_policies)
+      end)
+    end
+  end
 
-          case do_start_session(port, expanded_workspace, session_policies) do
-            {:ok, thread_id} ->
-              {:ok,
-               %{
-                 port: port,
-                 metadata: metadata,
-                 approval_policy: session_policies.approval_policy,
-                 auto_approve_requests: session_policies.auto_approve_requests,
-                 thread_sandbox: Map.get(session_policies, :thread_sandbox),
-                 turn_sandbox_policy: Map.get(session_policies, :turn_sandbox_policy),
-                 permission_profile: Map.get(session_policies, :permission_profile),
-                 thread_id: thread_id,
-                 workspace: expanded_workspace,
-                 worker_host: worker_host,
-                 profile: session_policies.profile,
-                 runtime: runtime,
-                 session_policies: session_policies
-               }}
+  defp start_session_port(expanded_workspace, worker_host, runtime, session_policies) do
+    case start_port(expanded_workspace, worker_host, runtime) do
+      {:ok, port} ->
+        metadata = port_metadata(port, worker_host)
 
-            {:error, reason} ->
-              stop_port(port)
-              AnalysisPolicy.cleanup_runtime(runtime)
-              {:error, reason}
-          end
+        case do_start_session(port, expanded_workspace, session_policies) do
+          {:ok, thread_id} ->
+            {:ok,
+             %{
+               port: port,
+               metadata: metadata,
+               approval_policy: session_policies.approval_policy,
+               auto_approve_requests: session_policies.auto_approve_requests,
+               thread_sandbox: Map.get(session_policies, :thread_sandbox),
+               turn_sandbox_policy: Map.get(session_policies, :turn_sandbox_policy),
+               permission_profile: Map.get(session_policies, :permission_profile),
+               thread_id: thread_id,
+               workspace: expanded_workspace,
+               worker_host: worker_host,
+               profile: session_policies.profile,
+               runtime: runtime,
+               session_policies: session_policies
+             }}
 
-        {:error, reason} ->
-          AnalysisPolicy.cleanup_runtime(runtime)
-          {:error, reason}
-      end
+          {:error, reason} ->
+            stop_port(port)
+            AnalysisPolicy.cleanup_runtime(runtime)
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        AnalysisPolicy.cleanup_runtime(runtime)
+        {:error, reason}
     end
   end
 
@@ -102,6 +120,12 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     tool_executor = session_tool_executor(session_policies, opts)
 
+    with_deadline(Map.get(session_policies, :deadline_ms), fn ->
+      run_session_turn(port, metadata, auto_approve_requests, thread_id, workspace, session_policies, prompt, issue, on_message, tool_executor)
+    end)
+  end
+
+  defp run_session_turn(port, metadata, auto_approve_requests, thread_id, workspace, session_policies, prompt, issue, on_message, tool_executor) do
     case start_turn(port, thread_id, prompt, issue, workspace, session_policies) do
       {:ok, turn_id} ->
         session_id = "#{thread_id}-#{turn_id}"
@@ -254,13 +278,24 @@ defmodule SymphonyElixir.Codex.AppServer do
 
       :analysis ->
         with {:ok, policy} <- AnalysisPolicy.build(Keyword.get(opts, :analysis_policy, %{})) do
-          {:ok,
-           Map.merge(policy, %{
-             auto_approve_requests: false,
-             profile: :analysis,
-             runtime_workspace_roots: [workspace],
-             turn_timeout_ms: Config.analysis_settings().timeout_ms
-           })}
+          deadline_ms =
+            Keyword.get(opts, :deadline_ms) ||
+              System.monotonic_time(:millisecond) + Config.analysis_settings().timeout_ms
+
+          timeout_ms = remaining_timeout(deadline_ms, Config.analysis_settings().timeout_ms)
+
+          if timeout_ms <= 0 do
+            {:error, :turn_timeout}
+          else
+            {:ok,
+             Map.merge(policy, %{
+               auto_approve_requests: false,
+               profile: :analysis,
+               runtime_workspace_roots: [workspace],
+               turn_timeout_ms: timeout_ms,
+               deadline_ms: deadline_ms
+             })}
+          end
         end
 
       profile ->
@@ -467,8 +502,28 @@ defmodule SymphonyElixir.Codex.AppServer do
       {^port, {:exit_status, status}} ->
         {:error, {:port_exit, status}}
     after
-      timeout_ms ->
-        {:error, :turn_timeout}
+      receive_timeout(timeout_ms) ->
+        case effective_timeout(timeout_ms) do
+          0 ->
+            {:error, :turn_timeout}
+
+          _remaining ->
+            case analysis_heartbeat() do
+              :not_configured ->
+                {:error, :turn_timeout}
+
+              :ok ->
+                Process.put(
+                  :codex_analysis_heartbeat_due,
+                  System.monotonic_time(:millisecond) + @analysis_heartbeat_interval_ms
+                )
+
+                receive_loop(port, on_message, timeout_ms, pending_line, tool_executor, auto_approve_requests)
+
+              {:error, reason} ->
+                {:error, {:analysis_lease_lost, reason}}
+            end
+        end
     end
   end
 
@@ -1031,7 +1086,8 @@ defmodule SymphonyElixir.Codex.AppServer do
   end
 
   defp await_response(port, request_id) do
-    with_timeout_response(port, request_id, Config.settings!().codex.read_timeout_ms, "")
+    timeout_ms = effective_timeout(Config.settings!().codex.read_timeout_ms)
+    with_timeout_response(port, request_id, timeout_ms, "")
   end
 
   defp with_timeout_response(port, request_id, timeout_ms, pending_line) do
@@ -1046,9 +1102,100 @@ defmodule SymphonyElixir.Codex.AppServer do
       {^port, {:exit_status, status}} ->
         {:error, {:port_exit, status}}
     after
-      timeout_ms ->
+      effective_timeout(timeout_ms) ->
         {:error, :response_timeout}
     end
+  end
+
+  defp analysis_deadline(opts) do
+    if Keyword.get(opts, :profile) == :analysis do
+      Keyword.get(opts, :deadline_ms) ||
+        System.monotonic_time(:millisecond) + Config.analysis_settings().timeout_ms
+    end
+  end
+
+  defp with_analysis_heartbeat(fun, callback) when is_function(callback, 0) do
+    previous = Process.get(:codex_analysis_heartbeat, :unset)
+    previous_due = Process.get(:codex_analysis_heartbeat_due, :unset)
+    Process.put(:codex_analysis_heartbeat, fun)
+
+    Process.put(
+      :codex_analysis_heartbeat_due,
+      System.monotonic_time(:millisecond) + @analysis_heartbeat_interval_ms
+    )
+
+    try do
+      callback.()
+    after
+      case previous do
+        :unset -> Process.delete(:codex_analysis_heartbeat)
+        prior_fun -> Process.put(:codex_analysis_heartbeat, prior_fun)
+      end
+
+      case previous_due do
+        :unset -> Process.delete(:codex_analysis_heartbeat_due)
+        prior_due -> Process.put(:codex_analysis_heartbeat_due, prior_due)
+      end
+    end
+  end
+
+  defp receive_timeout(timeout_ms) do
+    case {Process.get(:codex_analysis_heartbeat), effective_timeout(timeout_ms)} do
+      {fun, remaining} when is_function(fun, 0) and remaining > 0 ->
+        heartbeat_due = Process.get(:codex_analysis_heartbeat_due, System.monotonic_time(:millisecond))
+        min(remaining, max(0, heartbeat_due - System.monotonic_time(:millisecond)))
+
+      {_fun, remaining} ->
+        remaining
+    end
+  end
+
+  defp analysis_heartbeat do
+    case Process.get(:codex_analysis_heartbeat) do
+      fun when is_function(fun, 0) ->
+        case fun.() do
+          :ok -> :ok
+          {:ok, _result} -> :ok
+          {:error, reason} -> {:error, reason}
+          _other -> {:error, :invalid_heartbeat_response}
+        end
+
+      _missing ->
+        :not_configured
+    end
+  rescue
+    _exception -> {:error, :heartbeat_failed}
+  catch
+    :exit, _reason -> {:error, :heartbeat_failed}
+  end
+
+  defp with_deadline(nil, fun), do: fun.()
+
+  defp with_deadline(deadline_ms, fun) when is_integer(deadline_ms) and is_function(fun, 0) do
+    previous = Process.get(:codex_analysis_deadline, :unset)
+    Process.put(:codex_analysis_deadline, deadline_ms)
+
+    try do
+      fun.()
+    after
+      case previous do
+        :unset -> Process.delete(:codex_analysis_deadline)
+        prior_deadline -> Process.put(:codex_analysis_deadline, prior_deadline)
+      end
+    end
+  end
+
+  defp effective_timeout(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0 do
+    case Process.get(:codex_analysis_deadline) do
+      deadline when is_integer(deadline) -> max(0, min(timeout_ms, deadline - System.monotonic_time(:millisecond)))
+      _missing -> timeout_ms
+    end
+  end
+
+  defp effective_timeout(_timeout_ms), do: 0
+
+  defp remaining_timeout(deadline_ms, maximum) do
+    max(0, min(maximum, deadline_ms - System.monotonic_time(:millisecond)))
   end
 
   defp handle_response(port, request_id, data, timeout_ms) do

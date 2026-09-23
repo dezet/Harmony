@@ -361,10 +361,10 @@ rozszerzenie `BE/forge.ex`, `BE/forge/{github,gitlab,memory}.ex` tylko o snapsho
 - [x] T12.4 Snapshot nie zawiera .git/config/credentialów; test profilu potwierdza brak
       tokenu pobierania w środowisku narzędzi analizy.
 - [x] T12.5 Brak repo → API zwraca jawne issue_only z powodem, nie fałszywą analizę kodu.
-- [ ] T12.6 Cleanup usuwa wyłącznie konkretny zwalidowany katalog snapshotu po zakończeniu/przerwaniu.
+- [x] T12.6 Cleanup usuwa wyłącznie konkretny zwalidowany katalog snapshotu po zakończeniu/przerwaniu.
 
-T12 zwraca status i powód jako metadata. Trwały zapis `input_snapshot` do historii
-oraz cleanup po sukcesie lub przerwaniu należą do T13 i pozostają niewykonane.
+T12 zwraca status i powód jako metadata. T13 zapisuje te wartości w `input_snapshot`
+i po próbie usuwa wyłącznie katalog snapshotu dla danego case i wersji.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_analysis_context_test.exs`.
 Odbiór: AC10/AC11/AC14; archiwa są syntetyczne i lokalne w testach.
@@ -376,17 +376,17 @@ Pliki: nowe `BE/intake/{analysis_runner,analysis_result,analysis_prompt,comment_
 nowe `BT/intake_analysis_runner_test.exs`, `BT/intake_analysis_result_test.exs`,
 `BT/intake_comment_publisher_test.exs`; `BE/intake/dispatcher.ex`.
 
-- [ ] T13.1 RED: po prawidłowym wyniku i timeout komentarza model ma być uruchomiony tylko raz.
-- [ ] T13.2 Runner startuje dopiero po potwierdzonym Linear, jedna tura i deadline całej próby.
-- [ ] T13.3 Odrzuć malformed/za duży JSON, fałszywe źródło, HTML i niezgodny context_scope.
-- [ ] T13.4 Prawidłowe needs_input publikuje braki; failed nie publikuje stdout.
-- [ ] T13.5 Zapis wyniku i delivery komentarza atomowy; marker/property powiązane z wersją.
-- [ ] T13.6 Po utracie odpowiedzi odczytaj wszystkie strony comments; unknown bez automatycznego POST.
-- [ ] T13.7 Późny wynik starego lease i v1 po reanalizie v2 nie nadpisują aktywnej wersji.
-- [ ] T13.8 WorkRun analizy zapisuje status i usage; nie trafia do implementation dispatcher.
-- [ ] T13.9 Zapisz `input_snapshot`, w tym `issue_only` i powód braku repo, w historii analizy.
-- [ ] T13.10 Po sukcesie lub przerwaniu usuń wyłącznie konkretny zwalidowany katalog snapshotu.
-- [ ] T13.11 Potwierdź, że runner nie przekazuje tokenu Forge do sesji analitycznej.
+- [x] T13.1 RED: po prawidłowym wyniku i timeout komentarza model ma być uruchomiony tylko raz.
+- [x] T13.2 Runner startuje dopiero po potwierdzonym Linear, jedna tura i deadline całej próby.
+- [x] T13.3 Odrzuć malformed/za duży JSON, fałszywe źródło, HTML i niezgodny context_scope.
+- [x] T13.4 Prawidłowe needs_input publikuje braki; failed nie publikuje stdout.
+- [x] T13.5 Zapis wyniku i delivery komentarza atomowy; marker/property powiązane z wersją.
+- [x] T13.6 Po utracie odpowiedzi odczytaj wszystkie strony comments; unknown bez automatycznego POST.
+- [x] T13.7 Późny wynik starego lease i v1 po reanalizie v2 nie nadpisują aktywnej wersji.
+- [x] T13.8 WorkRun analizy zapisuje status i usage; nie trafia do implementation dispatcher.
+- [x] T13.9 Zapisz `input_snapshot`, w tym `issue_only` i powód braku repo, w historii analizy.
+- [x] T13.10 Po sukcesie lub przerwaniu usuń wyłącznie konkretny zwalidowany katalog snapshotu.
+- [x] T13.11 Potwierdź, że runner nie przekazuje tokenu Forge do sesji analitycznej.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_analysis_runner_test.exs test/symphony_elixir/intake_analysis_result_test.exs test/symphony_elixir/intake_comment_publisher_test.exs`.
 Odbiór: AC10/AC11/AC12; żadnej prawdziwej analizy w standardowej komendzie.

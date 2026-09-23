@@ -1147,6 +1147,44 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     send(runner_pid, :stop)
   end
 
+  test "orchestrator leaves jira analysis work runs to the intake dispatcher" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    previous_fetchers = Application.get_env(:symphony_elixir, :work_source_fetchers)
+    previous_runner = Application.get_env(:symphony_elixir, :agent_runner_fun)
+    parent = self()
+
+    run = %WorkRun{
+      project_slug: "analysis-project",
+      type: "jira_analysis",
+      status: "queued",
+      dedupe_key: "intake:synthetic-case:jira_analysis:v1:attempt1",
+      payload: %{"case_id" => "synthetic-case", "analysis_version" => 1}
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, _opts ->
+      send(parent, {:agent_run, issue})
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :JiraAnalysisExclusionOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: Process.exit(pid, :normal)
+      restore_application_env(:work_source_fetchers, previous_fetchers)
+      restore_application_env(:agent_runner_fun, previous_runner)
+    end)
+
+    send(pid, :run_poll_cycle)
+    refute_receive {:agent_run, _issue}, 100
+
+    state = :sys.get_state(pid)
+    assert state.running == %{}
+    assert state.claimed == MapSet.new()
+  end
+
   test "orchestrator publishes code review work once per dedupe key" do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
 
@@ -2320,6 +2358,9 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     end)
     |> elem(1)
   end
+
+  defp restore_application_env(key, nil), do: Application.delete_env(:symphony_elixir, key)
+  defp restore_application_env(key, value), do: Application.put_env(:symphony_elixir, key, value)
 
   test "work-source fetchers dispatch by project forge_type" do
     github_called = :counters.new(1, [])

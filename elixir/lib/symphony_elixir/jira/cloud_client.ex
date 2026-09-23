@@ -24,6 +24,7 @@ defmodule SymphonyElixir.Jira.CloudClient do
     paginate_offset(opts, "#{@api_prefix}/priority/search", "values")
   end
 
+  @spec list_comments(String.t()) :: {:ok, [map()]} | {:error, map()}
   @spec list_comments(String.t(), keyword()) :: {:ok, [map()]} | {:error, map()}
   def list_comments(issue_id_or_key, opts \\ []) when is_binary(issue_id_or_key) do
     if valid_segment?(issue_id_or_key) do
@@ -32,6 +33,29 @@ defmodule SymphonyElixir.Jira.CloudClient do
       malformed_request()
     end
   end
+
+  @spec create_comment(String.t(), map(), [map()]) :: {:ok, map()} | {:error, map()}
+  def create_comment(issue_id_or_key, body, properties, opts \\ [])
+
+  @spec create_comment(String.t(), map(), [map()], keyword()) :: {:ok, map()} | {:error, map()}
+  def create_comment(issue_id_or_key, body, properties, opts)
+      when is_binary(issue_id_or_key) and is_map(body) and is_list(properties) do
+    if valid_segment?(issue_id_or_key) and Enum.all?(properties, &valid_comment_property?/1) do
+      request(opts, :post, "#{@api_prefix}/issue/#{encode_segment(issue_id_or_key)}/comment",
+        json: %{body: body, properties: properties},
+        expected_status: 201
+      )
+      |> case do
+        {:ok, %{body: response_body}} when is_map(response_body) -> {:ok, response_body}
+        {:ok, _response} -> malformed_response()
+        {:error, _reason} = error -> error
+      end
+    else
+      malformed_request()
+    end
+  end
+
+  def create_comment(_issue_id_or_key, _body, _properties, _opts), do: malformed_request()
 
   @spec board_filter_id(String.t() | integer(), keyword()) :: {:ok, String.t()} | {:error, map()}
   def board_filter_id(board_id, opts \\ []) do
@@ -85,8 +109,11 @@ defmodule SymphonyElixir.Jira.CloudClient do
   @spec paginate_offset(keyword(), String.t(), String.t(), non_neg_integer(), [map()], seen_keys()) ::
           {:ok, [map()]} | {:error, map()}
   defp paginate_offset(opts, path, collection_key, start_at, acc, seen) do
+    params = [startAt: start_at, maxResults: @page_size]
+    params = if collection_key == "comments", do: params ++ [expand: "properties"], else: params
+
     with false <- Map.has_key?(seen, start_at),
-         {:ok, response} <- request(opts, :get, path, params: [startAt: start_at, maxResults: @page_size]),
+         {:ok, response} <- request(opts, :get, path, params: params),
          {:ok, values, next_start, done?} <- parse_offset_page(response.body, collection_key, start_at) do
       items = acc ++ values
       next_seen = Map.put(seen, start_at, true)
@@ -226,6 +253,7 @@ defmodule SymphonyElixir.Jira.CloudClient do
     with {:ok, config} <- client_config(opts) do
       request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
       timeout_ms = Keyword.get(opts, :timeout_ms, 15_000)
+      expected_status = Keyword.get(request_options, :expected_status, 200)
 
       request = [
         method: method,
@@ -235,12 +263,12 @@ defmodule SymphonyElixir.Jira.CloudClient do
         receive_timeout: timeout_ms
       ]
 
-      request = Keyword.merge(request, request_options)
+      request = Keyword.merge(request, Keyword.delete(request_options, :expected_status))
       request = if Keyword.has_key?(request_options, :json), do: add_content_type(request), else: request
 
       case request_fun.(request) do
-        {:ok, %{status: 200, body: _body} = response} -> {:ok, response}
-        {:ok, %{status: 200}} -> malformed_response()
+        {:ok, %{status: ^expected_status, body: _body} = response} -> {:ok, response}
+        {:ok, %{status: ^expected_status}} -> malformed_response()
         {:ok, %{status: status} = response} when is_integer(status) -> http_error(status, response)
         {:error, reason} -> transport_error(reason)
         _other -> malformed_response()
@@ -396,6 +424,15 @@ defmodule SymphonyElixir.Jira.CloudClient do
   defp first_header_value([value | _]) when is_binary(value), do: value
   defp first_header_value(value) when is_binary(value), do: value
   defp first_header_value(_value), do: nil
+
+  defp valid_comment_property?(%{key: key, value: value}),
+    do: valid_comment_property?(%{"key" => key, "value" => value})
+
+  defp valid_comment_property?(%{"key" => key, "value" => value}) do
+    is_binary(key) and key != "" and (is_map(value) or is_binary(value))
+  end
+
+  defp valid_comment_property?(_property), do: false
 
   defp malformed_request, do: {:error, %{kind: :invalid_request}}
   defp malformed_response, do: {:error, %{kind: :malformed_response}}
