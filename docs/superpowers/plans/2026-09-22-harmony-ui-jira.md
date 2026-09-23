@@ -434,12 +434,12 @@ Spec: §10.1, §10.3–10.4. Zależność: T15.
 Pliki: nowe `BE/notifications/smsapi.ex`, `BT/notification_smsapi_test.exs`;
 `BE/intake/dispatcher.ex`, `BE/notifications/templates.ex`.
 
-- [ ] T16.1 RED: 200 z błędem dostawcy nie jest succeeded; duplicate idx nie tworzy nowego idx.
-- [ ] T16.2 POST form z Bearer, pola i endpoint zgodne ze spec, bez SDK i parametrów w URL.
-- [ ] T16.3 Normalizacja E.164, Unicode/134 jednostki UTF-16, nie ucinać URL.
-- [ ] T16.4 Limit 20/h w dwóch równoległych dispatcherach; test-send wliczany do limitu.
-- [ ] T16.5 Awaria SMS nie blokuje maila/Linear/analizy; niepewna odpowiedź → unknown.
-- [ ] T16.6 Wspólny test: dwa skany, dwa kanały, każdy odbiorca otrzymuje po jednym logicznym delivery.
+- [x] T16.1 RED: 200 z błędem dostawcy nie jest succeeded; duplicate idx nie tworzy nowego idx.
+- [x] T16.2 POST form z Bearer, pola i endpoint zgodne ze spec, bez SDK i parametrów w URL.
+- [x] T16.3 Normalizacja E.164, Unicode/134 jednostki UTF-16, nie ucinać URL.
+- [x] T16.4 Limit 20/h w dwóch równoległych dispatcherach; test-send wliczany do limitu.
+- [x] T16.5 Awaria SMS nie blokuje maila/Linear/analizy; niepewna odpowiedź → unknown.
+- [x] T16.6 Wspólny test: dwa skany, dwa kanały, każdy odbiorca otrzymuje po jednym logicznym delivery.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/notification_smsapi_test.exs test/symphony_elixir/intake_outbox_test.exs`.
 Odbiór: AC13/AC14, zero realnych SMS.

@@ -1,17 +1,24 @@
 defmodule SymphonyElixir.Notifications.Templates do
   @moduledoc """
-  Renders the first-detection e-mail alert for exactly one recipient.
+  Renders the first-detection e-mail and SMS alerts for exactly one recipient.
 
-  The alert carries only the priority, Jira key, project, a short title, the
+  The e-mail carries only the priority, Jira key, project, a short title, the
   detection time and the Jira/Harmony links. Descriptions, analysis output,
   Linear links and credentials are never read from the input. Every header
   value is rejected when it contains control characters, and HTML is escaped.
+
+  The SMS carries only the Jira key, priority and Harmony case link. It is
+  limited to 134 UTF-16 units (two Unicode segments); a longer message is a
+  validation error, never a truncated link.
   """
 
   alias Phoenix.HTML
   alias Swoosh.Email
 
   @queued_notice "Analiza została zakolejkowana. Naprawa nie została uruchomiona."
+  @sms_unit_limit 134
+  @sms_fields [:jira_key, :priority_name, :case_url]
+  @test_sms "Harmony: wiadomość testowa SMSAPI. Nie wymaga działania."
   @title_limit 120
   @header_fields ~w(delivery_id message_id_domain recipient from_email from_name priority_name jira_key project_name)a
   @required_fields (@header_fields -- [:from_name]) ++ [:title, :jira_url, :harmony_url]
@@ -26,6 +33,7 @@ defmodule SymphonyElixir.Notifications.Templates do
           :invalid_header_value
           | :invalid_address
           | :invalid_link
+          | :message_too_long
           | {:missing_field, atom()}
 
   @spec render_email(map()) :: {:ok, Email.t()} | {:error, error()}
@@ -36,6 +44,46 @@ defmodule SymphonyElixir.Notifications.Templates do
          :ok <- validate_links(fields) do
       {:ok, build_email(fields)}
     end
+  end
+
+  @spec render_sms(map()) :: {:ok, String.t()} | {:error, error()}
+  def render_sms(attrs) when is_map(attrs) do
+    fields = Map.new(@sms_fields, fn key -> {key, Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))} end)
+
+    cond do
+      missing = Enum.find(@sms_fields, &blank?(fields[&1])) -> {:error, {:missing_field, missing}}
+      not Enum.all?(@sms_fields, &safe_header_value?(fields[&1])) -> {:error, :invalid_header_value}
+      not https_url?(fields.case_url) -> {:error, :invalid_link}
+      true -> within_sms_limit("Harmony: #{fields.jira_key}, #{fields.priority_name}. Nowa sprawa: #{fields.case_url}")
+    end
+  end
+
+  @spec render_test_sms() :: String.t()
+  def render_test_sms, do: @test_sms
+
+  @spec sms_unit_limit() :: pos_integer()
+  def sms_unit_limit, do: @sms_unit_limit
+
+  @spec sms_units(String.t()) :: non_neg_integer()
+  def sms_units(text) when is_binary(text) do
+    text |> :unicode.characters_to_binary(:utf8, :utf16) |> byte_size() |> div(2)
+  end
+
+  @spec case_url(String.t(), String.t()) :: {:ok, String.t()} | {:error, :invalid_link}
+  def case_url(public_url, case_id) when is_binary(public_url) and is_binary(case_id) do
+    base = String.trim(public_url)
+    uri = URI.parse(base)
+
+    if https_url?(base) and is_nil(uri.query) and is_nil(uri.fragment) and match?({:ok, _uuid}, Ecto.UUID.cast(case_id)) do
+      url = URI.merge(String.trim_trailing(base, "/") <> "/", "/cases/jira_#{case_id}")
+      {:ok, URI.to_string(url)}
+    else
+      {:error, :invalid_link}
+    end
+  end
+
+  defp within_sms_limit(message) do
+    if sms_units(message) <= @sms_unit_limit, do: {:ok, message}, else: {:error, :message_too_long}
   end
 
   defp fetch_fields(attrs) do
