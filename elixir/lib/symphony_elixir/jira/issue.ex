@@ -43,29 +43,8 @@ defmodule SymphonyElixir.Jira.Issue do
   def from_api(%{"id" => id, "key" => key, "fields" => fields})
       when ((is_binary(id) and byte_size(id) > 0) or (is_integer(id) and id > 0)) and is_binary(key) and
              byte_size(key) > 0 and is_map(fields) do
-    if Enum.all?(@required_fields, &Map.has_key?(fields, &1)) and valid_fields?(fields) do
-      priority = fields["priority"] || %{}
-      status = fields["status"] || %{}
-      category = if is_map(status["statusCategory"]), do: status["statusCategory"], else: %{}
-      project = fields["project"] || %{}
-
-      {:ok,
-       %__MODULE__{
-         id: to_string(id),
-         key: key,
-         summary: fields["summary"],
-         description: Adf.to_text(fields["description"]),
-         priority_id: optional_string(priority["id"]),
-         priority_name: optional_string(priority["name"]),
-         status_id: optional_string(status["id"]),
-         status_name: optional_string(status["name"]),
-         status_category: optional_string(category["key"]),
-         created: fields["created"],
-         updated: fields["updated"],
-         project_id: optional_string(project["id"]),
-         project_key: optional_string(project["key"]),
-         project_name: optional_string(project["name"])
-       }}
+    if valid_issue_fields?(fields) do
+      {:ok, build_issue(id, key, fields)}
     else
       {:error, :malformed_issue}
     end
@@ -76,6 +55,34 @@ defmodule SymphonyElixir.Jira.Issue do
   @spec browse_url(t(), String.t()) :: String.t()
   def browse_url(%__MODULE__{key: key}, site_url) when is_binary(key) and is_binary(site_url) do
     "#{String.trim_trailing(site_url, "/")}/browse/#{URI.encode(key, &URI.char_unreserved?/1)}"
+  end
+
+  defp valid_issue_fields?(fields) do
+    Enum.all?(@required_fields, &Map.has_key?(fields, &1)) and valid_fields?(fields)
+  end
+
+  defp build_issue(id, key, fields) do
+    priority = fields["priority"] || %{}
+    status = fields["status"] || %{}
+    category = if is_map(status["statusCategory"]), do: status["statusCategory"], else: %{}
+    project = fields["project"] || %{}
+
+    %__MODULE__{
+      id: to_string(id),
+      key: key,
+      summary: fields["summary"],
+      description: Adf.to_text(fields["description"]),
+      priority_id: optional_string(priority["id"]),
+      priority_name: optional_string(priority["name"]),
+      status_id: optional_string(status["id"]),
+      status_name: optional_string(status["name"]),
+      status_category: optional_string(category["key"]),
+      created: fields["created"],
+      updated: fields["updated"],
+      project_id: optional_string(project["id"]),
+      project_key: optional_string(project["key"]),
+      project_name: optional_string(project["name"])
+    }
   end
 
   defp valid_fields?(fields) do

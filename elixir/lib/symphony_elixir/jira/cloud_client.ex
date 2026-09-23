@@ -34,9 +34,8 @@ defmodule SymphonyElixir.Jira.CloudClient do
   @spec board_filter_id(String.t() | integer(), keyword()) :: {:ok, String.t()} | {:error, map()}
   def board_filter_id(board_id, opts \\ []) do
     with {:ok, id} <- numeric_id(board_id),
-         {:ok, response} <- request(opts, :get, "/rest/agile/1.0/board/#{id}/configuration"),
-         {:ok, filter_id} <- parse_board_filter(response.body) do
-      {:ok, filter_id}
+         {:ok, response} <- request(opts, :get, "/rest/agile/1.0/board/#{id}/configuration") do
+      parse_board_filter(response.body)
     end
   end
 
@@ -104,25 +103,38 @@ defmodule SymphonyElixir.Jira.CloudClient do
     body = if is_binary(token), do: Map.put(body, :nextPageToken, token), else: body
 
     with {:ok, response} <- request(opts, :post, "#{@api_prefix}/search/jql", json: body),
-         {:ok, issues, next_token} <- parse_search_page(response.body) do
-      parsed =
-        Enum.reduce_while(issues, {:ok, []}, fn issue, {:ok, values} ->
-          case Issue.from_api(issue) do
-            {:ok, normalized} -> {:cont, {:ok, [normalized | values]}}
-            {:error, _reason} -> {:halt, malformed_response()}
-          end
-        end)
+         {:ok, issues, next_token} <- parse_search_page(response.body),
+         {:ok, page} <- parse_issues(issues) do
+      finish_search_page(opts, jql, acc, seen_tokens, page, next_token)
+    end
+  end
 
-      with {:ok, page} <- parsed,
-           :ok <- notify_page(opts, Enum.reverse(page)) do
-        all = acc ++ Enum.reverse(page)
-
-        cond do
-          is_nil(next_token) -> {:ok, all}
-          MapSet.member?(seen_tokens, next_token) -> malformed_response()
-          true -> search_page(opts, jql, next_token, all, MapSet.put(seen_tokens, next_token))
-        end
+  defp parse_issues(issues) do
+    Enum.reduce_while(issues, {:ok, []}, fn issue, {:ok, values} ->
+      case Issue.from_api(issue) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | values]}}
+        {:error, _reason} -> {:halt, malformed_response()}
       end
+    end)
+    |> case do
+      {:ok, values} -> {:ok, Enum.reverse(values)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp finish_search_page(opts, jql, acc, seen_tokens, page, next_token) do
+    with :ok <- notify_page(opts, page) do
+      continue_search_page(opts, jql, acc ++ page, seen_tokens, next_token)
+    end
+  end
+
+  defp continue_search_page(_opts, _jql, all, _seen_tokens, nil), do: {:ok, all}
+
+  defp continue_search_page(opts, jql, all, seen_tokens, next_token) do
+    if MapSet.member?(seen_tokens, next_token) do
+      malformed_response()
+    else
+      search_page(opts, jql, next_token, all, MapSet.put(seen_tokens, next_token))
     end
   end
 
@@ -162,41 +174,47 @@ defmodule SymphonyElixir.Jira.CloudClient do
     response_start = Map.get(body, "startAt", requested_start)
     page_size = Map.get(body, "maxResults", @page_size)
 
-    cond do
-      not is_list(values) ->
-        malformed_response()
-
-      not Enum.all?(values, &is_map/1) ->
-        malformed_response()
-
-      not is_integer(response_start) or response_start != requested_start ->
-        malformed_response()
-
-      not is_integer(page_size) or page_size <= 0 ->
-        malformed_response()
-
-      invalid_optional_integer?(body, "total") ->
-        malformed_response()
-
-      invalid_optional_boolean?(body, "isLast") ->
-        malformed_response()
-
-      values == [] and is_integer(Map.get(body, "total")) and Map.get(body, "total") > requested_start ->
-        malformed_response()
-
-      values == [] and Map.get(body, "isLast") != true and not is_integer(Map.get(body, "total")) ->
-        malformed_response()
-
-      true ->
-        next_start = requested_start + page_size
-        total = Map.get(body, "total")
-        last = Map.get(body, "isLast")
-        done? = last == true or (is_integer(total) and next_start >= total)
-        {:ok, values, next_start, done?}
+    if valid_offset_page?(body, values, response_start, page_size, requested_start) do
+      next_start = requested_start + page_size
+      total = Map.get(body, "total")
+      last = Map.get(body, "isLast")
+      done? = last == true or (is_integer(total) and next_start >= total)
+      {:ok, values, next_start, done?}
+    else
+      malformed_response()
     end
   end
 
   defp parse_offset_page(_body, _collection_key, _requested_start), do: malformed_response()
+
+  defp valid_offset_page?(body, values, response_start, page_size, requested_start) do
+    valid_offset_values?(values) and valid_offset_start?(response_start, requested_start) and
+      valid_page_size?(page_size) and valid_offset_metadata?(body) and
+      valid_empty_offset_page?(values, body, requested_start)
+  end
+
+  defp valid_offset_values?(values) do
+    is_list(values) and Enum.all?(values, &is_map/1)
+  end
+
+  defp valid_offset_start?(response_start, requested_start) do
+    is_integer(response_start) and response_start == requested_start
+  end
+
+  defp valid_page_size?(page_size), do: is_integer(page_size) and page_size > 0
+
+  defp valid_offset_metadata?(body) do
+    not invalid_optional_integer?(body, "total") and not invalid_optional_boolean?(body, "isLast")
+  end
+
+  defp valid_empty_offset_page?([], body, requested_start) do
+    total = Map.get(body, "total")
+    last = Map.get(body, "isLast")
+
+    not (is_integer(total) and total > requested_start) and (last == true or is_integer(total))
+  end
+
+  defp valid_empty_offset_page?(_values, _body, _requested_start), do: true
 
   defp request(opts, method, path, request_options \\ []) do
     with {:ok, config} <- client_config(opts) do
@@ -232,14 +250,14 @@ defmodule SymphonyElixir.Jira.CloudClient do
   defp client_config(opts) do
     token = Keyword.get(opts, :token)
 
-    if not nonempty_binary?(token) do
-      {:error, %{kind: :invalid_configuration}}
-    else
+    if nonempty_binary?(token) do
       case Keyword.get(opts, :auth_mode) do
         mode when mode in [:classic, "classic"] -> classic_config(opts, token)
         mode when mode in [:scoped, "scoped"] -> scoped_config(opts, token)
         _ -> {:error, %{kind: :invalid_configuration}}
       end
+    else
+      {:error, %{kind: :invalid_configuration}}
     end
   end
 
@@ -271,17 +289,25 @@ defmodule SymphonyElixir.Jira.CloudClient do
 
   defp valid_site_url?(site_url) when is_binary(site_url) do
     uri = URI.parse(site_url)
-    host = uri.host && String.downcase(uri.host)
-
-    is_nil(uri.scheme) == false and String.downcase(uri.scheme) == "https" and
-      is_binary(host) and Regex.match?(~r/\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net\z/, host) and
-      is_nil(uri.userinfo) and is_nil(uri.query) and is_nil(uri.fragment) and
-      uri.path in [nil, "", "/"] and uri.port in [nil, 443]
+    valid_https_scheme?(uri.scheme) and valid_atlassian_host?(uri.host) and valid_site_uri_components?(uri)
   rescue
     _error -> false
   end
 
   defp valid_site_url?(_site_url), do: false
+
+  defp valid_https_scheme?(scheme), do: not is_nil(scheme) and String.downcase(scheme) == "https"
+
+  defp valid_atlassian_host?(host) when is_binary(host) do
+    Regex.match?(~r/\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net\z/, String.downcase(host))
+  end
+
+  defp valid_atlassian_host?(_host), do: false
+
+  defp valid_site_uri_components?(uri) do
+    is_nil(uri.userinfo) and is_nil(uri.query) and is_nil(uri.fragment) and
+      uri.path in [nil, "", "/"] and uri.port in [nil, 443]
+  end
 
   defp auth_headers(authorization) do
     [{"authorization", authorization}, {"accept", "application/json"}]
@@ -349,17 +375,16 @@ defmodule SymphonyElixir.Jira.CloudClient do
     headers = Map.get(response, :headers, %{})
 
     case headers do
-      headers when is_map(headers) ->
-        Enum.find_value(headers, fn {key, value} ->
-          if String.downcase(to_string(key)) == name, do: value
-        end)
-
-      headers when is_list(headers) ->
-        Enum.find_value(headers, fn {key, value} -> if String.downcase(to_string(key)) == name, do: value end)
+      headers when is_map(headers) or is_list(headers) ->
+        Enum.find_value(headers, &matching_header_value(&1, name))
 
       _ ->
         nil
     end
+  end
+
+  defp matching_header_value({key, value}, name) do
+    if String.downcase(to_string(key)) == name, do: value
   end
 
   defp first_header_value([value | _]) when is_binary(value), do: value
