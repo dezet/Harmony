@@ -64,6 +64,8 @@ defmodule SymphonyElixir.MixProject do
       {:phoenix_html, "~> 4.2"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
+      {:swoosh, "~> 1.28.0"},
+      {:gen_smtp, "~> 1.3.0"},
       {:yaml_elixir, "~> 2.12"},
       {:solid, "~> 1.2"},
       {:ecto, "~> 3.13"},

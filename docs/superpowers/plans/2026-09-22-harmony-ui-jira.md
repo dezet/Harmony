@@ -416,13 +416,13 @@ Pliki: nowe `BE/notifications/smtp.ex`, `BE/notifications/templates.ex`,
 `BT/notification_smtp_test.exs`, `BT/notification_smtp_integration_test.exs`;
 `elixir/mix.exs`, `elixir/mix.lock`, `elixir/test/test_helper.exs`.
 
-- [ ] T15.1 RED: timeout po DATA to unknown, a nie kolejna automatyczna wysyłka.
-- [ ] T15.2 Dodaj tylko Swoosh i gen_smtp zgodne z zainstalowanym Elixir; przypnij lockfile.
-- [ ] T15.3 TLS verify peer, Message-ID stały per delivery, jeden odbiorca bez ujawniania listy.
-- [ ] T15.4 Szablon nie zawiera pełnego opisu, sekretów, fikcyjnego Linear URL; HTML escapowany.
-- [ ] T15.5 Test EHLO/STARTTLS/AUTH nie wykonuje DATA; test-send wymaga odrębnej zgody.
-- [ ] T15.6 CR/LF w subject/from/recipient odrzucone, nie header injection.
-- [ ] T15.7 Przygotuj test Mailpit opisany w §10.5, oznacz smtp_integration;
+- [x] T15.1 RED: timeout po DATA to unknown, a nie kolejna automatyczna wysyłka.
+- [x] T15.2 Dodaj tylko Swoosh i gen_smtp zgodne z zainstalowanym Elixir; przypnij lockfile.
+- [x] T15.3 TLS verify peer, Message-ID stały per delivery, jeden odbiorca bez ujawniania listy.
+- [x] T15.4 Szablon nie zawiera pełnego opisu, sekretów, fikcyjnego Linear URL; HTML escapowany.
+- [x] T15.5 Test EHLO/STARTTLS/AUTH nie wykonuje DATA; test-send wymaga odrębnej zgody.
+- [x] T15.6 CR/LF w subject/from/recipient odrzucone, nie header injection.
+- [x] T15.7 Przygotuj test Mailpit opisany w §10.5, oznacz smtp_integration;
       domyślnie wyklucz ten tag w test_helper, a jawne --include go uruchamia.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/notification_smtp_test.exs`.

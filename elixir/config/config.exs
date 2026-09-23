@@ -2,6 +2,9 @@ import Config
 
 config :phoenix, :json_library, Jason
 
+# SMTP goes through gen_smtp; no Swoosh HTTP API client (e.g. hackney) is used.
+config :swoosh, :api_client, false
+
 database_name =
   System.get_env("HARMONY_DATABASE_NAME") ||
     if config_env() == :test, do: "harmony_test", else: "harmony_dev"
