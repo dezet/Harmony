@@ -79,6 +79,29 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert_receive {:recovered_scan, ^rule_id}
   end
 
+  test "an activating rule waits until its persisted retry time", %{project: project, connection: connection} do
+    now = ~U[2026-09-23 10:00:00.000000Z]
+    due_at = DateTime.add(now, 60, :second)
+    rule = activating_rule!(project, connection, "retry", due_at, 60)
+    parent = self()
+
+    runner = fn rule_id ->
+      send(parent, {:retry_scan_started, rule_id})
+      {:ok, :completed}
+    end
+
+    {:ok, scheduler} = Scheduler.start_link(name: nil, poller: runner, tick_interval_ms: 0, enabled?: true)
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    assert {:ok, []} = Scheduler.tick(scheduler, now: now)
+    refute_receive {:retry_scan_started, _rule_id}, 0
+
+    assert {:ok, [rule_id]} = Scheduler.tick(scheduler, now: due_at)
+    assert rule_id == rule.id
+    assert_receive {:retry_scan_started, ^rule_id}
+  end
+
   test "a repeated manual check while its request is running is rejected without starting another task", %{
     project: project,
     connection: connection
@@ -176,6 +199,18 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
       activation_status: "idle",
       baseline_generation: Ecto.UUID.generate(),
       next_poll_at: %{due_at | microsecond: {elem(due_at.microsecond, 0), 6}}
+    })
+    |> Repo.update!()
+  end
+
+  defp activating_rule!(project, connection, suffix, due_at, interval_seconds) do
+    rule = active_rule!(project, connection, suffix, due_at, interval_seconds)
+
+    rule
+    |> Ecto.Changeset.change(%{
+      enabled: false,
+      activation_status: "activating",
+      baseline_generation: nil
     })
     |> Repo.update!()
   end

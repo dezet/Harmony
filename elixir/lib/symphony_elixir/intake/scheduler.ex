@@ -172,8 +172,8 @@ defmodule SymphonyElixir.Intake.Scheduler do
       from(rule in AutomationRule,
         where:
           rule.id not in ^running_ids and
-            ((rule.enabled and (is_nil(rule.next_poll_at) or rule.next_poll_at <= ^now)) or
-               (not rule.enabled and rule.activation_status == "activating")) and
+            (rule.enabled or (not rule.enabled and rule.activation_status == "activating")) and
+            (is_nil(rule.next_poll_at) or rule.next_poll_at <= ^now) and
             (is_nil(rule.lease_token) or is_nil(rule.lease_until) or rule.lease_until <= ^now),
         order_by: [asc_nulls_first: rule.next_poll_at, asc: rule.inserted_at, asc: rule.id],
         limit: ^limit,
