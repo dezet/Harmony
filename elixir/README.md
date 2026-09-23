@@ -94,8 +94,8 @@ containers with hot reload** (Postgres + backend + Vite), auto-detecting podman 
 ./dev/harmony.sh help       # full command list
 ```
 
-Once it's up, **open http://localhost:5173/** — in full mode the SPA is served by Vite (with
-HMR), and the backend on http://localhost:4010/ serves the JSON API (`/api/v1/`) and the socket
+Once it's up, **open <http://localhost:5173/>** — in full mode the SPA is served by Vite (with
+HMR), and the backend on <http://localhost:4010/> serves the JSON API (`/api/v1/`) and the socket
 (`/socket`). Editing a frontend file hot-reloads instantly; editing a backend `.ex` file
 recompiles and auto-restarts the app in a couple of seconds.
 
@@ -322,6 +322,7 @@ Optional environment variables:
 - `SYMPHONY_LIVE_SSH_WORKER_HOSTS` uses those SSH hosts when set, as a comma-separated list
 
 `make e2e` runs two live scenarios:
+
 - one with a local worker
 - one with SSH workers
 
