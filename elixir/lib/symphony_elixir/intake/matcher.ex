@@ -33,44 +33,50 @@ defmodule SymphonyElixir.Intake.Matcher do
     now = current_time(opts)
     lease_token = Keyword.get(opts, :lease_token)
 
-    case Repo.transaction(fn ->
-           with :ok <- ensure_effects_enabled(),
-                %AutomationScan{} = current_scan <- lock_scan(scan.id),
-                %AutomationRule{} = rule <- lock_rule(scan.rule_id),
-                :ok <- validate_owner(current_scan, rule, scan, lease_token, now),
-                {:ok, counts} <- persist_issues(rule, current_scan, issues, now, opts),
-                :ok <- ensure_effects_enabled() do
-             update_scan_counts!(current_scan, counts)
-             counts
-           else
-             nil -> Repo.rollback(:stale_generation)
-             {:error, reason} -> Repo.rollback(reason)
-           end
-         end) do
+    case Repo.transaction(fn -> persist_page_transaction(scan, issues, now, opts, lease_token) end) do
       {:ok, counts} -> {:ok, counts}
       {:error, reason} -> {:error, reason}
     end
   end
 
+  defp persist_page_transaction(scan, issues, now, opts, lease_token) do
+    with :ok <- ensure_effects_enabled(),
+         %AutomationScan{} = current_scan <- lock_scan(scan.id),
+         %AutomationRule{} = rule <- lock_rule(scan.rule_id),
+         :ok <- validate_owner(current_scan, rule, scan, lease_token, now),
+         {:ok, counts} <- persist_issues(rule, current_scan, issues, now, opts),
+         :ok <- ensure_effects_enabled() do
+      update_scan_counts!(current_scan, counts)
+      counts
+    else
+      nil -> Repo.rollback(:stale_generation)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
   defp persist_issues(rule, scan, issues, now, opts) do
-    Enum.reduce_while(issues, {:ok, %{match_count: 0, accepted_count: 0}}, fn issue, {:ok, counts} ->
-      if matches?(rule, issue) do
-        case persist_issue(rule, scan, issue, now, opts) do
-          {:ok, accepted?} ->
-            next = %{
-              match_count: counts.match_count + 1,
-              accepted_count: counts.accepted_count + if(accepted?, do: 1, else: 0)
-            }
-
-            {:cont, {:ok, next}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
-      else
-        {:cont, {:ok, counts}}
-      end
+    Enum.reduce_while(issues, {:ok, %{match_count: 0, accepted_count: 0}}, fn issue, result ->
+      accumulate_issue(rule, scan, issue, now, opts, result)
     end)
+  end
+
+  defp accumulate_issue(rule, scan, issue, now, opts, {:ok, counts}) do
+    if matches?(rule, issue) do
+      case persist_issue(rule, scan, issue, now, opts) do
+        {:ok, accepted?} ->
+          next = %{
+            match_count: counts.match_count + 1,
+            accepted_count: counts.accepted_count + if(accepted?, do: 1, else: 0)
+          }
+
+          {:cont, {:ok, next}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    else
+      {:cont, {:ok, counts}}
+    end
   end
 
   defp persist_issue(rule, scan, issue, now, opts) do
@@ -83,7 +89,8 @@ defmodule SymphonyElixir.Intake.Matcher do
   end
 
   defp maybe_accept(rule, scan, issue, attrs, observation, now, opts) do
-    baseline_excluded? = observation && observation.baseline_excluded && observation.generation == rule.baseline_generation
+    baseline_excluded? =
+      observation && observation.baseline_excluded && observation.generation == rule.baseline_generation
 
     cond do
       scan.mode == "baseline" and rule.initial_policy == "include_existing" ->
@@ -374,16 +381,30 @@ defmodule SymphonyElixir.Intake.Matcher do
 
   defp validate_owner(%AutomationScan{} = current_scan, %AutomationRule{} = rule, scan, lease_token, now) do
     cond do
-      current_scan.status != "running" -> {:error, :stale_generation}
-      current_scan.generation != scan.generation -> {:error, :stale_generation}
-      current_scan.rule_config_version != rule.config_version -> {:error, :stale_generation}
-      rule.lease_token != lease_token -> {:error, :stale_generation}
-      is_nil(rule.lease_until) or DateTime.compare(rule.lease_until, now) != :gt -> {:error, :stale_generation}
-      scan.mode == "baseline" and (rule.enabled or rule.activation_status != "activating") -> {:error, :stale_generation}
-      scan.mode == "poll" and (not rule.enabled or is_nil(rule.baseline_generation)) -> {:error, :stale_generation}
+      not current_scan_matches?(current_scan, rule, scan) -> {:error, :stale_generation}
+      not lease_matches?(rule, lease_token, now) -> {:error, :stale_generation}
+      invalid_mode_owner?(scan.mode, rule) -> {:error, :stale_generation}
       true -> :ok
     end
   end
+
+  defp current_scan_matches?(current_scan, rule, scan) do
+    current_scan.status == "running" and current_scan.generation == scan.generation and
+      current_scan.rule_config_version == rule.config_version
+  end
+
+  defp lease_matches?(rule, lease_token, now) do
+    rule.lease_token == lease_token and not is_nil(rule.lease_until) and
+      DateTime.compare(rule.lease_until, now) == :gt
+  end
+
+  defp invalid_mode_owner?("baseline", rule),
+    do: rule.enabled or rule.activation_status != "activating"
+
+  defp invalid_mode_owner?("poll", rule),
+    do: not rule.enabled or is_nil(rule.baseline_generation)
+
+  defp invalid_mode_owner?(_mode, _rule), do: false
 
   defp update_scan_counts!(scan, counts) do
     scan

@@ -621,29 +621,31 @@ defmodule SymphonyElixir.IntakePollerTest do
   defp request_fun(search_pages, after_post) do
     {:ok, agent} = Agent.start_link(fn -> {search_pages, 0} end)
 
-    fn request ->
-      case Keyword.fetch!(request, :method) do
-        :get ->
-          {:ok, %{status: 200, body: %{"filter" => %{"id" => "77"}}}}
+    fn request -> request_response(request, agent, after_post) end
+  end
 
-        :post ->
-          {outcome, index} =
-            Agent.get_and_update(agent, fn
-              {[next | rest], count} -> {{next, count + 1}, {rest, count + 1}}
-              {[], count} -> {{:error, :unexpected_jira_page, count + 1}, {[], count + 1}}
-            end)
-
-          after_post.(index)
-
-          case outcome do
-            {:http, status, headers, body} -> {:ok, %{status: status, headers: headers, body: body}}
-            {:http, status, body} -> {:ok, %{status: status, body: body}}
-            {:error, reason, _index} -> {:error, reason}
-            body -> {:ok, %{status: 200, body: body}}
-          end
-      end
+  defp request_response(request, agent, after_post) do
+    case Keyword.fetch!(request, :method) do
+      :get -> {:ok, %{status: 200, body: %{"filter" => %{"id" => "77"}}}}
+      :post -> post_response(agent, after_post)
     end
   end
+
+  defp post_response(agent, after_post) do
+    {outcome, index} =
+      Agent.get_and_update(agent, fn
+        {[next | rest], count} -> {{next, count + 1}, {rest, count + 1}}
+        {[], count} -> {{:error, :unexpected_jira_page, count + 1}, {[], count + 1}}
+      end)
+
+    after_post.(index)
+    response_for(outcome)
+  end
+
+  defp response_for({:http, status, headers, body}), do: {:ok, %{status: status, headers: headers, body: body}}
+  defp response_for({:http, status, body}), do: {:ok, %{status: status, body: body}}
+  defp response_for({:error, reason, _index}), do: {:error, reason}
+  defp response_for(body), do: {:ok, %{status: 200, body: body}}
 
   defp jira_issue(priority_id, key \\ "OPS-1") do
     priority_name = if priority_id == "1", do: "P1", else: "P2"
