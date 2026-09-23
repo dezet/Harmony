@@ -34,10 +34,12 @@ defmodule SymphonyElixir.Intake.Matcher do
     lease_token = Keyword.get(opts, :lease_token)
 
     case Repo.transaction(fn ->
-           with %AutomationScan{} = current_scan <- lock_scan(scan.id),
+           with :ok <- ensure_effects_enabled(),
+                %AutomationScan{} = current_scan <- lock_scan(scan.id),
                 %AutomationRule{} = rule <- lock_rule(scan.rule_id),
                 :ok <- validate_owner(current_scan, rule, scan, lease_token, now),
-                {:ok, counts} <- persist_issues(rule, current_scan, issues, now, opts) do
+                {:ok, counts} <- persist_issues(rule, current_scan, issues, now, opts),
+                :ok <- ensure_effects_enabled() do
              update_scan_counts!(current_scan, counts)
              counts
            else
@@ -398,6 +400,10 @@ defmodule SymphonyElixir.Intake.Matcher do
 
   defp normalize_write({:ok, value}), do: {:ok, value}
   defp normalize_write({:error, changeset}), do: {:error, changeset}
+
+  defp ensure_effects_enabled do
+    if Intake.effects_enabled?(), do: :ok, else: {:error, :effects_disabled}
+  end
 
   defp stringify_keys(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

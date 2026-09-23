@@ -10,6 +10,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
   alias SymphonyElixir.Storage.{IntegrationConnection, Project}
 
   setup do
+    write_workflow_file!(Workflow.workflow_file_path(), intake_effects_enabled: true)
     :ok = Sandbox.checkout(Repo)
     {:ok, project: project!(), connection: jira_connection!()}
   end
@@ -100,6 +101,34 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert {:ok, [rule_id]} = Scheduler.tick(scheduler, now: due_at)
     assert rule_id == rule.id
     assert_receive {:retry_scan_started, ^rule_id}
+  end
+
+  test "effects kill switch blocks automatic and manual scans", %{project: project, connection: connection} do
+    now = ~U[2026-09-23 10:00:00Z]
+    rule = active_rule!(project, connection, "effects-disabled", now, 60)
+    parent = self()
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      intake_enabled: true,
+      intake_effects_enabled: false,
+      intake_public_url: "https://harmony.example.test"
+    )
+
+    {:ok, scheduler} =
+      Scheduler.start_link(
+        name: nil,
+        poller: fn _rule_id -> send(parent, :unexpected_scan) end,
+        tick_interval_ms: 0,
+        clock: fn -> now end,
+        enabled?: true
+      )
+
+    :ok = Sandbox.allow(Repo, self(), scheduler)
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    assert {:ok, []} = Scheduler.tick(scheduler, now: now)
+    assert {:error, :effects_disabled} = Scheduler.check_now(scheduler, rule.id)
+    refute_receive :unexpected_scan, 0
   end
 
   test "a repeated manual check while its request is running is rejected without starting another task", %{

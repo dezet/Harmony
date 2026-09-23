@@ -9,6 +9,7 @@ defmodule SymphonyElixir.IntakeRulesTest do
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, Project}
 
   setup do
+    write_workflow_file!(Workflow.workflow_file_path(), intake_effects_enabled: true)
     :ok = Sandbox.checkout(Repo)
     :ok
   end
@@ -254,6 +255,23 @@ defmodule SymphonyElixir.IntakeRulesTest do
   test "a rule remains active during its activation transition" do
     rule = %AutomationRule{enabled: false, activation_status: "activating"}
     assert Rules.active?(rule)
+  end
+
+  test "effects kill switch blocks rule activation" do
+    assert {:ok, rule} = Rules.create(rule_attrs())
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      intake_enabled: true,
+      intake_effects_enabled: false,
+      intake_public_url: "https://harmony.example.test"
+    )
+
+    assert {:error, :effects_disabled} = Rules.activate(rule)
+
+    stored_rule = Repo.get!(AutomationRule, rule.id)
+    refute stored_rule.enabled
+    assert stored_rule.activation_status == "idle"
+    assert is_nil(stored_rule.activated_at)
   end
 
   test "only one active rule may claim a source" do

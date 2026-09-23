@@ -21,6 +21,7 @@ defmodule SymphonyElixir.IntakePollerTest do
   }
 
   setup do
+    write_workflow_file!(Workflow.workflow_file_path(), intake_effects_enabled: true)
     :ok = Sandbox.checkout(Repo)
     {:ok, rule: rule!()}
   end
@@ -84,6 +85,103 @@ defmodule SymphonyElixir.IntakePollerTest do
     assert {:ok, _scan} = Poller.run(activating.id, poll_opts([page([issue])]))
 
     assert Repo.one!(IntakeCase).jira_updated_at == ~U[2026-09-23 07:00:00.000000Z]
+  end
+
+  test "effects switch blocks include-existing baseline before any Jira request", %{rule: rule} do
+    assert {:ok, include_rule} = Rules.patch(rule, %{initial_policy: "include_existing"})
+
+    activating =
+      include_rule
+      |> Ecto.Changeset.change(%{activation_status: "activating"})
+      |> Repo.update!()
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      intake_enabled: true,
+      intake_effects_enabled: false,
+      intake_public_url: "https://harmony.example.test"
+    )
+
+    {:ok, request_count} = Agent.start_link(fn -> 0 end)
+
+    assert {:error, :effects_disabled} =
+             Poller.run(
+               activating.id,
+               poll_opts(
+                 [page([jira_issue("1")])],
+                 request_fun: fn request ->
+                   Agent.update(request_count, &(&1 + 1))
+
+                   case Keyword.fetch!(request, :method) do
+                     :get -> {:ok, %{status: 200, body: %{"filter" => %{"id" => "77"}}}}
+                     :post -> {:ok, %{status: 200, body: page([jira_issue("1")])}}
+                   end
+                 end
+               )
+             )
+
+    assert Agent.get(request_count, & &1) == 0
+    assert Repo.aggregate(AutomationScan, :count, :id) == 0
+    assert Repo.aggregate(IntakeCase, :count, :id) == 0
+    assert Repo.aggregate(IntegrationDelivery, :count, :id) == 0
+  end
+
+  test "effects switch disabled during qualification rolls back case and deliveries", %{rule: rule} do
+    assert {:ok, include_rule} = Rules.patch(rule, %{initial_policy: "include_existing"})
+    assert {:ok, activating} = Rules.activate(include_rule)
+
+    uuid_fun = fn ->
+      write_workflow_file!(Workflow.workflow_file_path(),
+        intake_enabled: true,
+        intake_effects_enabled: false,
+        intake_public_url: "https://harmony.example.test"
+      )
+
+      Ecto.UUID.generate()
+    end
+
+    assert {:error, :effects_disabled} =
+             Poller.run(activating.id, poll_opts([page([jira_issue("1")])], uuid_fun: uuid_fun))
+
+    scan = Repo.one!(AutomationScan)
+    assert scan.mode == "baseline"
+    assert scan.status == "failed"
+    assert scan.error_code == "effects_disabled"
+    refute Repo.get!(AutomationRule, rule.id).enabled
+    assert is_nil(Repo.get!(AutomationRule, rule.id).baseline_generation)
+    assert Repo.aggregate(IntakeCase, :count, :id) == 0
+    assert Repo.aggregate(IntegrationDelivery, :count, :id) == 0
+  end
+
+  test "Jira Retry-After extends but never shortens a rule interval", %{rule: rule} do
+    due_times =
+      Enum.map(
+        [
+          {"43", "30", ~U[2026-09-23 10:00:00.000000Z], 60},
+          {"44", "3600", ~U[2026-09-23 10:00:00.000000Z], 3_600},
+          {"45", "Wed, 23 Sep 2026 11:30:00 GMT", ~U[2026-09-23 10:00:00.000000Z], 5_400},
+          {"46", "Wed, 23 Sep 2026 11:00:00 GMT", ~U[2026-09-23 10:00:00.500000Z], 3_600}
+        ],
+        fn {source_id, retry_after, now, expected_seconds} ->
+          assert {:ok, candidate} = create_rule!(rule, %{source_id: source_id, interval_seconds: 60})
+          assert {:ok, activating} = Rules.activate(candidate)
+          response = {:http, 429, %{"retry-after" => [retry_after]}, %{"secret" => "must-not-escape"}}
+
+          assert {:error, %{kind: :http_status, status: 429} = error} =
+                   Poller.run(activating.id, poll_opts([response], clock: fn -> now end))
+
+          refute inspect(error) =~ "must-not-escape"
+          due_at = Repo.get!(AutomationRule, candidate.id).next_poll_at
+          assert due_at == DateTime.add(now, expected_seconds, :second)
+          due_at
+        end
+      )
+
+    assert due_times == [
+             ~U[2026-09-23 10:01:00.000000Z],
+             ~U[2026-09-23 11:00:00.000000Z],
+             ~U[2026-09-23 11:30:00.000000Z],
+             ~U[2026-09-23 11:00:00.500000Z]
+           ]
   end
 
   test "new_matches_only excludes baseline matches while include_existing imports them once", %{rule: rule} do
@@ -538,6 +636,7 @@ defmodule SymphonyElixir.IntakePollerTest do
           after_post.(index)
 
           case outcome do
+            {:http, status, headers, body} -> {:ok, %{status: status, headers: headers, body: body}}
             {:http, status, body} -> {:ok, %{status: status, body: body}}
             {:error, reason, _index} -> {:error, reason}
             body -> {:ok, %{status: 200, body: body}}

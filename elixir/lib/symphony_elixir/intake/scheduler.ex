@@ -25,6 +25,7 @@ defmodule SymphonyElixir.Intake.Scheduler do
     scan_in_progress
     scan_limit_exceeded
     stale_generation
+    effects_disabled
   )
 
   @type server :: GenServer.server()
@@ -56,6 +57,7 @@ defmodule SymphonyElixir.Intake.Scheduler do
       tick_interval_ms: Keyword.get(opts, :tick_interval_ms, @tick_interval_ms),
       clock: Keyword.get(opts, :clock, &DateTime.utc_now/0),
       enabled?: Keyword.get(opts, :enabled?, &Intake.enabled?/0),
+      effects_enabled?: Keyword.get(opts, :effects_enabled?, &Intake.effects_enabled?/0),
       result_observer: Keyword.get(opts, :result_observer),
       running: %{}
     }
@@ -66,7 +68,7 @@ defmodule SymphonyElixir.Intake.Scheduler do
 
   @impl GenServer
   def handle_call({:tick, opts}, _from, state) do
-    if intake_enabled?(state) do
+    if intake_enabled?(state) and effects_enabled?(state) do
       now = Keyword.get(opts, :now, state.clock.())
       {rule_ids, next_state} = start_due_scans(state, now)
       {:reply, {:ok, rule_ids}, next_state}
@@ -81,6 +83,9 @@ defmodule SymphonyElixir.Intake.Scheduler do
     cond do
       not intake_enabled?(state) ->
         {:reply, {:error, :intake_disabled}, state}
+
+      not effects_enabled?(state) ->
+        {:reply, {:error, :effects_disabled}, state}
 
       rule_running?(state, rule_id) ->
         {:reply, {:error, :scan_in_progress}, state}
@@ -111,7 +116,7 @@ defmodule SymphonyElixir.Intake.Scheduler do
   @impl GenServer
   def handle_info(:tick, state) do
     state =
-      if intake_enabled?(state) do
+      if intake_enabled?(state) and effects_enabled?(state) do
         {_rule_ids, state} = start_due_scans(state, state.clock.())
         state
       else
@@ -231,6 +236,9 @@ defmodule SymphonyElixir.Intake.Scheduler do
 
   defp intake_enabled?(%{enabled?: enabled}) when is_function(enabled, 0), do: enabled.()
   defp intake_enabled?(%{enabled?: enabled}), do: enabled == true
+
+  defp effects_enabled?(%{effects_enabled?: enabled}) when is_function(enabled, 0), do: enabled.()
+  defp effects_enabled?(%{effects_enabled?: enabled}), do: enabled == true
 
   defp lease_active?(%AutomationRule{lease_token: token, lease_until: until}, now)
        when is_binary(token) and not is_nil(until),

@@ -24,8 +24,14 @@ defmodule SymphonyElixir.Intake.Poller do
         case Intake.analysis_profile(opts) do
           {:ok, profile} ->
             case fetch_issues(context, profile, opts) do
-              {:ok, _issues} -> finish_success(context, opts)
-              {:error, reason} -> finish_failure(context, reason, opts)
+              {:ok, _issues} ->
+                case finish_success(context, opts) do
+                  {:error, :effects_disabled} -> finish_failure(context, :effects_disabled, opts)
+                  result -> result
+                end
+
+              {:error, reason} ->
+                finish_failure(context, reason, opts)
             end
 
           {:error, reason} ->
@@ -76,6 +82,7 @@ defmodule SymphonyElixir.Intake.Poller do
            rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE SKIP LOCKED"))
 
            with %AutomationRule{} <- rule,
+                :ok <- ensure_effects_enabled(),
                 :ok <- validate_start(rule, now),
                 :ok <- claim_scan_capacity(now) do
              mode = if is_nil(rule.baseline_generation), do: "baseline", else: "poll"
@@ -141,19 +148,23 @@ defmodule SymphonyElixir.Intake.Poller do
     if active_scans < @max_active_scans, do: :ok, else: {:error, :scan_capacity}
   end
 
-  defp validate_start(%AutomationRule{lease_token: token, lease_until: until}, now)
+  defp validate_start(rule, now) do
+    if Intake.effects_enabled?(), do: validate_start_state(rule, now), else: {:error, :effects_disabled}
+  end
+
+  defp validate_start_state(%AutomationRule{lease_token: token, lease_until: until}, now)
        when is_binary(token) and not is_nil(until) do
     if DateTime.compare(until, now) == :gt, do: {:error, :scan_in_progress}, else: :ok
   end
 
-  defp validate_start(%AutomationRule{baseline_generation: nil, activation_status: "activating", enabled: false}, _now),
+  defp validate_start_state(%AutomationRule{baseline_generation: nil, activation_status: "activating", enabled: false}, _now),
     do: :ok
 
-  defp validate_start(%AutomationRule{baseline_generation: generation, enabled: true}, _now)
+  defp validate_start_state(%AutomationRule{baseline_generation: generation, enabled: true}, _now)
        when not is_nil(generation),
        do: :ok
 
-  defp validate_start(%AutomationRule{}, _now), do: {:error, :rule_not_active}
+  defp validate_start_state(%AutomationRule{}, _now), do: {:error, :rule_not_active}
 
   defp fetch_issues(context, profile, opts) do
     with %IntegrationConnection{} = connection <- Repo.get(IntegrationConnection, context.rule.jira_connection_id),
@@ -175,7 +186,8 @@ defmodule SymphonyElixir.Intake.Poller do
             {:error, %{kind: :scan_limit_exceeded}}
 
           true ->
-            with :ok <- heartbeat_if_due(context, last_heartbeat_ms, opts) do
+            with :ok <- ensure_effects_enabled(),
+                 :ok <- heartbeat_if_due(context, last_heartbeat_ms, opts) do
               matcher_opts =
                 opts
                 |> Keyword.put(:lease_token, context.lease_token)
@@ -243,43 +255,48 @@ defmodule SymphonyElixir.Intake.Poller do
            scan = Repo.one(from(scan in AutomationScan, where: scan.id == ^context.scan.id, lock: "FOR UPDATE"))
            rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^context.rule.id, lock: "FOR UPDATE"))
 
-           if still_owner?(scan, rule, context, now) do
-             finished_scan =
-               scan
-               |> AutomationScan.changeset(%{status: "succeeded", finished_at: now, error_code: nil})
+           cond do
+             not still_owner?(scan, rule, context, now) ->
+               cancel_scan!(scan, now)
+               clear_stale_lease(rule, context.lease_token)
+               {:error, :stale_generation}
+
+             not Intake.effects_enabled?() ->
+               Repo.rollback(:effects_disabled)
+
+             true ->
+               finished_scan =
+                 scan
+                 |> AutomationScan.changeset(%{status: "succeeded", finished_at: now, error_code: nil})
+                 |> Repo.update!()
+
+               rule_attrs = %{
+                 last_success_at: now,
+                 next_poll_at: DateTime.add(now, rule.interval_seconds, :second),
+                 last_error_code: nil,
+                 lease_token: nil,
+                 lease_until: nil,
+                 lock_version: rule.lock_version + 1
+               }
+
+               rule_attrs =
+                 if scan.mode == "baseline" do
+                   Map.merge(rule_attrs, %{
+                     enabled: true,
+                     activation_status: "idle",
+                     activated_at: rule.activated_at || now,
+                     baseline_generation: scan.generation,
+                     baseline_complete_at: now
+                   })
+                 else
+                   rule_attrs
+                 end
+
+               rule
+               |> AutomationRule.changeset(rule_attrs)
                |> Repo.update!()
 
-             rule_attrs = %{
-               last_success_at: now,
-               next_poll_at: DateTime.add(now, rule.interval_seconds, :second),
-               last_error_code: nil,
-               lease_token: nil,
-               lease_until: nil,
-               lock_version: rule.lock_version + 1
-             }
-
-             rule_attrs =
-               if scan.mode == "baseline" do
-                 Map.merge(rule_attrs, %{
-                   enabled: true,
-                   activation_status: "idle",
-                   activated_at: rule.activated_at || now,
-                   baseline_generation: scan.generation,
-                   baseline_complete_at: now
-                 })
-               else
-                 rule_attrs
-               end
-
-             rule
-             |> AutomationRule.changeset(rule_attrs)
-             |> Repo.update!()
-
-             {:ok, finished_scan}
-           else
-             cancel_scan!(scan, now)
-             clear_stale_lease(rule, context.lease_token)
-             {:error, :stale_generation}
+               {:ok, finished_scan}
            end
          end) do
       {:ok, {:ok, scan}} -> {:ok, scan}
@@ -306,7 +323,7 @@ defmodule SymphonyElixir.Intake.Poller do
            if rule && rule.lease_token == context.lease_token do
              attrs = %{
                last_error_code: error_code,
-               next_poll_at: DateTime.add(now, rule.interval_seconds, :second),
+               next_poll_at: next_poll_at(now, rule.interval_seconds, reason),
                lease_token: nil,
                lease_until: nil,
                lock_version: rule.lock_version + 1
@@ -389,6 +406,48 @@ defmodule SymphonyElixir.Intake.Poller do
   defp error_code({:error, reason}), do: error_code(reason)
   defp error_code(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp error_code(_reason), do: "jira_scan_failed"
+
+  defp next_poll_at(now, interval_seconds, %{kind: :http_status, status: 429, retry_after: retry_after}) do
+    DateTime.add(now, max(interval_seconds, retry_after_seconds(retry_after, now)), :second)
+  end
+
+  defp next_poll_at(now, interval_seconds, _reason), do: DateTime.add(now, interval_seconds, :second)
+
+  defp retry_after_seconds(value, now) when is_binary(value) do
+    value = String.trim(value)
+
+    case Integer.parse(value) do
+      {seconds, ""} when seconds >= 0 -> seconds
+      _ -> retry_after_http_date(value, now)
+    end
+  end
+
+  defp retry_after_seconds(_value, _now), do: 0
+
+  defp retry_after_http_date(value, now) do
+    with {{year, month, day}, {hour, minute, second}} <-
+           :httpd_util.convert_request_date(String.to_charlist(value)),
+         {:ok, date} <- Date.new(year, month, day),
+         {:ok, time} <- Time.new(hour, minute, second),
+         {:ok, naive} <- NaiveDateTime.new(date, time) do
+      deadline = DateTime.from_naive!(naive, "Etc/UTC")
+
+      deadline
+      |> DateTime.diff(now, :microsecond)
+      |> ceil_seconds()
+    else
+      _ -> 0
+    end
+  rescue
+    _error -> 0
+  end
+
+  defp ceil_seconds(microseconds) when microseconds > 0, do: div(microseconds + 999_999, 1_000_000)
+  defp ceil_seconds(_microseconds), do: 0
+
+  defp ensure_effects_enabled do
+    if Intake.effects_enabled?(), do: :ok, else: {:error, :effects_disabled}
+  end
 
   defp setting(settings, key) when is_map(settings), do: Map.get(settings, key) || Map.get(settings, String.to_atom(key))
   defp setting(_settings, _key), do: nil

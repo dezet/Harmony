@@ -9,6 +9,7 @@ defmodule SymphonyElixir.Intake.Rules do
 
   import Ecto.Changeset
 
+  alias SymphonyElixir.Intake
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntegrationConnection, Project}
 
@@ -99,22 +100,25 @@ defmodule SymphonyElixir.Intake.Rules do
   end
 
   @spec activate(AutomationRule.t()) ::
-          {:ok, AutomationRule.t()} | {:error, :source_conflict | Ecto.Changeset.t()}
+          {:ok, AutomationRule.t()} | {:error, :effects_disabled | :source_conflict | Ecto.Changeset.t()}
   def activate(%AutomationRule{} = rule) do
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    baseline_ready? = not is_nil(rule.baseline_generation) and not is_nil(rule.baseline_complete_at)
+    with :ok <- ensure_effects_enabled() do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      baseline_ready? = not is_nil(rule.baseline_generation) and not is_nil(rule.baseline_complete_at)
 
-    changeset =
-      rule
-      |> changeset(%{
-        enabled: baseline_ready?,
-        activation_status: if(baseline_ready?, do: "idle", else: "activating"),
-        activated_at: rule.activated_at || now,
-        lock_version: rule.lock_version + 1
-      })
+      changeset =
+        rule
+        |> changeset(%{
+          enabled: baseline_ready?,
+          activation_status: if(baseline_ready?, do: "idle", else: "activating"),
+          activated_at: rule.activated_at || now,
+          lock_version: rule.lock_version + 1
+        })
 
-    with {:ok, changeset} <- validate_connection_kinds(changeset) do
-      Repo.update(changeset) |> normalize_activation_error()
+      with {:ok, changeset} <- validate_connection_kinds(changeset),
+           :ok <- ensure_effects_enabled() do
+        Repo.update(changeset) |> normalize_activation_error()
+      end
     end
   end
 
@@ -171,6 +175,10 @@ defmodule SymphonyElixir.Intake.Rules do
 
   defp normalize_activation_error({:error, %Ecto.Changeset{} = changeset}) do
     if unique_source_error?(changeset), do: {:error, :source_conflict}, else: {:error, changeset}
+  end
+
+  defp ensure_effects_enabled do
+    if Intake.effects_enabled?(), do: :ok, else: {:error, :effects_disabled}
   end
 
   defp unique_source_error?(%Ecto.Changeset{errors: errors}) do
