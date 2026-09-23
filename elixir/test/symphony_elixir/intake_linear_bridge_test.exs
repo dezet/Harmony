@@ -21,7 +21,14 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
 
     {:ok, provider} =
       Agent.start_link(fn ->
-        %{issues: %{}, inputs: [], requests: [], create_mode: :success, lookup_mode: :missing}
+        %{
+          issues: %{},
+          inputs: [],
+          requests: [],
+          create_mode: :success,
+          create_modes: [],
+          lookup_mode: :missing
+        }
       end)
 
     %{provider: provider}
@@ -82,6 +89,22 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
     end
   end
 
+  test "malformed direct lookup responses fail closed without trying the filter or create", %{provider: provider} do
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+    Agent.update(provider, &Map.put(&1, :lookup_mode, :malformed_direct))
+
+    assert {:unknown, "linear_unknown_payload"} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == [:lookup]
+    assert create_inputs(provider) == []
+    assert is_nil(Repo.get!(IntakeCase, intake_case.id).linear_confirmed_at)
+  end
+
   test "global Linear token is the documented fallback when the project token is cleared", %{provider: provider} do
     project = project!()
     {:ok, project} = SymphonyElixir.Storage.update_project_secrets(project, %{"clear_tracker_secret" => "true"})
@@ -95,6 +118,21 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
 
     assert_received {:linear_request, "SymphonyLinearIntakeIssueById", _payload, headers}
     assert {"Authorization", "global-linear-token"} = List.keyfind(headers, "Authorization", 0)
+  end
+
+  test "missing project and global Linear tokens stop before any provider request", %{provider: provider} do
+    project = project!()
+    {:ok, project} = SymphonyElixir.Storage.update_project_secrets(project, %{"clear_tracker_secret" => "true"})
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_api_token: nil)
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+
+    assert {:error, "missing_linear_api_token"} =
+             LinearBridge.perform(delivery,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == []
+    assert create_inputs(provider) == []
   end
 
   test "a timeout after provider persistence is reconciled by reserved UUID and retry creates once", %{provider: provider} do
@@ -116,6 +154,118 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
     assert_create_input!(create_inputs(provider) |> hd(), intake_case)
 
     assert_direct_lookup!(provider, intake_case)
+  end
+
+  test "confirmed absence allows a same-UUID retry after transient create failures", %{provider: provider} do
+    for failure_mode <- [:timeout_without_create, {:status_without_create, 429}, {:status_without_create, 503}] do
+      reset_provider!(provider, create_modes: [failure_mode, :success])
+      project = project!()
+      {intake_case, delivery, _rule} = case_and_delivery!(project)
+
+      assert {:ok, %{provider_id: id}} =
+               LinearBridge.perform(delivery,
+                 token: @token,
+                 request_fun: provider_request_fun(self(), provider, intake_case)
+               )
+
+      assert id == intake_case.linear_issue_id
+
+      assert provider_requests(provider) == [
+               :lookup,
+               :lookup_fallback,
+               :create,
+               :lookup,
+               :lookup_fallback,
+               :create
+             ]
+
+      assert [first_input, second_input] = create_inputs(provider)
+      assert first_input == second_input
+      assert first_input[:id] == intake_case.linear_issue_id
+      assert_confirmed!(intake_case, "OPS-42", "https://linear.app/harmony/issue/OPS-42")
+    end
+  end
+
+  test "a second lost response is recovered by UUID without a third create", %{provider: provider} do
+    reset_provider!(provider, create_modes: [:timeout_without_create, :timeout_after_create])
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+
+    assert {:ok, %{provider_id: id}} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert id == intake_case.linear_issue_id
+
+    assert provider_requests(provider) == [
+             :lookup,
+             :lookup_fallback,
+             :create,
+             :lookup,
+             :lookup_fallback,
+             :create,
+             :lookup
+           ]
+
+    assert [first_input, second_input] = create_inputs(provider)
+    assert first_input == second_input
+    assert first_input[:id] == intake_case.linear_issue_id
+    assert_confirmed!(intake_case, "OPS-42", "https://linear.app/harmony/issue/OPS-42")
+  end
+
+  test "two retryable failures with certain absence remain unknown and never create a third issue", %{
+    provider: provider
+  } do
+    reset_provider!(provider, create_modes: [:timeout_without_create, :timeout_without_create])
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+
+    assert {:unknown, "linear_transport_error"} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == [
+             :lookup,
+             :lookup_fallback,
+             :create,
+             :lookup,
+             :lookup_fallback,
+             :create,
+             :lookup,
+             :lookup_fallback
+           ]
+
+    assert [first_input, second_input] = create_inputs(provider)
+    assert first_input == second_input
+    assert first_input[:id] == intake_case.linear_issue_id
+    assert is_nil(Repo.get!(IntakeCase, intake_case.id).linear_confirmed_at)
+  end
+
+  test "a successful HTTP response with success false never confirms the issue", %{provider: provider} do
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+    Agent.update(provider, &Map.put(&1, :create_mode, :unsuccessful_without_create))
+
+    assert {:error, "linear_create_unsuccessful"} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == [
+             :lookup,
+             :lookup_fallback,
+             :create,
+             :lookup,
+             :lookup_fallback
+           ]
+
+    assert length(create_inputs(provider)) == 1
+    assert is_nil(Repo.get!(IntakeCase, intake_case.id).linear_confirmed_at)
   end
 
   test "a UUID conflict is followed by a lookup and adopts only the matching protected issue", %{provider: provider} do
@@ -342,6 +492,84 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
     assert create_inputs(provider) == []
   end
 
+  test "an issue without Harmony case markers is not adopted by its reserved UUID", %{provider: provider} do
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+    issue = put_in(issue_fixture(intake_case), ["data", "issue", "description"], "Unrelated issue")
+    Agent.update(provider, &put_in(&1, [:issues, intake_case.linear_issue_id], issue))
+
+    assert {:unknown, "linear_issue_identity_mismatch"} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == [:lookup]
+    assert create_inputs(provider) == []
+    assert is_nil(Repo.get!(IntakeCase, intake_case.id).linear_confirmed_at)
+  end
+
+  test "a changed reserved UUID during confirmation cannot persist a stale provider link", %{provider: provider} do
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+    Agent.update(provider, &put_in(&1, [:issues, intake_case.linear_issue_id], issue_fixture(intake_case)))
+    provider_request = provider_request_fun(self(), provider, intake_case)
+
+    request_fun = fn payload, headers ->
+      response = provider_request.(payload, headers)
+
+      if payload["operationName"] == "SymphonyLinearIntakeIssueById" do
+        current_case = Repo.get!(IntakeCase, intake_case.id)
+
+        current_case
+        |> IntakeCase.changeset(%{linear_issue_id: Ecto.UUID.generate()})
+        |> Repo.update!()
+      end
+
+      response
+    end
+
+    assert {:unknown, "linear_confirmation_persistence_failed"} =
+             LinearBridge.perform(delivery, token: @token, request_fun: request_fun)
+
+    stored = Repo.get!(IntakeCase, intake_case.id)
+    assert stored.linear_issue_id != intake_case.linear_issue_id
+    assert is_nil(stored.linear_confirmed_at)
+    assert is_nil(stored.linear_identifier)
+    assert create_inputs(provider) == []
+  end
+
+  test "string-key target snapshots are accepted for issue creation", %{provider: provider} do
+    project = project!()
+    snapshot = Map.new(target_snapshot(), fn {key, value} -> {Atom.to_string(key), value} end)
+    {intake_case, delivery, _rule} = case_and_delivery!(project, snapshot: snapshot)
+
+    assert {:ok, %{provider_id: id}} =
+             LinearBridge.perform(delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert id == intake_case.linear_issue_id
+    assert provider_requests(provider) == [:lookup, :lookup_fallback, :create]
+    assert_confirmed!(intake_case, "OPS-42", "https://linear.app/harmony/issue/OPS-42")
+  end
+
+  test "stale outbox UUID metadata fails before any Linear request", %{provider: provider} do
+    project = project!()
+    {intake_case, delivery, _rule} = case_and_delivery!(project)
+    stale_delivery = %{delivery | payload: %{"linear_issue_id" => Ecto.UUID.generate()}}
+
+    assert {:error, "linear_reserved_uuid_mismatch"} =
+             LinearBridge.perform(stale_delivery,
+               token: @token,
+               request_fun: provider_request_fun(self(), provider, intake_case)
+             )
+
+    assert provider_requests(provider) == []
+    assert create_inputs(provider) == []
+  end
+
   test "create carries the reserved UUID, exact routing IDs, safe title, markers, and no priority or assignee",
        %{provider: provider} do
     project = project!()
@@ -531,6 +759,9 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
       mode when mode in [:authentication_error, :direct_auth_filter_empty] ->
         {:ok, %{status: 200, body: fixture("linear_issue_lookup_auth_error.json", %{})}}
 
+      :malformed_direct ->
+        {:ok, %{status: 200, body: %{"data" => %{"issue" => []}}}}
+
       _lookup_mode ->
         direct_lookup_for_issue(provider, intake_case)
     end
@@ -575,7 +806,7 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
     input = payload["variables"][:input]
     Agent.update(provider, &Map.update!(&1, :inputs, fn inputs -> inputs ++ [input] end))
 
-    mode = Agent.get(provider, & &1.create_mode)
+    mode = next_create_mode(provider)
     issue_response = issue_fixture(intake_case)
     maybe_persist_issue(provider, intake_case, issue_response, mode)
 
@@ -584,6 +815,9 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
         Process.exit(self(), :kill)
 
       mode == :timeout_after_create ->
+        {:error, :timeout}
+
+      mode == :timeout_without_create ->
         {:error, :timeout}
 
       true ->
@@ -599,6 +833,28 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
 
   defp maybe_persist_issue(_provider, _intake_case, _issue_response, _mode), do: :ok
 
+  defp next_create_mode(provider) do
+    Agent.get_and_update(provider, fn state ->
+      case state.create_modes do
+        [mode | rest] -> {mode, %{state | create_modes: rest}}
+        [] -> {state.create_mode, state}
+      end
+    end)
+  end
+
+  defp reset_provider!(provider, opts) do
+    Agent.update(provider, fn _state ->
+      %{
+        issues: %{},
+        inputs: [],
+        requests: [],
+        create_mode: :success,
+        create_modes: Keyword.get(opts, :create_modes, []),
+        lookup_mode: :missing
+      }
+    end)
+  end
+
   defp run_create_callback(opts) do
     if is_function(Keyword.get(opts, :on_created), 0), do: Keyword.fetch!(opts, :on_created).()
   end
@@ -613,6 +869,18 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
 
   defp create_mode_response(:graphql_error_without_create, _intake_case) do
     {:ok, %{status: 200, body: %{"errors" => [%{"message" => "create rejected"}]}}}
+  end
+
+  defp create_mode_response({:status_without_create, status}, _intake_case) do
+    {:ok, %{status: status, body: %{}}}
+  end
+
+  defp create_mode_response(:unsuccessful_without_create, _intake_case) do
+    {:ok,
+     %{
+       status: 200,
+       body: %{"data" => %{"issueCreate" => %{"success" => false, "issue" => nil}}}
+     }}
   end
 
   defp provider_poll_response(provider, payload, headers) do
