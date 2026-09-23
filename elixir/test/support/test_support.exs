@@ -157,6 +157,9 @@ defmodule SymphonyElixir.TestSupport do
           observability_enabled: true,
           observability_refresh_ms: 1_000,
           observability_render_interval_ms: 16,
+          intake_enabled: nil,
+          intake_effects_enabled: nil,
+          intake_public_url: nil,
           server_port: nil,
           server_host: nil,
           prompt: @workflow_prompt
@@ -196,6 +199,9 @@ defmodule SymphonyElixir.TestSupport do
     observability_enabled = Keyword.get(config, :observability_enabled)
     observability_refresh_ms = Keyword.get(config, :observability_refresh_ms)
     observability_render_interval_ms = Keyword.get(config, :observability_render_interval_ms)
+    intake_enabled = Keyword.get(config, :intake_enabled)
+    intake_effects_enabled = Keyword.get(config, :intake_effects_enabled)
+    intake_public_url = Keyword.get(config, :intake_public_url)
     server_port = Keyword.get(config, :server_port)
     server_host = Keyword.get(config, :server_host)
     prompt = Keyword.get(config, :prompt)
@@ -233,6 +239,7 @@ defmodule SymphonyElixir.TestSupport do
         "  stall_timeout_ms: #{yaml_value(codex_stall_timeout_ms)}",
         hooks_yaml(hook_after_create, hook_before_run, hook_after_run, hook_before_remove, hook_timeout_ms),
         observability_yaml(observability_enabled, observability_refresh_ms, observability_render_interval_ms),
+        intake_yaml(intake_enabled, intake_effects_enabled, intake_public_url),
         server_yaml(server_port, server_host),
         "---",
         prompt
@@ -311,6 +318,23 @@ defmodule SymphonyElixir.TestSupport do
       "server:",
       port && "  port: #{yaml_value(port)}",
       host && "  host: #{yaml_value(host)}"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
+  defp intake_yaml(nil, nil, nil), do: nil
+
+  defp intake_yaml(enabled, effects_enabled, public_url) do
+    enabled_line = if is_boolean(enabled), do: "  enabled: #{yaml_value(enabled)}"
+    effects_enabled_line = if is_boolean(effects_enabled), do: "  effects_enabled: #{yaml_value(effects_enabled)}"
+    public_url_line = if is_binary(public_url), do: "  public_url: #{yaml_value(public_url)}"
+
+    [
+      "intake:",
+      enabled_line,
+      effects_enabled_line,
+      public_url_line
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")

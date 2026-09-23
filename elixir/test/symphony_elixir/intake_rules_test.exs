@@ -9,6 +9,7 @@ defmodule SymphonyElixir.IntakeRulesTest do
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, Project}
 
   setup do
+    write_workflow_file!(Workflow.workflow_file_path(), intake_effects_enabled: true)
     :ok = Sandbox.checkout(Repo)
     :ok
   end
@@ -123,10 +124,13 @@ defmodule SymphonyElixir.IntakeRulesTest do
 
     assert {:ok, rule} = Rules.create(attrs)
     assert {:ok, active} = Rules.activate(rule)
+    refute active.enabled
+    assert active.activation_status == "activating"
     assert {:ok, filtered} = Rules.patch(active, %{source_type: "filter"})
     refute filtered.enabled
     assert filtered.source_type == "filter"
     assert is_nil(filtered.baseline_generation)
+    assert is_nil(filtered.baseline_complete_at)
     assert filtered.config_version == active.config_version + 1
   end
 
@@ -141,7 +145,8 @@ defmodule SymphonyElixir.IntakeRulesTest do
     assert {:ok, active} = Rules.activate(rule)
     assert {:ok, renamed} = Rules.patch(active, %{"name" => "Renamed via string key"})
     assert renamed.name == "Renamed via string key"
-    assert renamed.enabled
+    refute renamed.enabled
+    assert renamed.activation_status == "activating"
     assert renamed.config_version == active.config_version + 1
   end
 
@@ -188,7 +193,8 @@ defmodule SymphonyElixir.IntakeRulesTest do
   test "changing source disables an active rule and target fields stay immutable" do
     assert {:ok, rule} = Rules.create(rule_attrs())
     assert {:ok, active} = Rules.activate(rule)
-    assert active.enabled
+    refute active.enabled
+    assert active.activation_status == "activating"
     assert active.activated_at
 
     assert {:error, :immutable_after_activation} =
@@ -249,6 +255,23 @@ defmodule SymphonyElixir.IntakeRulesTest do
   test "a rule remains active during its activation transition" do
     rule = %AutomationRule{enabled: false, activation_status: "activating"}
     assert Rules.active?(rule)
+  end
+
+  test "effects kill switch blocks rule activation" do
+    assert {:ok, rule} = Rules.create(rule_attrs())
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      intake_enabled: true,
+      intake_effects_enabled: false,
+      intake_public_url: "https://harmony.example.test"
+    )
+
+    assert {:error, :effects_disabled} = Rules.activate(rule)
+
+    stored_rule = Repo.get!(AutomationRule, rule.id)
+    refute stored_rule.enabled
+    assert stored_rule.activation_status == "idle"
+    assert is_nil(stored_rule.activated_at)
   end
 
   test "only one active rule may claim a source" do

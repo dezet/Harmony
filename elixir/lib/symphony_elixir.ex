@@ -25,17 +25,18 @@ defmodule SymphonyElixir.Application do
   def start(_type, _args) do
     :ok = SymphonyElixir.LogFile.configure()
 
-    children = [
-      SymphonyElixir.Vault,
-      SymphonyElixir.Repo,
-      {Task, fn -> sync_project_configs() end},
-      {Phoenix.PubSub, name: SymphonyElixir.PubSub},
-      {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
-      SymphonyElixir.WorkflowStore,
-      SymphonyElixir.Orchestrator,
-      SymphonyElixir.HttpServer,
-      SymphonyElixir.StatusDashboard
-    ]
+    children =
+      [
+        SymphonyElixir.Vault,
+        SymphonyElixir.Repo,
+        {Task, fn -> sync_project_configs() end},
+        {Phoenix.PubSub, name: SymphonyElixir.PubSub},
+        {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
+        SymphonyElixir.WorkflowStore,
+        SymphonyElixir.Orchestrator,
+        SymphonyElixir.HttpServer,
+        SymphonyElixir.StatusDashboard
+      ] ++ intake_children()
 
     Supervisor.start_link(
       children,
@@ -54,6 +55,20 @@ defmodule SymphonyElixir.Application do
     case Sync.sync_default_dir() do
       :ok -> :ok
       {:error, reason} -> Logger.error("Project config sync failed: #{inspect(reason)}")
+    end
+  end
+
+  defp intake_children do
+    case SymphonyElixir.Intake.settings() do
+      {:ok, %{intake: %{enabled: true}}} ->
+        [SymphonyElixir.Intake.Scheduler]
+
+      {:ok, _settings} ->
+        []
+
+      {:error, _reason} ->
+        Logger.warning("Jira intake scheduler not started error_code=invalid_intake_settings")
+        []
     end
   end
 end

@@ -1,0 +1,9 @@
+{
+  "data": null,
+  "errors": [
+    {
+      "message": "Entity not found",
+      "path": ["issue"]
+    }
+  ]
+}

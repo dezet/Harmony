@@ -94,8 +94,8 @@ containers with hot reload** (Postgres + backend + Vite), auto-detecting podman 
 ./dev/harmony.sh help       # full command list
 ```
 
-Once it's up, **open http://localhost:5173/** — in full mode the SPA is served by Vite (with
-HMR), and the backend on http://localhost:4010/ serves the JSON API (`/api/v1/`) and the socket
+Once it's up, **open <http://localhost:5173/>** — in full mode the SPA is served by Vite (with
+HMR), and the backend on <http://localhost:4010/> serves the JSON API (`/api/v1/`) and the socket
 (`/socket`). Editing a frontend file hot-reloads instantly; editing a backend `.ex` file
 recompiles and auto-restarts the app in a couple of seconds.
 
@@ -174,6 +174,12 @@ Codex session prompt.
 
 Project-specific production settings live in `projects/<slug>.yaml` and are synchronized into
 Postgres on application startup. `WORKFLOW.md` remains the global runtime contract and prompt.
+
+The Jira intake runtime reads rules from Postgres and scans each rule independently. It is disabled
+by default: `intake.enabled` controls scheduled scans, while `intake.effects_enabled` separately
+guards rule activation and external effects. A matched issue reserves its Linear UUID before any
+create request; analysis remains blocked until the matching Linear issue is confirmed. Keep both
+switches disabled until the intake rollout is explicitly approved.
 
 Minimal project config:
 
@@ -316,6 +322,7 @@ Optional environment variables:
 - `SYMPHONY_LIVE_SSH_WORKER_HOSTS` uses those SSH hosts when set, as a comma-separated list
 
 `make e2e` runs two live scenarios:
+
 - one with a local worker
 - one with SSH workers
 

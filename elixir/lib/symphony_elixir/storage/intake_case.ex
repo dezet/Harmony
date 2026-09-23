@@ -70,6 +70,7 @@ defmodule SymphonyElixir.Storage.IntakeCase do
       :repair_approved_version,
       :lock_version
     ])
+    |> ensure_description_text()
     |> put_uuid_default(:linear_issue_id)
     |> validate_required([
       :project_id,
@@ -79,7 +80,6 @@ defmodule SymphonyElixir.Storage.IntakeCase do
       :jira_key,
       :jira_url,
       :title,
-      :description_text,
       :priority_id,
       :priority_name,
       :jira_updated_at,
@@ -105,6 +105,14 @@ defmodule SymphonyElixir.Storage.IntakeCase do
     case get_field(changeset, field) do
       nil -> put_change(changeset, field, Ecto.UUID.generate())
       _value -> changeset
+    end
+  end
+
+  defp ensure_description_text(changeset) do
+    if is_nil(get_field(changeset, :description_text)) do
+      put_change(changeset, :description_text, "")
+    else
+      changeset
     end
   end
 end
