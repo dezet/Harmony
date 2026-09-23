@@ -104,14 +104,7 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   @spec run_turn(session(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run_turn(
-        %{
-          port: port,
-          metadata: metadata,
-          auto_approve_requests: auto_approve_requests,
-          thread_id: thread_id,
-          workspace: workspace,
-          session_policies: session_policies
-        },
+        %{session_policies: session_policies} = session,
         prompt,
         issue,
         opts \\ []
@@ -121,11 +114,24 @@ defmodule SymphonyElixir.Codex.AppServer do
     tool_executor = session_tool_executor(session_policies, opts)
 
     with_deadline(Map.get(session_policies, :deadline_ms), fn ->
-      run_session_turn(port, metadata, auto_approve_requests, thread_id, workspace, session_policies, prompt, issue, on_message, tool_executor)
+      run_session_turn(session, prompt, issue, on_message, tool_executor)
     end)
   end
 
-  defp run_session_turn(port, metadata, auto_approve_requests, thread_id, workspace, session_policies, prompt, issue, on_message, tool_executor) do
+  defp run_session_turn(
+         %{
+           port: port,
+           metadata: metadata,
+           auto_approve_requests: auto_approve_requests,
+           thread_id: thread_id,
+           workspace: workspace,
+           session_policies: session_policies
+         },
+         prompt,
+         issue,
+         on_message,
+         tool_executor
+       ) do
     case start_turn(port, thread_id, prompt, issue, workspace, session_policies) do
       {:ok, turn_id} ->
         session_id = "#{thread_id}-#{turn_id}"
@@ -277,29 +283,41 @@ defmodule SymphonyElixir.Codex.AppServer do
         {:error, :analysis_remote_worker_unsupported}
 
       :analysis ->
-        with {:ok, policy} <- AnalysisPolicy.build(Keyword.get(opts, :analysis_policy, %{})) do
-          deadline_ms =
-            Keyword.get(opts, :deadline_ms) ||
-              System.monotonic_time(:millisecond) + Config.analysis_settings().timeout_ms
-
-          timeout_ms = remaining_timeout(deadline_ms, Config.analysis_settings().timeout_ms)
-
-          if timeout_ms <= 0 do
-            {:error, :turn_timeout}
-          else
-            {:ok,
-             Map.merge(policy, %{
-               auto_approve_requests: false,
-               profile: :analysis,
-               runtime_workspace_roots: [workspace],
-               turn_timeout_ms: timeout_ms,
-               deadline_ms: deadline_ms
-             })}
-          end
-        end
+        analysis_session_policies(workspace, opts)
 
       profile ->
         {:error, {:unsupported_session_profile, profile}}
+    end
+  end
+
+  defp analysis_session_policies(workspace, opts) do
+    case AnalysisPolicy.build(Keyword.get(opts, :analysis_policy, %{})) do
+      {:ok, policy} ->
+        deadline_ms =
+          Keyword.get(opts, :deadline_ms) ||
+            System.monotonic_time(:millisecond) + Config.analysis_settings().timeout_ms
+
+        build_analysis_session_policies(policy, workspace, deadline_ms)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp build_analysis_session_policies(policy, workspace, deadline_ms) do
+    timeout_ms = remaining_timeout(deadline_ms, Config.analysis_settings().timeout_ms)
+
+    if timeout_ms <= 0 do
+      {:error, :turn_timeout}
+    else
+      {:ok,
+       Map.merge(policy, %{
+         auto_approve_requests: false,
+         profile: :analysis,
+         runtime_workspace_roots: [workspace],
+         turn_timeout_ms: timeout_ms,
+         deadline_ms: deadline_ms
+       })}
     end
   end
 

@@ -73,16 +73,19 @@ defmodule SymphonyElixir.Intake.CommentPublisher do
   defp load_result(%IntegrationDelivery{case_id: case_id, payload: payload}) do
     version = payload_version(payload)
 
-    with true <- is_integer(version) and version > 0,
-         %IntakeCase{} = intake_case <- Repo.get(IntakeCase, case_id),
-         %IntakeAnalysis{status: status, result: result} = analysis
-         when status in ["succeeded", "needs_input"] and is_map(result) <-
-           Repo.get_by(IntakeAnalysis, case_id: case_id, version: version) do
-      {:ok, intake_case, analysis, version}
-    else
-      false -> {:error, :analysis_result_not_ready}
-      nil -> {:error, :analysis_result_not_ready}
-      _other -> {:error, :analysis_result_not_ready}
+    case version do
+      version when version > 0 ->
+        with %IntakeCase{} = intake_case <- Repo.get(IntakeCase, case_id),
+             %IntakeAnalysis{status: status, result: result} = analysis
+             when status in ["succeeded", "needs_input"] and is_map(result) <-
+               Repo.get_by(IntakeAnalysis, case_id: case_id, version: version) do
+          {:ok, intake_case, analysis, version}
+        else
+          _other -> {:error, :analysis_result_not_ready}
+        end
+
+      _invalid_version ->
+        {:error, :analysis_result_not_ready}
     end
   end
 
@@ -117,46 +120,58 @@ defmodule SymphonyElixir.Intake.CommentPublisher do
   defp post_once(delivery, intake_case, version, rendered, client_opts, opts) do
     manual_retry = payload_integer(delivery.payload, "manual_retries", 0)
 
-    cond do
-      ambiguous_post_exists?(delivery.id) and manual_retry == 0 ->
+    if ambiguous_post_exists?(delivery.id) and manual_retry == 0 do
+      {:unknown, "jira_comment_outcome_unknown"}
+    else
+      post_key = "lease-#{delivery.attempts}-manual-#{manual_retry}"
+
+      post_comment_once(delivery, intake_case, version, rendered, client_opts, opts, post_key)
+    end
+  end
+
+  defp post_comment_once(delivery, intake_case, version, rendered, client_opts, opts, post_key) do
+    case record_post_started(delivery, intake_case, version, post_key, rendered.marker, opts) do
+      :ok ->
+        create_comment_once(delivery, intake_case, post_key, rendered, client_opts, opts)
+
+      {:error, :post_already_attempted} ->
         {:unknown, "jira_comment_outcome_unknown"}
 
-      true ->
-        post_key = "lease-#{delivery.attempts}-manual-#{manual_retry}"
+      {:error, :stale_lease} ->
+        {:error, "stale_lease"}
 
-        with :ok <- record_post_started(delivery, intake_case, version, post_key, rendered.marker, opts) do
-          case CloudClient.create_comment(
-                 intake_case.jira_issue_id,
-                 rendered.body,
-                 [rendered.property],
-                 client_opts
-               ) do
-            {:ok, %{"id" => id}} when is_binary(id) and id != "" ->
-              {:ok, %{provider_id: id}}
+      {:error, _reason} ->
+        {:retry, "jira_comment_local_state_unavailable", nil}
+    end
+  end
 
-            {:ok, _response} ->
-              reconcile_ambiguous_post(intake_case, rendered.marker, client_opts)
+  defp create_comment_once(delivery, intake_case, post_key, rendered, client_opts, opts) do
+    case CloudClient.create_comment(
+           intake_case.jira_issue_id,
+           rendered.body,
+           [rendered.property],
+           client_opts
+         ) do
+      {:ok, %{"id" => id}} when is_binary(id) and id != "" ->
+        {:ok, %{provider_id: id}}
 
-            {:error, %{kind: :http_status, status: status} = error} ->
-              handle_post_http_error(
-                delivery,
-                intake_case,
-                post_key,
-                status,
-                error,
-                rendered.marker,
-                client_opts,
-                opts
-              )
+      {:ok, _response} ->
+        reconcile_ambiguous_post(intake_case, rendered.marker, client_opts)
 
-            {:error, _reason} ->
-              reconcile_ambiguous_post(intake_case, rendered.marker, client_opts)
-          end
-        else
-          {:error, :post_already_attempted} -> {:unknown, "jira_comment_outcome_unknown"}
-          {:error, :stale_lease} -> {:error, "stale_lease"}
-          {:error, _reason} -> {:retry, "jira_comment_local_state_unavailable", nil}
-        end
+      {:error, %{kind: :http_status, status: status} = error} ->
+        handle_post_http_error(
+          delivery,
+          intake_case,
+          post_key,
+          status,
+          error,
+          rendered.marker,
+          client_opts,
+          opts
+        )
+
+      {:error, _reason} ->
+        reconcile_ambiguous_post(intake_case, rendered.marker, client_opts)
     end
   end
 
@@ -178,14 +193,17 @@ defmodule SymphonyElixir.Intake.CommentPublisher do
   end
 
   defp reconcile_ambiguous_post(intake_case, marker, client_opts) do
-    with {:ok, comments} <- CloudClient.list_comments(intake_case.jira_issue_id, client_opts) do
-      case Enum.find(comments, &marker_match?(&1, marker)) do
-        %{"id" => id} when is_binary(id) and id != "" -> {:ok, %{provider_id: id}}
-        nil -> {:unknown, "jira_comment_outcome_unknown"}
-        _comment -> {:unknown, "jira_comment_marker_found_without_id"}
-      end
-    else
+    case CloudClient.list_comments(intake_case.jira_issue_id, client_opts) do
+      {:ok, comments} -> reconcile_comments(comments, marker)
       _error -> {:unknown, "jira_comment_outcome_unknown"}
+    end
+  end
+
+  defp reconcile_comments(comments, marker) do
+    case Enum.find(comments, &marker_match?(&1, marker)) do
+      %{"id" => id} when is_binary(id) and id != "" -> {:ok, %{provider_id: id}}
+      nil -> {:unknown, "jira_comment_outcome_unknown"}
+      _comment -> {:unknown, "jira_comment_marker_found_without_id"}
     end
   end
 

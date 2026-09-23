@@ -102,6 +102,8 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
     }
   }
 
+  @typep symlink_prefixes :: [Path.t()]
+
   @doc "Builds the only supported policy for an analysis session."
   @spec build(map()) :: {:ok, t()} | {:error, term()}
   def build(options) when is_map(options) do
@@ -203,17 +205,22 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
 
   defp create_private_dirs(paths) do
     Enum.reduce_while(paths, :ok, fn path, :ok ->
-      case File.mkdir_p(path) do
-        :ok ->
-          case File.chmod(path, 0o700) do
-            :ok -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, {:chmod_failed, path, reason}}}
-          end
-
-        {:error, reason} ->
-          {:halt, {:error, {:mkdir_failed, path, reason}}}
-      end
+      create_private_dir(path)
     end)
+  end
+
+  defp create_private_dir(path) do
+    case File.mkdir_p(path) do
+      :ok -> chmod_private_dir(path)
+      {:error, reason} -> {:halt, {:error, {:mkdir_failed, path, reason}}}
+    end
+  end
+
+  defp chmod_private_dir(path) do
+    case File.chmod(path, 0o700) do
+      :ok -> {:cont, :ok}
+      {:error, reason} -> {:halt, {:error, {:chmod_failed, path, reason}}}
+    end
   end
 
   defp copy_auth_file(codex_home) do
@@ -224,9 +231,8 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
     target_auth = Path.join(codex_home, "auth.json")
 
     if File.regular?(source_auth) do
-      with :ok <- File.cp(source_auth, target_auth),
-           :ok <- File.chmod(target_auth, 0o600) do
-        :ok
+      with :ok <- File.cp(source_auth, target_auth) do
+        File.chmod(target_auth, 0o600)
       end
     else
       :ok
@@ -236,9 +242,8 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
   defp write_codex_config(codex_home, codex_executable_paths) do
     path = Path.join(codex_home, "config.toml")
 
-    with :ok <- File.write(path, codex_config(codex_executable_paths)),
-         :ok <- File.chmod(path, 0o600) do
-      :ok
+    with :ok <- File.write(path, codex_config(codex_executable_paths)) do
+      File.chmod(path, 0o600)
     end
   end
 
@@ -295,13 +300,15 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
 
       executable ->
         # The sandbox executor re-executes Codex by its resolved path, not the PATH symlink.
-        case resolve_symlinks(Path.expand(executable), MapSet.new(), 0) do
+        case resolve_symlinks(Path.expand(executable), [], 0) do
           {:ok, resolved} -> {:ok, [resolved]}
           {:error, reason} -> {:error, {:codex_executable_resolution_failed, reason}}
         end
     end
   end
 
+  @spec resolve_symlinks(Path.t(), symlink_prefixes(), non_neg_integer()) ::
+          {:ok, Path.t()} | {:error, term()}
   defp resolve_symlinks(path, seen, depth) when depth < 40 do
     case Enum.find(path_prefixes(path), fn prefix ->
            match?({:ok, %File.Stat{type: :symlink}}, File.lstat(prefix))
@@ -310,26 +317,39 @@ defmodule SymphonyElixir.Intake.AnalysisPolicy do
         {:ok, path}
 
       prefix ->
-        if MapSet.member?(seen, prefix) do
-          {:error, {:symlink_loop, prefix}}
-        else
-          with {:ok, target} <- File.read_link(prefix) do
-            target_path =
-              if Path.type(target) == :absolute do
-                target
-              else
-                Path.expand(target, Path.dirname(prefix))
-              end
-
-            suffix = Path.relative_to(path, prefix)
-            expanded = if suffix == ".", do: target_path, else: Path.join(target_path, suffix)
-            resolve_symlinks(expanded, MapSet.put(seen, prefix), depth + 1)
-          end
-        end
+        resolve_symlink_prefix(path, prefix, seen, depth)
     end
   end
 
   defp resolve_symlinks(_path, _seen, _depth), do: {:error, :too_many_symlink_levels}
+
+  @spec resolve_symlink_prefix(Path.t(), Path.t(), symlink_prefixes(), non_neg_integer()) ::
+          {:ok, Path.t()} | {:error, term()}
+  defp resolve_symlink_prefix(path, prefix, seen, depth) do
+    if prefix in seen do
+      {:error, {:symlink_loop, prefix}}
+    else
+      case File.read_link(prefix) do
+        {:ok, target} -> resolve_symlink_target(path, prefix, target, seen, depth)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  @spec resolve_symlink_target(Path.t(), Path.t(), Path.t(), symlink_prefixes(), non_neg_integer()) ::
+          {:ok, Path.t()} | {:error, term()}
+  defp resolve_symlink_target(path, prefix, target, seen, depth) do
+    target_path =
+      if Path.type(target) == :absolute do
+        target
+      else
+        Path.expand(target, Path.dirname(prefix))
+      end
+
+    suffix = Path.relative_to(path, prefix)
+    expanded = if suffix == ".", do: target_path, else: Path.join(target_path, suffix)
+    resolve_symlinks(expanded, [prefix | seen], depth + 1)
+  end
 
   defp path_prefixes(path) do
     {_, prefixes} =

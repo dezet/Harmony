@@ -68,6 +68,38 @@ defmodule SymphonyElixir.IntakeAnalysisResultTest do
              )
   end
 
+  test "rejects source symlinks and invalid line references inside the snapshot" do
+    snapshot = snapshot!()
+    context = context("issue_and_repository", snapshot)
+    valid = valid_result("issue_and_repository", "src/worker.ex")
+    outside = Path.join(System.tmp_dir!(), "analysis-result-outside-#{System.unique_integer([:positive])}")
+    File.write!(outside, "outside\n")
+    on_exit(fn -> File.rm(outside) end)
+    File.ln_s!(outside, Path.join(snapshot, "src/link.ex"))
+
+    for source <- ["src/link.ex", "src/worker.ex:0", "src/worker.ex:-1", "src/worker.ex:12x"] do
+      result = put_in(valid, [:facts, Access.at(0), :source], source)
+      assert {:error, :invalid_source} = AnalysisResult.validate(Jason.encode!(result), context)
+    end
+  end
+
+  test "rejects malformed JSON and unsupported hypothesis evidence" do
+    context = context("issue_only", System.tmp_dir!())
+    valid = valid_result("issue_only", "jira:OPS-42")
+
+    assert {:error, :invalid_json} = AnalysisResult.validate("{", context)
+    assert {:error, :invalid_result} = AnalysisResult.validate(nil, context)
+
+    for hypothesis <- [
+          %{text: "Maybe", confidence: "certain", evidence: ["jira:OPS-42"]},
+          %{text: "Maybe", confidence: "medium", evidence: List.duplicate("x", 21)},
+          %{text: "Maybe", confidence: "medium", evidence: ["<script>unsafe</script>"]}
+        ] do
+      result = Map.put(valid, :hypotheses, [hypothesis])
+      assert {:error, _reason} = AnalysisResult.validate(Jason.encode!(result), context)
+    end
+  end
+
   defp valid_result(context_scope, source) do
     %{
       summary: "A concise finding",

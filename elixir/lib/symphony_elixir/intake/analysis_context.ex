@@ -191,22 +191,27 @@ defmodule SymphonyElixir.Intake.AnalysisContext do
 
     case first_components do
       [root] when has_nested_path? ->
-        if Enum.any?(entries, &(&1.path == root and &1.type != :directory)) do
-          {:error, {:unsafe_archive, :invalid_archive_root}}
-        else
-          stripped =
-            Enum.map(entries, fn entry ->
-              relative = String.replace_prefix(entry.path, root <> "/", "")
-              relative = if relative == entry.path and entry.path == root, do: "", else: relative
-              %{entry | path: relative}
-            end)
-
-          {:ok, Enum.reject(stripped, &(&1.path == ""))}
-        end
+        strip_archive_root_entries(entries, root)
 
       _other ->
         {:ok, entries}
     end
+  end
+
+  defp strip_archive_root_entries(entries, root) do
+    if Enum.any?(entries, &(&1.path == root and &1.type != :directory)) do
+      {:error, {:unsafe_archive, :invalid_archive_root}}
+    else
+      stripped = Enum.map(entries, &strip_archive_entry(&1, root))
+
+      {:ok, Enum.reject(stripped, &(&1.path == ""))}
+    end
+  end
+
+  defp strip_archive_entry(entry, root) do
+    relative = String.replace_prefix(entry.path, root <> "/", "")
+    relative = if relative == entry.path and entry.path == root, do: "", else: relative
+    %{entry | path: relative}
   end
 
   defp reject_unsafe_archive_entries(entries) do
@@ -295,17 +300,17 @@ defmodule SymphonyElixir.Intake.AnalysisContext do
     |> Enum.reduce_while(:ok, fn entry, :ok ->
       path = Path.join(snapshot_path, entry.path)
 
-      case safe_snapshot_path(snapshot_path, path) do
-        :ok ->
-          case File.mkdir_p(path) do
-            :ok -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
+      case create_snapshot_directory_path(snapshot_path, path) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp create_snapshot_directory_path(snapshot_path, path) do
+    with :ok <- safe_snapshot_path(snapshot_path, path) do
+      File.mkdir_p(path)
+    end
   end
 
   defp write_snapshot_files(snapshot_path, entries, contents) do
@@ -313,17 +318,21 @@ defmodule SymphonyElixir.Intake.AnalysisContext do
 
     with :ok <- validate_extracted_files(contents, expected_files) do
       Enum.reduce_while(contents, :ok, fn {name, binary}, :ok ->
-        with entry when is_map(entry) <- Enum.find(entries, &(&1.name == name and &1.type == :regular)),
-             path = Path.join(snapshot_path, entry.path),
-             :ok <- safe_snapshot_path(snapshot_path, path),
-             :ok <- File.mkdir_p(Path.dirname(path)),
-             :ok <- File.write(path, binary) do
-          {:cont, :ok}
-        else
-          {:error, reason} -> {:halt, {:error, reason}}
-          nil -> {:halt, {:error, :unexpected_archive_file}}
-        end
+        write_snapshot_file(snapshot_path, entries, name, binary)
       end)
+    end
+  end
+
+  defp write_snapshot_file(snapshot_path, entries, name, binary) do
+    with entry when is_map(entry) <- Enum.find(entries, &(&1.name == name and &1.type == :regular)),
+         path = Path.join(snapshot_path, entry.path),
+         :ok <- safe_snapshot_path(snapshot_path, path),
+         :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, binary) do
+      {:cont, :ok}
+    else
+      {:error, reason} -> {:halt, {:error, reason}}
+      nil -> {:halt, {:error, :unexpected_archive_file}}
     end
   end
 
@@ -387,9 +396,8 @@ defmodule SymphonyElixir.Intake.AnalysisContext do
     with {:ok, canonical_root} <- snapshot_root(snapshot_path),
          :ok <- ensure_snapshot_parents(canonical_root, snapshot_path),
          :ok <- ensure_path_is_canonical(snapshot_path, canonical_root),
-         :ok <- make_snapshot_directory(snapshot_path),
-         :ok <- ensure_path_is_canonical(snapshot_path, canonical_root) do
-      :ok
+         :ok <- make_snapshot_directory(snapshot_path) do
+      ensure_path_is_canonical(snapshot_path, canonical_root)
     end
   end
 
@@ -398,33 +406,43 @@ defmodule SymphonyElixir.Intake.AnalysisContext do
          {:ok, %File.Stat{type: :directory}} <- File.lstat(root),
          :ok <- ensure_path_is_canonical(root, root) do
       [Path.join(root, "intake"), Path.dirname(snapshot_path)]
-      |> Enum.reduce_while(:ok, fn path, :ok ->
-        case File.lstat(path) do
-          {:ok, %File.Stat{type: :directory}} ->
-            case ensure_path_is_canonical(path, root) do
-              :ok -> {:cont, :ok}
-              {:error, reason} -> {:halt, {:error, reason}}
-            end
-
-          {:ok, _other} ->
-            {:halt, {:error, :invalid_snapshot_parent}}
-
-          {:error, :enoent} ->
-            with :ok <- ensure_path_is_canonical(Path.dirname(path), root),
-                 :ok <- File.mkdir(path),
-                 :ok <- ensure_path_is_canonical(path, root) do
-              {:cont, :ok}
-            else
-              {:error, reason} -> {:halt, {:error, reason}}
-            end
-
-          {:error, reason} ->
-            {:halt, {:error, {:snapshot_parent_create_failed, reason}}}
-        end
-      end)
+      |> Enum.reduce_while(:ok, fn path, :ok -> ensure_snapshot_parent(root, path) end)
     else
       {:ok, _other} -> {:error, :invalid_workspace_root}
       {:error, reason} -> {:error, {:workspace_root_create_failed, reason}}
+    end
+  end
+
+  defp ensure_snapshot_parent(root, path) do
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :directory}} ->
+        validate_snapshot_parent(root, path)
+
+      {:ok, _other} ->
+        {:halt, {:error, :invalid_snapshot_parent}}
+
+      {:error, :enoent} ->
+        create_snapshot_parent(root, path)
+
+      {:error, reason} ->
+        {:halt, {:error, {:snapshot_parent_create_failed, reason}}}
+    end
+  end
+
+  defp validate_snapshot_parent(root, path) do
+    case ensure_path_is_canonical(path, root) do
+      :ok -> {:cont, :ok}
+      {:error, reason} -> {:halt, {:error, reason}}
+    end
+  end
+
+  defp create_snapshot_parent(root, path) do
+    with :ok <- ensure_path_is_canonical(Path.dirname(path), root),
+         :ok <- File.mkdir(path),
+         :ok <- ensure_path_is_canonical(path, root) do
+      {:cont, :ok}
+    else
+      {:error, reason} -> {:halt, {:error, reason}}
     end
   end
 

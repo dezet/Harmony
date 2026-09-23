@@ -71,26 +71,21 @@ defmodule SymphonyElixir.Forge.ArchiveRedirect do
   defp response_location(_response), do: {:error, :invalid_archive_redirect}
 
   defp resolve_redirect(current_url, location) when is_binary(location) and location != "" do
-    try do
-      merged_uri = URI.merge(URI.parse(current_url), location)
-
-      with {:ok, _validated_uri} <- validate_https_uri(merged_uri) do
-        {:ok, URI.to_string(merged_uri)}
-      end
-    rescue
-      ArgumentError -> {:error, :invalid_archive_redirect}
+    with :ok <- validate_uri_syntax(location),
+         merged_uri = URI.merge(URI.parse(current_url), location),
+         {:ok, validated_uri} <- validate_https_uri(merged_uri) do
+      {:ok, URI.to_string(validated_uri)}
     end
+  rescue
+    ArgumentError -> {:error, :invalid_archive_redirect}
   end
 
   defp resolve_redirect(_current_url, _location), do: {:error, :invalid_archive_redirect}
 
   defp validate_https_url(url) when is_binary(url) do
-    url
-    |> URI.parse()
-    |> validate_https_uri()
-    |> case do
-      {:ok, uri} -> {:ok, URI.to_string(uri)}
-      {:error, reason} -> {:error, reason}
+    with :ok <- validate_uri_syntax(url),
+         {:ok, uri} <- url |> URI.parse() |> validate_https_uri() do
+      {:ok, URI.to_string(uri)}
     end
   rescue
     ArgumentError -> {:error, :invalid_archive_redirect}
@@ -98,30 +93,40 @@ defmodule SymphonyElixir.Forge.ArchiveRedirect do
 
   defp validate_https_url(_url), do: {:error, :invalid_archive_redirect}
 
+  defp validate_uri_syntax(url) do
+    if String.valid?(url) do
+      url |> :uri_string.parse() |> validate_uri_port()
+    else
+      {:error, :invalid_archive_redirect}
+    end
+  end
+
+  defp validate_uri_port(parsed) when is_map(parsed) do
+    case Map.fetch(parsed, :port) do
+      :error -> :ok
+      {:ok, port} when is_integer(port) and port in 1..65_535 -> :ok
+      _other -> {:error, :invalid_archive_redirect}
+    end
+  end
+
+  defp validate_uri_port(_parsed), do: {:error, :invalid_archive_redirect}
+
   defp validate_https_uri(uri) do
     cond do
       uri.scheme != "https" -> {:error, :insecure_archive_redirect}
       is_nil(uri.host) or uri.host == "" -> {:error, :invalid_archive_redirect}
       not is_nil(uri.userinfo) -> {:error, :invalid_archive_redirect}
       not is_nil(uri.fragment) -> {:error, :invalid_archive_redirect}
-      not valid_authority?(uri) -> {:error, :invalid_archive_redirect}
+      not valid_uri_host_and_port?(uri) -> {:error, :invalid_archive_redirect}
       true -> {:ok, uri}
     end
   end
 
-  defp valid_authority?(%URI{host: host, authority: authority, port: port})
-       when is_binary(host) and is_binary(authority) do
-    with true <- String.valid?(host),
-         true <- valid_host?(host),
-         {:ok, authority_port} <- authority_port(authority, host),
-         true <- valid_port?(authority_port, port) do
-      true
-    else
-      _other -> false
-    end
+  defp valid_uri_host_and_port?(%URI{host: host, port: port}) when is_binary(host) do
+    String.valid?(host) and valid_host?(host) and valid_port?(port)
   end
 
-  defp valid_authority?(_uri), do: false
+  defp valid_uri_host_and_port?(_uri), do: false
 
   defp valid_host?(host) do
     case :inet.parse_address(String.to_charlist(host)) do
@@ -143,26 +148,8 @@ defmodule SymphonyElixir.Forge.ArchiveRedirect do
       end)
   end
 
-  defp authority_port(authority, host) do
-    host_in_authority = if String.contains?(host, ":"), do: "[#{host}]", else: host
-
-    case String.split(authority, host_in_authority, parts: 2) do
-      ["", ""] -> {:ok, nil}
-      ["", ":" <> port] -> parse_port(port)
-      _other -> :error
-    end
-  end
-
-  defp parse_port(port) do
-    case Integer.parse(port) do
-      {port, ""} when port in 1..65_535 -> {:ok, port}
-      _other -> :error
-    end
-  end
-
-  defp valid_port?(nil, 443), do: true
-  defp valid_port?(authority_port, authority_port), do: true
-  defp valid_port?(_authority_port, _uri_port), do: false
+  defp valid_port?(port) when is_integer(port) and port in 1..65_535, do: true
+  defp valid_port?(_port), do: false
 
   defp safe_redirect_headers(headers) do
     Enum.filter(headers, fn

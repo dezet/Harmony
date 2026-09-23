@@ -125,6 +125,32 @@ defmodule SymphonyElixir.Jira.CloudClientTest do
     assert :counters.get(calls, 1) == 1
   end
 
+  test "rejects an invalid page callback result without requesting another page" do
+    calls = :counters.new(1, [:atomics])
+
+    request_fun = fn _request ->
+      :counters.add(calls, 1, 1)
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{"issues" => [jira_issue("101", "OPS-1", "First")], "nextPageToken" => "cursor-1", "isLast" => false}
+       }}
+    end
+
+    assert {:error, %{kind: :invalid_page_callback}} =
+             CloudClient.search_issues("project = OPS",
+               site_url: @site_url,
+               auth_mode: :classic,
+               account_email: "agent@example.org",
+               token: "api-token",
+               request_fun: request_fun,
+               page_fun: fn _issues -> :unexpected end
+             )
+
+    assert :counters.get(calls, 1) == 1
+  end
+
   test "rejects a repeated enhanced-search page token" do
     calls = :counters.new(1, [:atomics])
 
@@ -415,6 +441,29 @@ defmodule SymphonyElixir.Jira.CloudClientTest do
       assert error.retry_after == if(status == 429, do: "37", else: nil)
       refute inspect(error) =~ "must not escape"
     end)
+  end
+
+  test "rejects malformed comment requests before transport and malformed success bodies" do
+    no_request = fn _request -> flunk("invalid comment reached Jira transport") end
+    opts = [site_url: @site_url, auth_mode: :classic, account_email: "a@b.test", token: "t", request_fun: no_request]
+    body = %{"type" => "doc", "version" => 1, "content" => []}
+
+    assert {:error, %{kind: :invalid_request}} = CloudClient.list_comments("OPS/42", opts)
+    assert {:error, %{kind: :invalid_request}} = CloudClient.create_comment("OPS/42", body, [], opts)
+    assert {:error, %{kind: :invalid_request}} = CloudClient.create_comment("OPS-42", body, [%{key: "", value: %{}}], opts)
+    assert {:error, %{kind: :invalid_request}} = CloudClient.create_comment("OPS-42", body, [%{key: "harmony", value: []}], opts)
+    assert {:error, %{kind: :invalid_request}} = CloudClient.create_comment("OPS-42", "not-adf", [], opts)
+
+    malformed_response = fn request ->
+      assert request[:method] == :post
+      {:ok, %Req.Response{status: 201, body: "created without comment id"}}
+    end
+
+    comment_properties = [%{key: "harmony.analysis", value: %{version: 1}}]
+    malformed_opts = Keyword.put(opts, :request_fun, malformed_response)
+
+    assert {:error, %{kind: :malformed_response}} =
+             CloudClient.create_comment("OPS-42", body, comment_properties, malformed_opts)
   end
 
   test "normalizes timeout without exposing transport details" do

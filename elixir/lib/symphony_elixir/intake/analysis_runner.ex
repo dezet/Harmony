@@ -5,7 +5,7 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
 
   alias SymphonyElixir.AgentBackends.Codex
   alias SymphonyElixir.Config
-  alias SymphonyElixir.Intake.{AnalysisContext, AnalysisPrompt, AnalysisResult}
+  alias SymphonyElixir.Intake.{AnalysisContext, AnalysisPrompt, AnalysisResult, Outbox}
   alias SymphonyElixir.Repo
 
   alias SymphonyElixir.Storage.{
@@ -27,28 +27,30 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
       when is_binary(case_id) and is_list(opts) do
     started_ms = monotonic_time(opts)
 
-    with {:ok, attempt} <- begin_attempt(delivery, opts) do
-      root = workspace_root(opts)
-      version = attempt.version
+    case begin_attempt(delivery, opts) do
+      {:ok, attempt} ->
+        root = workspace_root(opts)
+        version = attempt.version
 
-      outcome =
-        try do
-          run_attempt(attempt, root, started_ms, opts)
-        rescue
-          _exception -> {:error, :analysis_failed}
-        catch
-          :exit, _reason -> {:error, :analysis_failed}
-        end
+        outcome =
+          try do
+            run_attempt(attempt, root, started_ms, opts)
+          rescue
+            _exception -> {:error, :analysis_failed}
+          catch
+            :exit, _reason -> {:error, :analysis_failed}
+          end
 
-      outcome =
-        case cleanup_snapshot(root, case_id, version, opts) do
-          :ok -> outcome
-          {:error, _reason} -> {:error, :analysis_snapshot_cleanup_failed}
-        end
+        outcome =
+          case cleanup_snapshot(root, case_id, version, opts) do
+            :ok -> outcome
+            {:error, _reason} -> {:error, :analysis_snapshot_cleanup_failed}
+          end
 
-      finish_attempt(delivery, attempt, outcome, opts)
-    else
-      {:error, reason} -> {:error, error_code(reason)}
+        finish_attempt(delivery, attempt, outcome, opts)
+
+      {:error, reason} ->
+        {:error, error_code(reason)}
     end
   rescue
     _exception -> {:retry, "analysis_local_state_unavailable", nil}
@@ -139,7 +141,7 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
 
   defp run_attempt(attempt, workspace_root, started_ms, opts) do
     with {:ok, context} <- prepare_context(workspace_root, attempt, opts),
-         input_snapshot = Map.merge(attempt.analysis.input_snapshot || %{}, context.input_snapshot || %{}),
+         input_snapshot = Map.merge(attempt.analysis.input_snapshot || %{}, context.input_snapshot),
          :ok <- persist_input_snapshot(attempt, input_snapshot, opts),
          deadline_ms = started_ms + timeout_ms(opts),
          true <- remaining_ms(deadline_ms, opts) > 0,
@@ -261,7 +263,7 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
   end
 
   defp heartbeat_delivery(%IntegrationDelivery{id: id, lease_token: token}) when is_binary(token) do
-    case SymphonyElixir.Intake.Outbox.heartbeat(id, token) do
+    case Outbox.heartbeat(id, token) do
       {:ok, _delivery} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -294,7 +296,6 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
   end
 
   defp response_value(response, key) when is_map(response), do: Map.get(response, key) || Map.get(response, to_string(key))
-  defp response_value(_response, _key), do: nil
 
   defp usage_key?(key), do: to_string(key) in ~w(input_tokens cached_input_tokens output_tokens total_tokens)
 
@@ -343,7 +344,18 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
         mark_stale_work_run(attempt, reason, opts)
 
       {:error, reason} ->
-        {:retry, error_code(reason), nil}
+        code = error_code(reason)
+
+        case persist_failure(delivery, attempt, code, opts) do
+          :ok ->
+            {:retry, code, nil}
+
+          {:error, stale_reason} when stale_reason in [:stale_lease, :stale_analysis_version] ->
+            mark_stale_work_run(attempt, stale_reason, opts)
+
+          {:error, _persist_reason} ->
+            {:retry, "analysis_result_persist_failed", nil}
+        end
     end
   end
 
@@ -363,10 +375,6 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
       {:error, _persist_reason} ->
         {:retry, "analysis_result_persist_failed", nil}
     end
-  end
-
-  defp finish_attempt(_delivery, attempt, _other, opts) do
-    finish_attempt(%IntegrationDelivery{attempts: @max_model_starts}, attempt, {:error, :analysis_failed}, opts)
   end
 
   defp persist_success(delivery, attempt, outcome, opts) do
@@ -417,6 +425,8 @@ defmodule SymphonyElixir.Intake.AnalysisRunner do
       end
     end)
     |> transaction_result()
+  rescue
+    _exception -> {:error, :analysis_result_persist_failed}
   end
 
   defp persist_failure(delivery, attempt, code, opts) do

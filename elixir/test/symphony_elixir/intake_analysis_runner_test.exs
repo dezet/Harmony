@@ -1,5 +1,11 @@
+defmodule SymphonyElixir.IntakeAnalysisRunnerTest.UnavailableRepositoryAdapter do
+  def get_repository_snapshot(_creds, _repo_ref), do: {:error, :repository_unavailable}
+end
+
 defmodule SymphonyElixir.IntakeAnalysisRunnerTest do
   use SymphonyElixir.TestSupport
+
+  import Ecto.Query
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.Intake.{AnalysisRunner, Dispatcher, Outbox}
@@ -7,9 +13,9 @@ defmodule SymphonyElixir.IntakeAnalysisRunnerTest do
 
   alias SymphonyElixir.Storage.{
     AutomationRule,
-    IntakeEvent,
     IntakeAnalysis,
     IntakeCase,
+    IntakeEvent,
     IntegrationConnection,
     IntegrationDelivery,
     Project,
@@ -120,6 +126,333 @@ defmodule SymphonyElixir.IntakeAnalysisRunnerTest do
 
     assert Repo.get!(Project, project.id).id == project.id
     assert Repo.get!(IntegrationConnection, connection.id).secret == "synthetic-jira-token"
+  end
+
+  test "assembles streamed result deltas and keeps only supported usage counters" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+    encoded_result = Jason.encode!(valid_result(intake_case.jira_key))
+    split_at = div(byte_size(encoded_result), 2)
+    {first_delta, second_delta} = String.split_at(encoded_result, split_at)
+
+    assert {:ok, _completed} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 operation: "analysis",
+                 analysis_opts: [
+                   context_fun: issue_only_context_fun(),
+                   model_fun: fn _path, _prompt, _issue, opts ->
+                     opts[:on_message].(%{
+                       payload: %{
+                         "method" => "codex/event/agent_message_delta",
+                         "params" => %{"delta" => first_delta}
+                       }
+                     })
+
+                     opts[:on_message].(%{
+                       payload: %{
+                         "method" => "item/agentMessage/delta",
+                         "params" => %{"msg" => %{"text" => second_delta}}
+                       }
+                     })
+
+                     opts[:on_message].(%{
+                       payload: %{
+                         "params" => %{
+                           "usage" => %{
+                             "input_tokens" => 12,
+                             "cached_input_tokens" => 3,
+                             "output_tokens" => 5,
+                             "ignored_counter" => 99
+                           }
+                         }
+                       }
+                     })
+
+                     {:ok, %{model: "streaming-model", effort: "low"}}
+                   end
+                 ]
+               )
+             )
+
+    analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert analysis.status == "succeeded"
+    assert analysis.result["summary"] == "Issue-only finding"
+    assert analysis.model == "streaming-model"
+    assert analysis.effort == "low"
+
+    assert analysis.token_usage == %{
+             "input_tokens" => 12,
+             "cached_input_tokens" => 3,
+             "output_tokens" => 5
+           }
+
+    assert Repo.get!(WorkRun, analysis.work_run_id).payload["token_usage"] == analysis.token_usage
+  end
+
+  test "a context exception retries safely before any model call" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+    context_key = {:analysis_context_attempts, make_ref()}
+    model_key = {:analysis_model_attempts, make_ref()}
+    claim_time = now()
+
+    context_fun = fn _root, _case_id, _version, _project ->
+      context_attempt = Process.get(context_key, 0) + 1
+      Process.put(context_key, context_attempt)
+
+      if context_attempt == 1 do
+        raise "synthetic context failure"
+      else
+        {:ok,
+         %{
+           path: Path.join(System.tmp_dir!(), "context-retry-snapshot"),
+           input_snapshot: %{"context_scope" => "issue_only"}
+         }}
+      end
+    end
+
+    model_fun = fn _path, _prompt, _issue, _opts ->
+      model_attempt = Process.get(model_key, 0) + 1
+      Process.put(model_key, model_attempt)
+      {:ok, %{result: Jason.encode!(valid_result(intake_case.jira_key))}}
+    end
+
+    analysis_opts = [context_fun: context_fun, model_fun: model_fun, workspace_root: System.tmp_dir!()]
+
+    assert {:retry_wait, retry_delivery} =
+             Dispatcher.dispatch_one(claim_opts(now: claim_time, operation: "analysis", analysis_opts: analysis_opts))
+
+    assert retry_delivery.last_error_code == "analysis_context_failed"
+    assert Process.get(context_key) == 1
+    assert Process.get(model_key, 0) == 0
+
+    assert {:ok, completed} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 now: DateTime.add(claim_time, 31, :second),
+                 operation: "analysis",
+                 analysis_opts: analysis_opts
+               )
+             )
+
+    assert completed.status == "succeeded"
+    assert Process.get(context_key) == 2
+    assert Process.get(model_key) == 1
+
+    analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert analysis.status == "succeeded"
+
+    work_runs =
+      Repo.all(
+        from(work_run in WorkRun,
+          where: work_run.project_id == ^intake_case.project_id and work_run.type == "jira_analysis",
+          order_by: [asc: work_run.inserted_at]
+        )
+      )
+
+    assert Enum.map(work_runs, & &1.status) == ["failed", "succeeded"]
+    assert Enum.map(work_runs, & &1.payload["attempt"]) == [1, 2]
+  end
+
+  test "a database failure queuing the comment rolls back results and exhausts durable retries" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+    constraint_name = "reject_comment_delivery_#{System.unique_integer([:positive])}"
+    Repo.query!("ALTER TABLE integration_deliveries ADD CONSTRAINT #{constraint_name} CHECK (operation <> 'jira_comment')")
+
+    model_key = {:analysis_db_failure_model_calls, make_ref()}
+    claim_time = now()
+
+    model_fun = fn _path, _prompt, _issue, _opts ->
+      Process.put(model_key, Process.get(model_key, 0) + 1)
+      {:ok, %{result: Jason.encode!(valid_result(intake_case.jira_key))}}
+    end
+
+    analysis_opts = [
+      context_fun: issue_only_context_fun(),
+      model_fun: model_fun,
+      workspace_root: System.tmp_dir!()
+    ]
+
+    assert {:retry_wait, first_retry} =
+             Dispatcher.dispatch_one(claim_opts(now: claim_time, operation: "analysis", analysis_opts: analysis_opts))
+
+    assert first_retry.last_error_code == "analysis_result_persist_failed"
+    assert Process.get(model_key) == 1
+    refute Repo.get_by(IntegrationDelivery, case_id: intake_case.id, operation: "jira_comment")
+
+    first_analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert first_analysis.status == "failed"
+    assert first_analysis.error_code == "analysis_result_persist_failed"
+    refute first_analysis.result
+    assert Repo.get!(WorkRun, first_analysis.work_run_id).status == "failed"
+    assert Repo.get!(IntakeCase, intake_case.id).analysis_status == "failed"
+
+    assert {:failed, final_delivery} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 now: DateTime.add(claim_time, 31, :second),
+                 operation: "analysis",
+                 analysis_opts: analysis_opts
+               )
+             )
+
+    assert final_delivery.last_error_code == "analysis_result_persist_failed"
+    assert final_delivery.attempts == 2
+    assert Process.get(model_key) == 2
+    refute Repo.get_by(IntegrationDelivery, case_id: intake_case.id, operation: "jira_comment")
+
+    final_analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert final_analysis.status == "failed"
+    assert final_analysis.error_code == "analysis_result_persist_failed"
+    refute final_analysis.result
+    assert Repo.get!(WorkRun, final_analysis.work_run_id).status == "failed"
+    assert Repo.get!(IntakeCase, intake_case.id).analysis_status == "failed"
+
+    assert Repo.aggregate(
+             from(event in IntakeEvent,
+               where: event.case_id == ^intake_case.id and event.type == "analysis_failed"
+             ),
+             :count
+           ) == 2
+
+    refute Repo.exists?(
+             from(event in IntakeEvent,
+               where: event.case_id == ^intake_case.id and event.type == "analysis_completed"
+             )
+           )
+  end
+
+  test "does not start the model after the analysis deadline has elapsed" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+    monotonic_key = {:analysis_monotonic_calls, make_ref()}
+
+    monotonic_time_fun = fn ->
+      call = Process.get(monotonic_key, 0) + 1
+      Process.put(monotonic_key, call)
+      if call == 1, do: 0, else: 1_000
+    end
+
+    assert {:retry_wait, retry_delivery} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 operation: "analysis",
+                 analysis_opts: [
+                   context_fun: issue_only_context_fun(),
+                   monotonic_time_fun: monotonic_time_fun,
+                   timeout_ms: 1_000,
+                   model_fun: fn _path, _prompt, _issue, _opts -> flunk("expired analysis must not start a model") end
+                 ]
+               )
+             )
+
+    assert retry_delivery.last_error_code == "analysis_timeout"
+    assert Process.get(monotonic_key) == 2
+    analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert analysis.status == "failed"
+    assert analysis.error_code == "analysis_timeout"
+    assert Repo.get!(WorkRun, analysis.work_run_id).status == "failed"
+  end
+
+  test "backend exceptions exhaust the two-start retry budget without a third model call" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+    model_key = {:analysis_backend_exception_attempts, make_ref()}
+    claim_time = now()
+    workspace_root = Path.join(System.tmp_dir!(), "analysis-backend-retry-#{System.unique_integer([:positive])}")
+
+    on_exit(fn -> File.rm_rf(workspace_root) end)
+
+    model_fun = fn _path, _prompt, _issue, _opts ->
+      attempt = Process.get(model_key, 0) + 1
+      Process.put(model_key, attempt)
+
+      if attempt == 1 do
+        raise "synthetic model transport exception"
+      else
+        exit(:synthetic_model_process_exit)
+      end
+    end
+
+    analysis_opts = [
+      workspace_root: workspace_root,
+      context_opts: [forge_adapter: SymphonyElixir.IntakeAnalysisRunnerTest.UnavailableRepositoryAdapter],
+      model_fun: model_fun
+    ]
+
+    assert {:retry_wait, retry_delivery} =
+             Dispatcher.dispatch_one(claim_opts(now: claim_time, operation: "analysis", analysis_opts: analysis_opts))
+
+    assert retry_delivery.last_error_code == "analysis_backend_failed"
+    assert Process.get(model_key) == 1
+
+    assert {:failed, failed_delivery} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 now: DateTime.add(claim_time, 31, :second),
+                 operation: "analysis",
+                 analysis_opts: analysis_opts
+               )
+             )
+
+    assert failed_delivery.last_error_code == "analysis_backend_failed"
+    assert Process.get(model_key) == 2
+
+    work_runs =
+      Repo.all(
+        from(work_run in WorkRun,
+          where: work_run.project_id == ^intake_case.project_id and work_run.type == "jira_analysis"
+        )
+      )
+      |> Enum.sort_by(& &1.payload["attempt"])
+
+    assert Enum.map(work_runs, & &1.payload["attempt"]) == [1, 2]
+    assert Enum.map(work_runs, & &1.status) == ["failed", "failed"]
+    analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+    assert analysis.input_snapshot["context_scope"] == "issue_only"
+    assert analysis.input_snapshot["context_reason"] == "repository_unavailable"
+
+    assert :empty =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 now: DateTime.add(claim_time, 200, :second),
+                 operation: "analysis",
+                 analysis_opts: analysis_opts
+               )
+             )
+
+    assert Process.get(model_key) == 2
+  end
+
+  test "a stale analysis version is rejected before creating a work run" do
+    {_project, _connection, intake_case, _delivery} = analysis_fixture!()
+
+    intake_case
+    |> IntakeCase.changeset(%{analysis_version: 2, analysis_status: "queued"})
+    |> Repo.update!()
+
+    %IntakeAnalysis{}
+    |> IntakeAnalysis.changeset(%{
+      case_id: intake_case.id,
+      version: 2,
+      status: "queued",
+      input_snapshot: %{"context_scope" => "issue_only"},
+      model: "synthetic-model",
+      effort: "medium"
+    })
+    |> Repo.insert!()
+
+    assert {:failed, failed_delivery} =
+             Dispatcher.dispatch_one(
+               claim_opts(
+                 operation: "analysis",
+                 analysis_opts: [
+                   model_fun: fn _path, _prompt, _issue, _opts -> flunk("stale analysis must not start a model") end
+                 ]
+               )
+             )
+
+    assert failed_delivery.last_error_code == "unconfirmed_linear_or_stale_version"
+    assert Repo.get!(IntakeCase, intake_case.id).analysis_version == 2
+    assert Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 2).status == "queued"
+    refute Repo.get_by(WorkRun, project_id: intake_case.project_id, type: "jira_analysis")
   end
 
   test "cleans the exact snapshot after successful and aborted model attempts" do
@@ -579,6 +912,16 @@ defmodule SymphonyElixir.IntakeAnalysisRunnerTest do
       needs_input: false,
       context_scope: "issue_only"
     }
+  end
+
+  defp issue_only_context_fun do
+    fn _root, _case_id, _version, _project ->
+      {:ok,
+       %{
+         path: Path.join(System.tmp_dir!(), "synthetic-issue-only-context"),
+         input_snapshot: %{"context_scope" => "issue_only", "context_reason" => "repository_not_configured"}
+       }}
+    end
   end
 
   defp claim_opts(overrides) do

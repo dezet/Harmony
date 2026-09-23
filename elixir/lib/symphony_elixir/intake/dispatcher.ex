@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Intake.Dispatcher do
   commits, then persists the result through the delivery's lease token.
   """
 
-  alias SymphonyElixir.Intake.Outbox
+  alias SymphonyElixir.Intake.{AnalysisRunner, CommentPublisher, LinearBridge, Outbox}
   alias SymphonyElixir.Storage.IntegrationDelivery
 
   @type adapter :: (IntegrationDelivery.t() -> term()) | module()
@@ -74,15 +74,15 @@ defmodule SymphonyElixir.Intake.Dispatcher do
   defp call_adapter(adapter, delivery) when is_atom(adapter), do: adapter.perform(delivery)
 
   defp default_adapter(%IntegrationDelivery{operation: "linear_create"} = delivery, opts) do
-    SymphonyElixir.Intake.LinearBridge.perform(delivery, Keyword.get(opts, :linear_bridge_opts, []))
+    LinearBridge.perform(delivery, Keyword.get(opts, :linear_bridge_opts, []))
   end
 
   defp default_adapter(%IntegrationDelivery{operation: "analysis"} = delivery, opts) do
-    SymphonyElixir.Intake.AnalysisRunner.perform(delivery, Keyword.get(opts, :analysis_opts, []))
+    AnalysisRunner.perform(delivery, Keyword.get(opts, :analysis_opts, []))
   end
 
   defp default_adapter(%IntegrationDelivery{operation: "jira_comment"} = delivery, opts) do
-    SymphonyElixir.Intake.CommentPublisher.perform(delivery, Keyword.get(opts, :jira_comment_opts, []))
+    CommentPublisher.perform(delivery, Keyword.get(opts, :jira_comment_opts, []))
   end
 
   defp default_adapter(%IntegrationDelivery{} = delivery, opts) do

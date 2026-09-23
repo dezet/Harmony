@@ -186,9 +186,8 @@ defmodule SymphonyElixir.Github.Client do
 
     with {:ok, response} <- ArchiveRedirect.fetch(request_opts, request_fun, @archive_stream_key),
          :ok <- check_archive_size(response),
-         :ok <- expect_archive_status(response),
-         {:ok, archive} <- archive_body(response) do
-      {:ok, archive}
+         :ok <- expect_archive_status(response) do
+      archive_body(response)
     end
   end
 

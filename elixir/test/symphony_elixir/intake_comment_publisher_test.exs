@@ -88,6 +88,300 @@ defmodule SymphonyElixir.IntakeCommentPublisherTest do
     refute_receive {:jira_request, :post, _offset}, 50
   end
 
+  test "does not publish when reading Jira comments is forbidden" do
+    {_project, _connection, _intake_case, delivery} = comment_fixture!()
+    parent = self()
+
+    request_fun = fn request ->
+      send(parent, {:jira_read_method, request[:method]})
+      {:ok, %Req.Response{status: 403, body: %{"message" => "forbidden"}}}
+    end
+
+    assert {:failed, failed} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts()
+             )
+
+    assert failed.id == delivery.id
+    assert failed.last_error_code == "jira_read_permission_denied"
+    assert_receive {:jira_read_method, :get}
+    refute_receive {:jira_read_method, :post}, 50
+  end
+
+  test "preserves Retry-After from Jira comment reads without attempting a POST" do
+    {_project, _connection, _intake_case, _delivery} = comment_fixture!()
+    claim_time = now()
+    parent = self()
+
+    request_fun = fn request ->
+      send(parent, {:jira_read_method, request[:method]})
+
+      {:ok,
+       %Req.Response{
+         status: 429,
+         headers: %{"retry-after" => ["41"]},
+         body: %{"message" => "rate limited"}
+       }}
+    end
+
+    assert {:retry_wait, retried} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts(now: claim_time)
+             )
+
+    assert retried.last_error_code == "jira_rate_limited"
+    assert DateTime.diff(retried.next_attempt_at, claim_time, :second) == 41
+    assert_receive {:jira_read_method, :get}
+    refute_receive {:jira_read_method, :post}, 50
+  end
+
+  test "treats a forbidden comment POST as terminal and does not reconcile it" do
+    {_project, _connection, intake_case, delivery} = comment_fixture!()
+    parent = self()
+
+    request_fun = fn request ->
+      send(parent, {:jira_post_method, request[:method]})
+
+      case request[:method] do
+        :get ->
+          {:ok,
+           %Req.Response{
+             status: 200,
+             body: %{"startAt" => 0, "maxResults" => 100, "total" => 0, "isLast" => true, "comments" => []}
+           }}
+
+        :post ->
+          {:ok, %Req.Response{status: 403, body: %{"message" => "forbidden"}}}
+      end
+    end
+
+    assert {:failed, failed} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts()
+             )
+
+    assert failed.id == delivery.id
+    assert failed.last_error_code == "jira_comment_permission_denied"
+    assert_receive {:jira_post_method, :get}
+    assert_receive {:jira_post_method, :post}
+    refute_receive {:jira_post_method, :get}, 50
+
+    assert Repo.exists?(
+             from(event in IntakeEvent,
+               where:
+                 event.case_id == ^intake_case.id and event.type == "jira_comment_post_started" and
+                   event.payload["delivery_id"] == ^delivery.id
+             )
+           )
+  end
+
+  test "returns unknown when an accepted POST cannot be reconciled" do
+    {_project, _connection, _intake_case, delivery} = comment_fixture!()
+    parent = self()
+
+    request_fun = fn request ->
+      send(parent, {:jira_request_method, request[:method]})
+
+      case request[:method] do
+        :get ->
+          if Process.get(:ambiguous_comment_post_sent, false) do
+            {:ok, %Req.Response{status: 503, body: %{"message" => "unavailable"}}}
+          else
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{"startAt" => 0, "maxResults" => 100, "total" => 0, "isLast" => true, "comments" => []}
+             }}
+          end
+
+        :post ->
+          Process.put(:ambiguous_comment_post_sent, true)
+          {:ok, %Req.Response{status: 500, body: %{"message" => "unknown outcome"}}}
+      end
+    end
+
+    assert {:unknown, unknown} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts()
+             )
+
+    assert unknown.id == delivery.id
+    assert unknown.last_error_code == "jira_comment_outcome_unknown"
+    assert unknown.status == "unknown"
+    assert_receive {:jira_request_method, :get}
+    assert_receive {:jira_request_method, :post}
+    assert_receive {:jira_request_method, :get}
+    refute_receive {:jira_request_method, :post}, 50
+  end
+
+  test "does not post again when Jira finds the marker but omits the comment ID" do
+    {_project, _connection, intake_case, delivery} = comment_fixture!()
+    parent = self()
+    marker = "Harmony analysis #{intake_case.id}/v1"
+
+    request_fun = fn request ->
+      send(parent, {:jira_marker_method, request[:method]})
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{
+           "startAt" => 0,
+           "maxResults" => 100,
+           "total" => 1,
+           "isLast" => true,
+           "comments" => [%{"body" => marker}]
+         }
+       }}
+    end
+
+    assert {:unknown, unknown} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts()
+             )
+
+    assert unknown.id == delivery.id
+    assert unknown.last_error_code == "jira_comment_marker_found_without_id"
+    assert_receive {:jira_marker_method, :get}
+    refute_receive {:jira_marker_method, :post}, 50
+  end
+
+  test "keeps an ambiguous publish unknown when reconciliation finds a marker without an ID" do
+    {_project, _connection, intake_case, delivery} = comment_fixture!()
+    parent = self()
+    marker = "Harmony analysis #{intake_case.id}/v1"
+    request_count_key = {:ambiguous_marker_reads, make_ref()}
+
+    request_fun = fn request ->
+      send(parent, {:ambiguous_marker_method, request[:method]})
+
+      case request[:method] do
+        :get ->
+          reads = Process.get(request_count_key, 0) + 1
+          Process.put(request_count_key, reads)
+
+          comments = if reads == 1, do: [], else: [%{"body" => marker}]
+
+          {:ok,
+           %Req.Response{
+             status: 200,
+             body: %{
+               "startAt" => 0,
+               "maxResults" => 100,
+               "total" => length(comments),
+               "isLast" => true,
+               "comments" => comments
+             }
+           }}
+
+        :post ->
+          {:ok, %Req.Response{status: 201, body: %{}}}
+      end
+    end
+
+    assert {:unknown, unknown} =
+             Dispatcher.dispatch_one(
+               fn claimed -> CommentPublisher.perform(claimed, request_fun: request_fun) end,
+               claim_opts()
+             )
+
+    assert unknown.id == delivery.id
+    assert unknown.last_error_code == "jira_comment_marker_found_without_id"
+    assert Process.get(request_count_key) == 2
+    assert_receive {:ambiguous_marker_method, :get}
+    assert_receive {:ambiguous_marker_method, :post}
+    assert_receive {:ambiguous_marker_method, :get}
+    refute_receive {:ambiguous_marker_method, :post}, 50
+  end
+
+  test "preflight and read guards stop publication before a POST" do
+    {_project, connection, intake_case, delivery} = comment_fixture!()
+    request_fun = fn _request -> flunk("invalid local state must not call Jira") end
+    analysis = Repo.get_by!(IntakeAnalysis, case_id: intake_case.id, version: 1)
+
+    assert {:error, "analysis_result_not_ready"} =
+             CommentPublisher.perform(%{delivery | payload: %{"version" => 0}}, request_fun: request_fun)
+
+    assert {:error, "analysis_result_not_ready"} =
+             CommentPublisher.perform(%{delivery | payload: %{"version" => 99}}, request_fun: request_fun)
+
+    failed_analysis =
+      analysis
+      |> IntakeAnalysis.changeset(%{status: "failed"})
+      |> Repo.update!()
+
+    assert {:error, "analysis_result_not_ready"} =
+             CommentPublisher.perform(delivery, request_fun: request_fun)
+
+    failed_analysis
+    |> IntakeAnalysis.changeset(%{status: "succeeded"})
+    |> Repo.update!()
+
+    disabled_connection =
+      connection
+      |> IntegrationConnection.changeset(%{enabled: false})
+      |> Repo.update!()
+
+    assert {:error, "jira_connection_unavailable"} =
+             CommentPublisher.perform(delivery, request_fun: request_fun)
+
+    disabled_connection
+    |> IntegrationConnection.changeset(%{enabled: true})
+    |> Repo.update!()
+
+    assert {:error, "jira_comment_read_rejected"} =
+             CommentPublisher.perform(delivery,
+               request_fun: fn request ->
+                 assert request[:method] == :get
+                 {:ok, %Req.Response{status: 404, body: %{"message" => "issue not found"}}}
+               end
+             )
+  end
+
+  test "reconciles marker properties and safe-to-retry reads through the public reconciler" do
+    {_project, _connection, intake_case, delivery} = comment_fixture!()
+    marker = "Harmony analysis #{intake_case.id}/v1"
+
+    assert :already_applied =
+             CommentPublisher.reconcile(delivery,
+               request_fun: fn _request ->
+                 {:ok,
+                  %Req.Response{
+                    status: 200,
+                    body: %{
+                      "startAt" => 0,
+                      "maxResults" => 100,
+                      "total" => 1,
+                      "isLast" => true,
+                      "comments" => [
+                        %{
+                          "id" => "property-map-marker",
+                          "body" => %{},
+                          "properties" => %{"harmony.analysis" => %{"value" => marker}}
+                        }
+                      ]
+                    }
+                  }}
+               end
+             )
+
+    assert :safe_to_retry =
+             CommentPublisher.reconcile(delivery,
+               request_fun: fn _request ->
+                 {:ok,
+                  %Req.Response{
+                    status: 200,
+                    body: %{"startAt" => 0, "maxResults" => 100, "total" => 0, "isLast" => true, "comments" => []}
+                  }}
+               end
+             )
+  end
+
   test "posts deterministic text-only ADF and a version marker property once" do
     {_project, intake_connection, intake_case, delivery} = comment_fixture!()
     parent = self()

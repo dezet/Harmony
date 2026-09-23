@@ -396,12 +396,13 @@ Odbiór: AC10/AC11/AC12; żadnej prawdziwej analizy w standardowej komendzie.
 Spec: §4.4, §8.2, §9.2. Zależność: T13.
 Pliki: nowy `BE/intake/actions.ex`, `BT/intake_actions_test.exs`; `BE/intake.ex`.
 
-- [ ] T14.1 RED: acknowledge nie wywołuje refresh implementation ani nie zapisuje zgody.
-- [ ] T14.2 Approve wymaga ready, publikacji komentarza, confirmed i aktualnej wersji.
-- [ ] T14.3 Dwa approve tej samej wersji dają jedną zgodę; stale version → 409.
-- [ ] T14.4 Reanalyze atomowo tworzy następną wersję i czyści acknowledge; po zgodzie odmawia.
-- [ ] T14.5 Concurrent approve/reanalyze: jedna transakcja wygrywa, druga konflikt; nigdy obie.
-- [ ] T14.6 Refresh dopiero po commit, a gate wciąż respektuje pozostałe polityki orchestratora.
+- [x] T14.1 RED: acknowledge nie wywołuje refresh implementation ani nie zapisuje zgody.
+- [x] T14.2 Approve wymaga ready, publikacji komentarza, confirmed i aktualnej wersji.
+- [x] T14.3 Dwa approve tej samej wersji dają jedną zgodę; stale version zwraca
+      `:stale_version` (mapowanie HTTP 409 w T20).
+- [x] T14.4 Reanalyze atomowo tworzy następną wersję i czyści acknowledge; po zgodzie odmawia.
+- [x] T14.5 Concurrent approve/reanalyze: jedna transakcja wygrywa, druga konflikt; nigdy obie.
+- [x] T14.6 Refresh dopiero po commit, a gate wciąż respektuje pozostałe polityki orchestratora.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_actions_test.exs test/symphony_elixir/intake_execution_gate_test.exs`.
 Odbiór M3: AC09–AC12/AC15, testy T11–T14 i zaliczona izolacja przed następnym live gate.
