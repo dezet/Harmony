@@ -48,7 +48,18 @@ defmodule SymphonyElixir.IntakeAnalysisPolicyTest do
     env_file = Path.join(test_root, "app-server.env")
     fixture_file = Path.expand("test/fixtures/intake/analysis_app_server_protocol.jsonl")
 
-    env_names = ["CLOAK_KEY", "JIRA_API_TOKEN", "LINEAR_API_KEY", "SMTP_PASSWORD", "BASH_ENV", "CODEX_HOME"]
+    env_names = [
+      "CLOAK_KEY",
+      "JIRA_API_TOKEN",
+      "LINEAR_API_KEY",
+      "SMTP_PASSWORD",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "GITLAB_TOKEN",
+      "BASH_ENV",
+      "CODEX_HOME"
+    ]
+
     previous_env = Map.new(env_names, &{&1, System.get_env(&1)})
 
     try do
@@ -63,9 +74,10 @@ defmodule SymphonyElixir.IntakeAnalysisPolicyTest do
       trace_file=#{inspect(trace_file)}
       env_file=#{inspect(env_file)}
       fixture_file=#{inspect(fixture_file)}
-      printf 'HOME=%s\\nCODEX_HOME=%s\\nCLOAK_KEY_SET=%s\\nJIRA_API_TOKEN_SET=%s\\nLINEAR_API_KEY_SET=%s\\nSMTP_PASSWORD_SET=%s\\nBASH_ENV_SET=%s\\n' \\
+      printf 'HOME=%s\\nCODEX_HOME=%s\\nCLOAK_KEY_SET=%s\\nJIRA_API_TOKEN_SET=%s\\nLINEAR_API_KEY_SET=%s\\nSMTP_PASSWORD_SET=%s\\nGITHUB_TOKEN_SET=%s\\nGH_TOKEN_SET=%s\\nGITLAB_TOKEN_SET=%s\\nBASH_ENV_SET=%s\\n' \\
         "$HOME" "$CODEX_HOME" "${CLOAK_KEY+yes}" "${JIRA_API_TOKEN+yes}" \\
-        "${LINEAR_API_KEY+yes}" "${SMTP_PASSWORD+yes}" "${BASH_ENV+yes}" > "$env_file"
+        "${LINEAR_API_KEY+yes}" "${SMTP_PASSWORD+yes}" "${GITHUB_TOKEN+yes}" \\
+        "${GH_TOKEN+yes}" "${GITLAB_TOKEN+yes}" "${BASH_ENV+yes}" > "$env_file"
       cat "$CODEX_HOME/config.toml" >> "$env_file"
       count=0
       while IFS= read -r line; do
@@ -97,6 +109,9 @@ defmodule SymphonyElixir.IntakeAnalysisPolicyTest do
       System.put_env("JIRA_API_TOKEN", "synthetic-jira-token")
       System.put_env("LINEAR_API_KEY", "synthetic-linear-token")
       System.put_env("SMTP_PASSWORD", "synthetic-smtp-password")
+      System.put_env("GITHUB_TOKEN", "synthetic-github-token")
+      System.put_env("GH_TOKEN", "synthetic-gh-token")
+      System.put_env("GITLAB_TOKEN", "synthetic-gitlab-token")
       System.put_env("BASH_ENV", Path.join(test_root, "must-not-run.sh"))
       System.put_env("CODEX_HOME", synthetic_codex_home)
       File.write!(System.get_env("BASH_ENV"), "touch #{inspect(Path.join(test_root, "bash-env-ran"))}\n")
@@ -157,6 +172,9 @@ defmodule SymphonyElixir.IntakeAnalysisPolicyTest do
       assert File.read!(env_file) =~ "JIRA_API_TOKEN_SET=\n"
       assert File.read!(env_file) =~ "LINEAR_API_KEY_SET=\n"
       assert File.read!(env_file) =~ "SMTP_PASSWORD_SET=\n"
+      assert File.read!(env_file) =~ "GITHUB_TOKEN_SET=\n"
+      assert File.read!(env_file) =~ "GH_TOKEN_SET=\n"
+      assert File.read!(env_file) =~ "GITLAB_TOKEN_SET=\n"
       assert File.read!(env_file) =~ "BASH_ENV_SET=\n"
       runtime_config = File.read!(env_file)
       assert runtime_config =~ "mcp_servers = {}"

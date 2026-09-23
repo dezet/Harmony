@@ -19,6 +19,40 @@ defmodule SymphonyElixir.Forge.GitlabTest do
              Gitlab.list_pipeline_runs(creds(fun), ref(), "abc")
   end
 
+  test "get_repository_snapshot uses the encoded full path and pins the archive to the branch SHA" do
+    archive = <<31, 139, 8, 0, 0>>
+    project_path = "group%2Fsubgroup%2Fapi"
+
+    fun = fn opts ->
+      assert {"private-token", "synthetic-token"} in opts[:headers]
+
+      cond do
+        opts[:url] == "https://gl.example.com/api/v4/projects/#{project_path}" ->
+          {:ok, %{status: 200, body: %{"default_branch" => "release/v1"}}}
+
+        opts[:url] ==
+            "https://gl.example.com/api/v4/projects/#{project_path}/repository/branches/release%2Fv1" ->
+          {:ok, %{status: 200, body: %{"commit" => %{"id" => "abc123"}}}}
+
+        opts[:url] ==
+            "https://gl.example.com/api/v4/projects/#{project_path}/repository/archive.tar.gz" ->
+          assert opts[:params] == [sha: "abc123"]
+          {:ok, %{status: 200, body: archive}}
+
+        true ->
+          flunk("unexpected GitLab snapshot URL: #{opts[:url]}")
+      end
+    end
+
+    repository_ref = %{owner: "group/subgroup", repo: "api", base_url: "https://gl.example.com"}
+
+    assert {:ok, %{default_branch: "release/v1", sha: "abc123", archive: ^archive}} =
+             Gitlab.get_repository_snapshot(
+               %{token: "synthetic-token", base_url: "https://gl.example.com", request_fun: fun},
+               repository_ref
+             )
+  end
+
   test "create_comment posts an MR note" do
     fun = fn opts ->
       assert opts[:url] =~ "/merge_requests/5/notes"

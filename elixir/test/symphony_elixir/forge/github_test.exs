@@ -33,6 +33,37 @@ defmodule SymphonyElixir.Forge.GithubTest do
     assert {:ok, %{default_branch: "develop"}} = Github.get_repository(%{token: "t", request_fun: fake}, "o", "r")
   end
 
+  test "get_repository_snapshot reads the default-branch SHA and archive at that SHA" do
+    archive = <<31, 139, 8, 0, 0>>
+
+    fake = fn opts ->
+      assert {"authorization", "Bearer synthetic-token"} in opts[:headers]
+
+      cond do
+        opts[:url] == "https://ghe.example.com/repos/o/r" ->
+          {:ok, %{status: 200, body: %{"default_branch" => "main"}}}
+
+        opts[:url] == "https://ghe.example.com/repos/o/r/commits/main" ->
+          {:ok, %{status: 200, body: %{"sha" => "abc123"}}}
+
+        opts[:url] == "https://ghe.example.com/repos/o/r/tarball/abc123" ->
+          assert opts[:redirect] == false
+          {:ok, %{status: 200, body: archive}}
+
+        true ->
+          flunk("unexpected GitHub snapshot URL: #{opts[:url]}")
+      end
+    end
+
+    ref = %{owner: "o", repo: "r", base_url: "https://ghe.example.com"}
+
+    assert {:ok, %{default_branch: "main", sha: "abc123", archive: ^archive}} =
+             Github.get_repository_snapshot(
+               %{token: "synthetic-token", base_url: "https://ghe.example.com", request_fun: fake},
+               ref
+             )
+  end
+
   test "list_change_request_comments normalizes GitHub issue comments and honors base_url" do
     fake = fn opts ->
       assert opts[:method] == :get

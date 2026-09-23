@@ -355,12 +355,16 @@ Spec: §9.2, §12. Zależność: T11.
 Pliki: nowe `BE/intake/analysis_context.ex`, `BT/intake_analysis_context_test.exs`;
 rozszerzenie `BE/forge.ex`, `BE/forge/{github,gitlab,memory}.ex` tylko o snapshot read.
 
-- [ ] T12.1 RED: archive ../escape lub symlink nie zapisuje nic poza workspace.
-- [ ] T12.2 Pobierz SHA i archive przez forge; gitlab pełną zakodowaną ścieżką, nie numerem projektu.
-- [ ] T12.3 Test limitów rozpakowanego rozmiaru/liczby plików i braku wykonywania hooków.
-- [ ] T12.4 Snapshot nie zawiera .git/config/credentialów; runner nie widzi tokenu pobierania.
-- [ ] T12.5 Brak repo → jawne issue_only z powodem w historii, nie fałszywa analiza kodu.
+- [x] T12.1 RED: archive ../escape lub symlink nie zapisuje nic poza workspace.
+- [x] T12.2 Pobierz SHA i archive przez forge; gitlab pełną zakodowaną ścieżką, nie numerem projektu.
+- [x] T12.3 Test limitów rozpakowanego rozmiaru/liczby plików i braku wykonywania hooków.
+- [x] T12.4 Snapshot nie zawiera .git/config/credentialów; test profilu potwierdza brak
+      tokenu pobierania w środowisku narzędzi analizy.
+- [x] T12.5 Brak repo → API zwraca jawne issue_only z powodem, nie fałszywą analizę kodu.
 - [ ] T12.6 Cleanup usuwa wyłącznie konkretny zwalidowany katalog snapshotu po zakończeniu/przerwaniu.
+
+T12 zwraca status i powód jako metadata. Trwały zapis `input_snapshot` do historii
+oraz cleanup po sukcesie lub przerwaniu należą do T13 i pozostają niewykonane.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_analysis_context_test.exs`.
 Odbiór: AC10/AC11/AC14; archiwa są syntetyczne i lokalne w testach.
@@ -380,6 +384,9 @@ nowe `BT/intake_analysis_runner_test.exs`, `BT/intake_analysis_result_test.exs`,
 - [ ] T13.6 Po utracie odpowiedzi odczytaj wszystkie strony comments; unknown bez automatycznego POST.
 - [ ] T13.7 Późny wynik starego lease i v1 po reanalizie v2 nie nadpisują aktywnej wersji.
 - [ ] T13.8 WorkRun analizy zapisuje status i usage; nie trafia do implementation dispatcher.
+- [ ] T13.9 Zapisz `input_snapshot`, w tym `issue_only` i powód braku repo, w historii analizy.
+- [ ] T13.10 Po sukcesie lub przerwaniu usuń wyłącznie konkretny zwalidowany katalog snapshotu.
+- [ ] T13.11 Potwierdź, że runner nie przekazuje tokenu Forge do sesji analitycznej.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_analysis_runner_test.exs test/symphony_elixir/intake_analysis_result_test.exs test/symphony_elixir/intake_comment_publisher_test.exs`.
 Odbiór: AC10/AC11/AC12; żadnej prawdziwej analizy w standardowej komendzie.
