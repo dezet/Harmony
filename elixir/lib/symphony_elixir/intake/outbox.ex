@@ -367,10 +367,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     where(query, [d], d.operation != "analysis")
   end
 
-  defp filter_switches(query, %{effects_enabled: false, analysis_enabled: true}) do
-    where(query, [d], d.operation == "analysis")
-  end
-
+  # Spec §13: disabled effects also block new analyses, whatever analysis.enabled says.
   defp filter_switches(query, _switches), do: where(query, [d], false)
 
   @spec exclude_delivery_ids(Ecto.Query.t(), [binary()]) :: Ecto.Query.t()
