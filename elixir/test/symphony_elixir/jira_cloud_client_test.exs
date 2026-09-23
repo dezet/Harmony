@@ -125,6 +125,37 @@ defmodule SymphonyElixir.Jira.CloudClientTest do
     assert :counters.get(calls, 1) == 1
   end
 
+  test "rejects a repeated enhanced-search page token" do
+    calls = :counters.new(1, [:atomics])
+
+    request_fun = fn request ->
+      page = :counters.get(calls, 1)
+      :counters.add(calls, 1, 1)
+      assert request[:json][:nextPageToken] == if(page == 0, do: nil, else: "cursor-1")
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{
+           "issues" => [jira_issue("10#{page + 1}", "OPS-#{page + 1}", "Page #{page + 1}")],
+           "nextPageToken" => "cursor-1",
+           "isLast" => false
+         }
+       }}
+    end
+
+    assert {:error, %{kind: :malformed_response}} =
+             CloudClient.search_issues("project = OPS",
+               site_url: @site_url,
+               auth_mode: :classic,
+               account_email: "agent@example.org",
+               token: "api-token",
+               request_fun: request_fun
+             )
+
+    assert :counters.get(calls, 1) == 2
+  end
+
   test "maps a board to its saved filter before using enhanced JQL search" do
     request_fun = fn request ->
       assert request[:redirect] == false

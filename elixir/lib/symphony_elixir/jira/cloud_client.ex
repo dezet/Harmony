@@ -7,6 +7,8 @@ defmodule SymphonyElixir.Jira.CloudClient do
   @api_prefix "/rest/api/3"
   @issue_fields ["summary", "description", "priority", "status", "created", "updated", "project"]
 
+  @typep seen_keys :: %{optional(term()) => true}
+
   @spec list_boards(keyword()) :: {:ok, [map()]} | {:error, map()}
   def list_boards(opts \\ []) do
     paginate_offset(opts, "/rest/agile/1.0/board", "values")
@@ -60,7 +62,7 @@ defmodule SymphonyElixir.Jira.CloudClient do
   @spec search_issues(String.t(), keyword()) :: {:ok, [Issue.t()]} | {:error, map()}
   def search_issues(jql, opts \\ []) do
     if is_binary(jql) and byte_size(jql) > 0 do
-      search_page(opts, jql, nil, [], MapSet.new())
+      search_page(opts, jql, nil, [], %{})
     else
       malformed_request()
     end
@@ -77,15 +79,17 @@ defmodule SymphonyElixir.Jira.CloudClient do
   defp build_filter_jql(_filter_id, _priority_ids), do: malformed_request()
 
   defp paginate_offset(opts, path, collection_key) do
-    paginate_offset(opts, path, collection_key, 0, [], MapSet.new())
+    paginate_offset(opts, path, collection_key, 0, [], %{})
   end
 
+  @spec paginate_offset(keyword(), String.t(), String.t(), non_neg_integer(), [map()], seen_keys()) ::
+          {:ok, [map()]} | {:error, map()}
   defp paginate_offset(opts, path, collection_key, start_at, acc, seen) do
-    with false <- MapSet.member?(seen, start_at),
+    with false <- Map.has_key?(seen, start_at),
          {:ok, response} <- request(opts, :get, path, params: [startAt: start_at, maxResults: @page_size]),
          {:ok, values, next_start, done?} <- parse_offset_page(response.body, collection_key, start_at) do
       items = acc ++ values
-      next_seen = MapSet.put(seen, start_at)
+      next_seen = Map.put(seen, start_at, true)
 
       if done? do
         {:ok, items}
@@ -98,6 +102,8 @@ defmodule SymphonyElixir.Jira.CloudClient do
     end
   end
 
+  @spec search_page(keyword(), String.t(), String.t() | nil, [Issue.t()], seen_keys()) ::
+          {:ok, [Issue.t()]} | {:error, map()}
   defp search_page(opts, jql, token, acc, seen_tokens) do
     body = %{jql: jql, maxResults: @page_size, fields: @issue_fields}
     body = if is_binary(token), do: Map.put(body, :nextPageToken, token), else: body
@@ -131,10 +137,10 @@ defmodule SymphonyElixir.Jira.CloudClient do
   defp continue_search_page(_opts, _jql, all, _seen_tokens, nil), do: {:ok, all}
 
   defp continue_search_page(opts, jql, all, seen_tokens, next_token) do
-    if MapSet.member?(seen_tokens, next_token) do
+    if Map.has_key?(seen_tokens, next_token) do
       malformed_response()
     else
-      search_page(opts, jql, next_token, all, MapSet.put(seen_tokens, next_token))
+      search_page(opts, jql, next_token, all, Map.put(seen_tokens, next_token, true))
     end
   end
 
