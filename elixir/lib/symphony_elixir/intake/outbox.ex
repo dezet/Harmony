@@ -325,9 +325,22 @@ defmodule SymphonyElixir.Intake.Outbox do
 
     query = maybe_filter_operation(query, Keyword.get(opts, :operation))
     query = maybe_filter_connection(query, Keyword.get(opts, :connection_id))
+    query = require_linear_confirmation(query)
     query = filter_switches(query, switches)
     query = exclude_delivery_ids(query, excluded)
     Repo.one(query)
+  end
+
+  defp require_linear_confirmation(query) do
+    where(
+      query,
+      [d],
+      d.operation != "analysis" or
+        fragment(
+          "EXISTS (SELECT 1 FROM intake_cases AS intake_case WHERE intake_case.id = ? AND intake_case.linear_confirmed_at IS NOT NULL)",
+          d.case_id
+        )
+    )
   end
 
   defp maybe_filter_operation(query, nil), do: query

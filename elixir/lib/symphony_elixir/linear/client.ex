@@ -132,6 +132,59 @@ defmodule SymphonyElixir.Linear.Client do
   }
   """
 
+  @intake_issue_by_id_query """
+  query SymphonyLinearIntakeIssueById($id: String!) {
+    issue(id: $id) {
+      id
+      identifier
+      title
+      description
+      url
+      team { id }
+      project { id slugId }
+      state { id name }
+      labels { nodes { id name } }
+    }
+  }
+  """
+
+  @intake_issues_by_id_query """
+  query SymphonyLinearIssuesById($id: ID!, $first: Int!) {
+    issues(filter: {id: {eq: $id}}, first: $first) {
+      nodes {
+        id
+        identifier
+        title
+        description
+        url
+        team { id }
+        project { id slugId }
+        state { id name }
+        labels { nodes { id name } }
+      }
+    }
+  }
+  """
+
+  @intake_issue_create_mutation """
+  mutation SymphonyLinearIntakeIssueCreate($input: IssueCreateInput!) {
+    issueCreate(input: $input) {
+      success
+      issue {
+        id
+        identifier
+        title
+        description
+        url
+        team { id }
+        project { id slugId }
+        state { id name }
+        labels { nodes { id name } }
+      }
+    }
+  }
+  """
+
   @viewer_query """
   query SymphonyLinearViewer {
     viewer {
@@ -211,6 +264,89 @@ defmodule SymphonyElixir.Linear.Client do
     end
   end
 
+  @spec fetch_issue_by_id(String.t(), keyword()) :: {:ok, map() | nil} | {:error, term()}
+  def fetch_issue_by_id(issue_id, opts) when is_binary(issue_id) and is_list(opts) do
+    graphql_opts =
+      opts
+      |> Keyword.take([:token, :request_fun, :timeout_ms, :retry])
+      |> Keyword.put(:operation_name, "SymphonyLinearIntakeIssueById")
+      |> Keyword.put(:preserve_graphql_errors, true)
+
+    case graphql(@intake_issue_by_id_query, %{id: issue_id}, graphql_opts) do
+      {:ok, %{"data" => %{"issue" => %{} = issue}}} ->
+        {:ok, issue}
+
+      {:ok, _body} ->
+        {:error, :linear_unknown_payload}
+
+      {:error, {:linear_graphql_errors, body}} ->
+        if authentication_error_response?(body) do
+          {:error, :linear_graphql_errors}
+        else
+          fetch_issue_by_id_from_list(issue_id, graphql_opts)
+        end
+
+      {:error, :linear_graphql_errors} ->
+        fetch_issue_by_id_from_list(issue_id, graphql_opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp fetch_issue_by_id_from_list(issue_id, opts) do
+    graphql_opts =
+      opts
+      |> Keyword.delete(:preserve_graphql_errors)
+      |> Keyword.put(:operation_name, "SymphonyLinearIssuesById")
+
+    with {:ok, body} <-
+           graphql(
+             @intake_issues_by_id_query,
+             %{id: issue_id, first: 1},
+             graphql_opts
+           ) do
+      case get_in(body, ["data", "issues", "nodes"]) do
+        [] ->
+          {:ok, nil}
+
+        [%{"id" => ^issue_id} = issue] ->
+          {:ok, issue}
+
+        _other ->
+          {:error, :linear_unknown_payload}
+      end
+    end
+  end
+
+  defp authentication_error_response?(%{"errors" => errors}) when is_list(errors) do
+    Enum.any?(errors, fn error ->
+      case get_in(error, ["extensions", "type"]) do
+        type when is_binary(type) -> String.downcase(type) in ["authentication error", "forbidden"]
+        _missing -> false
+      end
+    end)
+  end
+
+  defp authentication_error_response?(_body), do: false
+
+  @spec create_issue(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def create_issue(input, opts) when is_map(input) and is_list(opts) do
+    graphql_opts =
+      opts
+      |> Keyword.take([:token, :request_fun, :timeout_ms, :retry])
+      |> Keyword.put(:operation_name, "SymphonyLinearIntakeIssueCreate")
+      |> Keyword.put_new(:retry, false)
+
+    with {:ok, body} <- graphql(@intake_issue_create_mutation, %{input: input}, graphql_opts),
+         %{} = result <- get_in(body, ["data", "issueCreate"]) do
+      {:ok, result}
+    else
+      {:ok, _body} -> {:error, :linear_unknown_payload}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @list_projects_query """
   query SymphonyListProjects {
     teams {
@@ -254,12 +390,23 @@ defmodule SymphonyElixir.Linear.Client do
 
     request_fun =
       Keyword.get(opts, :request_fun, fn request_payload, headers ->
-        post_graphql_request(request_payload, headers, Keyword.get(opts, :timeout_ms, 30_000))
+        post_graphql_request(
+          request_payload,
+          headers,
+          Keyword.get(opts, :timeout_ms, 30_000),
+          Keyword.get(opts, :retry)
+        )
       end)
 
     case graphql_headers(Keyword.get(opts, :token)) do
       {:ok, headers} ->
-        safely_request(request_fun, payload, headers) |> normalize_graphql_response()
+        response = safely_request(request_fun, payload, headers)
+
+        if Keyword.get(opts, :preserve_graphql_errors) do
+          normalize_graphql_response_with_errors(response)
+        else
+          normalize_graphql_response(response)
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -289,6 +436,17 @@ defmodule SymphonyElixir.Linear.Client do
     Logger.error("Linear GraphQL request failed at transport")
     {:error, {:linear_api_request, :transport_error}}
   end
+
+  defp normalize_graphql_response_with_errors({:ok, %{status: 200, body: body}}) when is_map(body) do
+    if graphql_errors?(body) do
+      Logger.error("Linear GraphQL request failed with GraphQL errors")
+      {:error, {:linear_graphql_errors, body}}
+    else
+      {:ok, body}
+    end
+  end
+
+  defp normalize_graphql_response_with_errors(response), do: normalize_graphql_response(response)
 
   @doc false
   @spec normalize_issue_for_test(map()) :: Issue.t() | nil
@@ -515,15 +673,20 @@ defmodule SymphonyElixir.Linear.Client do
     _kind, _reason -> {:error, :transport_error}
   end
 
-  defp post_graphql_request(payload, headers, timeout_ms) when is_integer(timeout_ms) and timeout_ms > 0 do
-    Req.post(Config.settings!().tracker.endpoint,
+  defp post_graphql_request(payload, headers, timeout_ms, retry) when is_integer(timeout_ms) and timeout_ms > 0 do
+    request_opts = [
       headers: headers,
       json: payload,
-      connect_options: [timeout: timeout_ms]
-    )
+      connect_options: [timeout: timeout_ms],
+      receive_timeout: timeout_ms
+    ]
+
+    request_opts = if is_nil(retry), do: request_opts, else: Keyword.put(request_opts, :retry, retry)
+    Req.post(Config.settings!().tracker.endpoint, request_opts)
   end
 
-  defp post_graphql_request(payload, headers, _timeout_ms), do: post_graphql_request(payload, headers, 30_000)
+  defp post_graphql_request(payload, headers, _timeout_ms, retry),
+    do: post_graphql_request(payload, headers, 30_000, retry)
 
   defp decode_linear_response(%{"data" => %{"issues" => %{"nodes" => nodes}}}, assignee_filter) do
     issues =
@@ -554,7 +717,7 @@ defmodule SymphonyElixir.Linear.Client do
   end
 
   defp graphql_fun(opts) do
-    graphql_opts = Keyword.take(opts, [:token, :request_fun, :timeout_ms])
+    graphql_opts = Keyword.take(opts, [:token, :request_fun, :timeout_ms, :retry])
 
     fn query, variables ->
       graphql(query, variables, graphql_opts)

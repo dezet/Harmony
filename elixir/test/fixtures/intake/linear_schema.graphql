@@ -1,0 +1,37 @@
+# Contract excerpt from https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql
+# Verified 2026-09-23. IssueCreateInput.id is optional and lets callers reserve a UUID.
+input IssueCreateInput {
+  id: String
+  teamId: String!
+  projectId: String
+  stateId: String
+  title: String
+  description: String
+  labelIds: [String!]
+}
+
+type Query {
+  issue(id: String!): Issue!
+  issues(filter: IssueFilter, first: Int): IssueConnection!
+}
+
+input IssueFilter {
+  id: IssueIDComparator
+}
+
+input IssueIDComparator {
+  eq: ID
+}
+
+type IssueConnection {
+  nodes: [Issue!]!
+}
+
+type IssuePayload {
+  issue: Issue
+  success: Boolean!
+}
+
+type Mutation {
+  issueCreate(input: IssueCreateInput!): IssuePayload!
+}

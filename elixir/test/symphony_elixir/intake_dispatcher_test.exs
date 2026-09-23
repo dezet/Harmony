@@ -6,11 +6,11 @@ defmodule SymphonyElixir.IntakeDispatcherTest do
   use SymphonyElixir.TestSupport
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias SymphonyElixir.Intake.{Dispatcher, Outbox}
   alias SymphonyElixir.Intake
+  alias SymphonyElixir.Intake.{Dispatcher, Outbox}
   alias SymphonyElixir.Intake.Scheduler
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{IntegrationConnection, IntegrationDelivery}
+  alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, IntegrationDelivery, Project}
 
   setup do
     :ok = Sandbox.checkout(Repo)
@@ -193,7 +193,7 @@ defmodule SymphonyElixir.IntakeDispatcherTest do
   test "analysis claims have their own concurrency slot apart from four concurrent I/O claims" do
     Enum.each(1..4, fn _index -> delivery!("email") end)
     pending_io = delivery!("sms")
-    analysis = delivery!("analysis")
+    analysis = confirmed_analysis_delivery!()
     now = now()
 
     Enum.each(1..4, fn _index ->
@@ -262,6 +262,78 @@ defmodule SymphonyElixir.IntakeDispatcherTest do
     %IntegrationDelivery{}
     |> IntegrationDelivery.changeset(Map.merge(defaults, Map.new(attrs)))
     |> Repo.insert!()
+  end
+
+  defp confirmed_analysis_delivery! do
+    connection =
+      %IntegrationConnection{}
+      |> IntegrationConnection.changeset(%{
+        kind: "jira_cloud",
+        name: "Analysis Jira #{System.unique_integer([:positive])}",
+        settings: %{site_url: "https://dispatcher-analysis.atlassian.net"},
+        enabled: true
+      })
+      |> Repo.insert!()
+
+    project =
+      %Project{}
+      |> Project.changeset(%{
+        slug: "dispatcher-analysis-#{System.unique_integer([:positive])}",
+        forge_owner: "example",
+        forge_repo: "harmony",
+        forge_base_branch: "main",
+        config: %{},
+        config_version: 1
+      })
+      |> Repo.insert!()
+
+    rule =
+      %AutomationRule{}
+      |> AutomationRule.changeset(%{
+        project_id: project.id,
+        jira_connection_id: connection.id,
+        name: "Analysis rule",
+        source_type: "board",
+        source_id: "42",
+        priority_ids: ["1"],
+        interval_seconds: 300,
+        initial_policy: "new_matches_only",
+        linear_team_id: "team",
+        linear_project_id: "project",
+        linear_todo_state_id: "todo",
+        linear_hold_label_id: "hold",
+        email_recipients: [],
+        sms_recipients: []
+      })
+      |> Repo.insert!()
+
+    timestamp = now()
+
+    intake_case =
+      %IntakeCase{}
+      |> IntakeCase.changeset(%{
+        project_id: project.id,
+        rule_id: rule.id,
+        jira_connection_id: connection.id,
+        jira_issue_id: Ecto.UUID.generate(),
+        jira_key: "OPS-ANALYSIS",
+        jira_url: "https://dispatcher-analysis.atlassian.net/browse/OPS-ANALYSIS",
+        title: "Analysis case",
+        description_text: "",
+        priority_id: "1",
+        priority_name: "Highest",
+        jira_updated_at: timestamp,
+        detected_at: timestamp,
+        rule_snapshot: %{},
+        linear_issue_id: Ecto.UUID.generate(),
+        linear_confirmed_at: timestamp,
+        analysis_version: 1,
+        analysis_status: "queued",
+        lock_version: 1
+      })
+      |> Repo.insert!()
+
+    delivery!("analysis", case_id: intake_case.id)
   end
 
   defp raw_delivery_fixture!(slug) do

@@ -1,0 +1,10 @@
+{
+  "data": null,
+  "errors": [
+    {
+      "message": "Not authenticated",
+      "path": ["issue"],
+      "extensions": {"type": "authentication error"}
+    }
+  ]
+}

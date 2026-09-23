@@ -1,0 +1,18 @@
+{
+  "data": {
+    "issueCreate": {
+      "success": true,
+      "issue": {
+        "id": "__ISSUE_ID__",
+        "identifier": "OPS-42",
+        "title": "[OPS-42] Imported issue",
+        "description": "Harmony case: __CASE_ID__\n\n[Otwórz sprawę](__CASE_URL__)",
+        "url": "https://linear.app/harmony/issue/OPS-42",
+        "team": {"id": "__TEAM_ID__"},
+        "project": {"id": "__PROJECT_ID__", "slugId": "harmony-intake"},
+        "state": {"id": "__STATE_ID__", "name": "Todo"},
+        "labels": {"nodes": [{"id": "__LABEL_ID__", "name": "harmony:analysis-only"}]}
+      }
+    }
+  }
+}

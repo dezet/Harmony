@@ -162,7 +162,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
 
   test "expired write-capable leases become unknown while analysis uses its recovery path" do
     email = delivery!("email")
-    {analysis_case, analysis} = analysis_fixture!()
+    {analysis_case, analysis} = analysis_fixture!(confirmed: true)
     started_at = now()
 
     assert {:ok, email_claim} = Outbox.claim(claim_opts(started_at, operation: "email"))
@@ -192,7 +192,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
 
   test "claim switches select only their enabled effect class" do
     email = delivery!("email")
-    analysis = delivery!("analysis")
+    analysis = confirmed_analysis_delivery!()
     now = now()
 
     assert {:ok, email_claim} =
@@ -432,7 +432,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
   end
 
   test "a missing analysis version is recovered after its hard deadline despite a live lease" do
-    {intake_case, analysis} = analysis_fixture!()
+    {intake_case, analysis} = analysis_fixture!(confirmed: true)
     delivery = Repo.one!(from(d in IntegrationDelivery, where: d.case_id == ^intake_case.id and d.operation == "analysis"))
     start = now()
 
@@ -516,7 +516,12 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     |> Repo.insert!()
   end
 
-  defp analysis_fixture! do
+  defp confirmed_analysis_delivery! do
+    {intake_case, _analysis} = analysis_fixture!(confirmed: true)
+    Repo.one!(from(d in IntegrationDelivery, where: d.case_id == ^intake_case.id and d.operation == "analysis"))
+  end
+
+  defp analysis_fixture!(opts) do
     connection = connection!("jira_cloud")
 
     project =
@@ -575,6 +580,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
         detected_at: timestamp,
         rule_snapshot: %{},
         linear_issue_id: Ecto.UUID.generate(),
+        linear_confirmed_at: if(Keyword.get(opts, :confirmed, false), do: timestamp, else: nil),
         analysis_version: 1,
         analysis_status: "running",
         lock_version: 1
