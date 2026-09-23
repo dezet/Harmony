@@ -15,6 +15,23 @@ defmodule SymphonyElixir.Forge.Github do
 
   # --- Behaviour callbacks ---
 
+  @impl SymphonyElixir.Forge
+  def get_repository_snapshot(creds, ref) do
+    opts = client_opts(creds)
+
+    with {:ok, repository} <- Client.get_repo(ref.owner, ref.repo, opts),
+         default_branch when is_binary(default_branch) and default_branch != "" <-
+           repository["default_branch"],
+         {:ok, sha} <- Client.get_commit_sha(ref.owner, ref.repo, default_branch, opts),
+         {:ok, archive} <- Client.get_repository_archive(ref.owner, ref.repo, sha, opts) do
+      {:ok, %{default_branch: default_branch, sha: sha, archive: archive}}
+    else
+      nil -> {:error, :github_default_branch_missing}
+      {:error, reason} -> {:error, reason}
+      _other -> {:error, :github_default_branch_missing}
+    end
+  end
+
   @impl true
   def list_repositories(creds, opts) do
     with {:ok, repos} <- Client.list_repos(client_opts(creds) ++ opts) do

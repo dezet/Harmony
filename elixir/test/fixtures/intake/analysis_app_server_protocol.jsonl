@@ -1,0 +1,5 @@
+{"id":1,"result":{}}
+{"id":2,"result":{"thread":{"id":"analysis-thread"}}}
+{"id":3,"result":{"turn":{"id":"analysis-turn"}}}
+{"method":"item/tool/call","id":"dynamic-call","params":{"name":"dangerous_action","arguments":{"value":"must-be-rejected"}}}
+{"method":"execCommandApproval","id":"write-escalation","params":{"command":"touch analysis-canary"}}

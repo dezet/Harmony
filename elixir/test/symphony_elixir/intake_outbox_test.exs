@@ -109,6 +109,37 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     assert completed.provider_id == "ack-1"
   end
 
+  test "analysis heartbeat remains valid through a 900-second deadline and safety margin" do
+    {intake_case, _analysis} = analysis_fixture!(confirmed: true)
+
+    delivery =
+      Repo.one!(
+        from(d in IntegrationDelivery,
+          where: d.case_id == ^intake_case.id and d.operation == "analysis"
+        )
+      )
+
+    started_at = now()
+    assert {:ok, claimed} = Outbox.claim(claim_opts(started_at, operation: "analysis"))
+    assert claimed.id == delivery.id
+
+    heartbeated =
+      Enum.reduce(30..930//30, claimed, fn elapsed_seconds, current ->
+        heartbeat_at = DateTime.add(started_at, elapsed_seconds, :second)
+
+        assert {:ok, renewed} =
+                 Outbox.heartbeat(current.id, claimed.lease_token,
+                   now: heartbeat_at,
+                   lease_seconds: 120
+                 )
+
+        renewed
+      end)
+
+    assert DateTime.compare(heartbeated.lease_until, DateTime.add(started_at, 900, :second)) == :gt
+    assert Outbox.recover_expired_analyses(DateTime.add(started_at, 930, :second)) == 0
+  end
+
   test "retry scheduling uses all four intervals, positive jitter, and extends for Retry-After" do
     now = now() |> DateTime.truncate(:second)
 
@@ -172,12 +203,12 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     assert analysis_claim.case_id == analysis_case.id
     assert Repo.get!(IntakeAnalysis, analysis.id).started_at == started_at
 
-    Enum.each(1..19, fn tick ->
+    Enum.each(1..31, fn tick ->
       assert {:ok, _heartbeat} =
                Outbox.heartbeat(analysis_claim.id, analysis_claim.lease_token, now: DateTime.add(started_at, tick * 30, :second))
     end)
 
-    expired_at = DateTime.add(started_at, 601, :second)
+    expired_at = DateTime.add(started_at, 961, :second)
 
     assert {:error, :stale_lease} =
              Outbox.complete(analysis_claim.id, analysis_claim.lease_token, %{}, now: expired_at)
@@ -431,7 +462,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
            )
   end
 
-  test "a missing analysis version is recovered after its hard deadline despite a live lease" do
+  test "a stale analysis version is recovered without changing the active case status" do
     {intake_case, analysis} = analysis_fixture!(confirmed: true)
     delivery = Repo.one!(from(d in IntegrationDelivery, where: d.case_id == ^intake_case.id and d.operation == "analysis"))
     start = now()
@@ -453,7 +484,7 @@ defmodule SymphonyElixir.IntakeOutboxTest do
     assert recovered.status == "pending"
     assert recovered.last_error_code == "analysis_lease_expired"
     assert Repo.get!(IntakeAnalysis, analysis.id).status == "running"
-    assert Repo.get!(IntakeCase, intake_case.id).analysis_status == "queued"
+    assert Repo.get!(IntakeCase, intake_case.id).analysis_status == "running"
   end
 
   defp claim_opts(now, overrides) do

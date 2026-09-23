@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Intake.Dispatcher do
   commits, then persists the result through the delivery's lease token.
   """
 
-  alias SymphonyElixir.Intake.Outbox
+  alias SymphonyElixir.Intake.{AnalysisRunner, CommentPublisher, LinearBridge, Outbox}
   alias SymphonyElixir.Storage.IntegrationDelivery
 
   @type adapter :: (IntegrationDelivery.t() -> term()) | module()
@@ -17,7 +17,7 @@ defmodule SymphonyElixir.Intake.Dispatcher do
           | {:error, term()}
 
   @spec dispatch_one(adapter(), keyword()) :: dispatch_result()
-  def dispatch_one(adapter, opts \\ []) do
+  def dispatch_one(adapter, opts) do
     case Outbox.claim(opts) do
       :empty ->
         :empty
@@ -28,6 +28,14 @@ defmodule SymphonyElixir.Intake.Dispatcher do
       {:ok, %IntegrationDelivery{} = delivery} ->
         deliver(adapter, delivery, opts)
     end
+  end
+
+  @spec dispatch_one(adapter()) :: dispatch_result()
+  def dispatch_one(adapter) when is_function(adapter, 1) or is_atom(adapter), do: dispatch_one(adapter, [])
+
+  @spec dispatch_one(keyword()) :: dispatch_result()
+  def dispatch_one(opts) when is_list(opts) do
+    dispatch_one(fn delivery -> default_adapter(delivery, opts) end, opts)
   end
 
   defp deliver(adapter, delivery, opts) do
@@ -64,4 +72,24 @@ defmodule SymphonyElixir.Intake.Dispatcher do
 
   defp call_adapter(adapter, delivery) when is_function(adapter, 1), do: adapter.(delivery)
   defp call_adapter(adapter, delivery) when is_atom(adapter), do: adapter.perform(delivery)
+
+  defp default_adapter(%IntegrationDelivery{operation: "linear_create"} = delivery, opts) do
+    LinearBridge.perform(delivery, Keyword.get(opts, :linear_bridge_opts, []))
+  end
+
+  defp default_adapter(%IntegrationDelivery{operation: "analysis"} = delivery, opts) do
+    AnalysisRunner.perform(delivery, Keyword.get(opts, :analysis_opts, []))
+  end
+
+  defp default_adapter(%IntegrationDelivery{operation: "jira_comment"} = delivery, opts) do
+    CommentPublisher.perform(delivery, Keyword.get(opts, :jira_comment_opts, []))
+  end
+
+  defp default_adapter(%IntegrationDelivery{} = delivery, opts) do
+    case Keyword.get(opts, :io_adapter) do
+      fun when is_function(fun, 1) -> fun.(delivery)
+      module when is_atom(module) -> module.perform(delivery)
+      _missing -> {:error, "unsupported_delivery_operation"}
+    end
+  end
 end

@@ -1,9 +1,13 @@
 defmodule SymphonyElixir.Gitlab.Client do
   @moduledoc "Minimal GitLab REST v4 client for Harmony MR/pipeline polling."
 
+  alias SymphonyElixir.Forge.ArchiveRedirect
+  alias SymphonyElixir.Forge.ArchiveStream
   alias SymphonyElixir.Gitlab.{Job, MergeRequest, Note, Pipeline}
 
   @default_host "https://gitlab.com"
+  @max_archive_bytes 100 * 1024 * 1024
+  @archive_stream_key :symphony_elixir_archive_stream
 
   defp api_root(opts), do: "#{Keyword.get(opts, :base_url) || @default_host}/api/v4"
   defp project_path(owner, repo), do: URI.encode_www_form("#{owner}/#{repo}")
@@ -16,6 +20,29 @@ defmodule SymphonyElixir.Gitlab.Client do
   @spec get_project(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_project(owner, repo, opts \\ []) do
     get(opts, "/projects/#{project_path(owner, repo)}", parse: & &1)
+  end
+
+  @spec get_repository_branch_sha(String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  def get_repository_branch_sha(owner, repo, branch, opts \\ []) do
+    path =
+      "/projects/#{project_path(owner, repo)}/repository/branches/#{URI.encode_www_form(branch)}"
+
+    with {:ok, body} <- get(opts, path, parse: & &1),
+         sha when is_binary(sha) and sha != "" <- get_in(body, ["commit", "id"]) do
+      {:ok, sha}
+    else
+      nil -> {:error, :gitlab_commit_sha_missing}
+      {:error, reason} -> {:error, reason}
+      _other -> {:error, :gitlab_commit_sha_missing}
+    end
+  end
+
+  @spec get_repository_archive(String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, binary()} | {:error, term()}
+  def get_repository_archive(owner, repo, sha, opts \\ []) do
+    path = "/projects/#{project_path(owner, repo)}/repository/archive.tar.gz"
+    get_binary(opts, path, params: [sha: sha])
   end
 
   @spec list_open_merge_requests(String.t(), String.t(), keyword()) :: {:ok, [MergeRequest.t()]} | {:error, term()}
@@ -114,6 +141,46 @@ defmodule SymphonyElixir.Gitlab.Client do
 
   # --- shared GET ---
 
+  defp get_binary(opts, path, call_opts) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+
+    req = [
+      method: :get,
+      url: "#{api_root(opts)}#{path}",
+      headers: archive_headers(token(opts)),
+      params: Keyword.fetch!(call_opts, :params),
+      retry: false,
+      raw: true,
+      into: ArchiveStream.into(@max_archive_bytes, @archive_stream_key)
+    ]
+
+    with {:ok, response} <- ArchiveRedirect.fetch(req, request_fun, @archive_stream_key),
+         :ok <- check_archive_size(response),
+         :ok <- expect_archive_status(response) do
+      archive_body(response)
+    end
+  end
+
+  defp check_archive_size(%{private: %{@archive_stream_key => %{too_large?: true}}}),
+    do: {:error, :gitlab_archive_response_too_large}
+
+  defp check_archive_size(%{body: body}) when is_binary(body) and byte_size(body) > @max_archive_bytes,
+    do: {:error, :gitlab_archive_response_too_large}
+
+  defp check_archive_size(_response), do: :ok
+
+  defp expect_archive_status(%{status: 200}), do: :ok
+  defp expect_archive_status(%{status: status}), do: {:error, {:gitlab_status, status}}
+
+  defp archive_body(%{private: %{@archive_stream_key => %{chunks: chunks}}}) do
+    {:ok, chunks |> Enum.reverse() |> IO.iodata_to_binary()}
+  end
+
+  defp archive_body(%{body: body}) when is_binary(body) and byte_size(body) <= @max_archive_bytes,
+    do: {:ok, body}
+
+  defp archive_body(_response), do: {:error, :gitlab_archive_body_invalid}
+
   defp get(opts, path, call_opts) do
     request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
     parse = Keyword.fetch!(call_opts, :parse)
@@ -127,6 +194,12 @@ defmodule SymphonyElixir.Gitlab.Client do
   end
 
   defp token(opts), do: Keyword.get(opts, :token) || System.get_env("GITLAB_TOKEN")
+
+  defp archive_headers(token) when is_binary(token) and token != "" do
+    [{"private-token", token}, {"accept", "application/gzip, application/octet-stream"}]
+  end
+
+  defp archive_headers(_token), do: [{"accept", "application/gzip, application/octet-stream"}]
 
   defp headers(token) when is_binary(token) and token != "", do: [{"private-token", token}, {"accept", "application/json"}]
   defp headers(_token), do: [{"accept", "application/json"}]

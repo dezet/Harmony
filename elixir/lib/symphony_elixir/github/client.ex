@@ -3,9 +3,13 @@ defmodule SymphonyElixir.Github.Client do
   Minimal GitHub REST client for Harmony PR polling.
   """
 
+  alias SymphonyElixir.Forge.ArchiveRedirect
+  alias SymphonyElixir.Forge.ArchiveStream
   alias SymphonyElixir.Github.{Comment, PullRequest, WorkflowRun}
 
   @default_api_root "https://api.github.com"
+  @max_archive_bytes 100 * 1024 * 1024
+  @archive_stream_key :symphony_elixir_archive_stream
 
   defp api_root(opts), do: Keyword.get(opts, :base_url) || @default_api_root
 
@@ -142,6 +146,70 @@ defmodule SymphonyElixir.Github.Client do
       {:ok, response.body}
     end
   end
+
+  @spec get_commit_sha(String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
+  def get_commit_sha(owner, repo, ref, opts \\ [])
+      when is_binary(owner) and is_binary(repo) and is_binary(ref) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    encoded_ref = URI.encode(ref, &URI.char_unreserved?/1)
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/commits/#{encoded_ref}"
+
+    with {:ok, response} <- request_fun.(method: :get, url: url, headers: headers(token)),
+         :ok <- expect_status(response, 200),
+         sha when is_binary(sha) and sha != "" <- response.body["sha"] do
+      {:ok, sha}
+    else
+      nil -> {:error, :github_commit_sha_missing}
+      {:error, reason} -> {:error, reason}
+      _other -> {:error, :github_commit_sha_missing}
+    end
+  end
+
+  @spec get_repository_archive(String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, binary()} | {:error, term()}
+  def get_repository_archive(owner, repo, sha, opts \\ [])
+      when is_binary(owner) and is_binary(repo) and is_binary(sha) do
+    request_fun = Keyword.get(opts, :request_fun, &Req.request/1)
+    token = github_token(opts)
+    url = "#{api_root(opts)}/repos/#{owner}/#{repo}/tarball/#{sha}"
+
+    request_opts = [
+      method: :get,
+      url: url,
+      headers: headers(token),
+      retry: false,
+      raw: true,
+      into: ArchiveStream.into(@max_archive_bytes, @archive_stream_key)
+    ]
+
+    with {:ok, response} <- ArchiveRedirect.fetch(request_opts, request_fun, @archive_stream_key),
+         :ok <- check_archive_size(response),
+         :ok <- expect_archive_status(response) do
+      archive_body(response)
+    end
+  end
+
+  defp check_archive_size(%{private: %{@archive_stream_key => %{too_large?: true}}}),
+    do: {:error, :github_archive_response_too_large}
+
+  defp check_archive_size(%{body: body}) when is_binary(body) and byte_size(body) > @max_archive_bytes,
+    do: {:error, :github_archive_response_too_large}
+
+  defp check_archive_size(_response), do: :ok
+
+  defp expect_archive_status(%{status: 200}), do: :ok
+  defp expect_archive_status(%{status: status}), do: {:error, {:github_status, status}}
+
+  defp archive_body(%{private: %{@archive_stream_key => %{chunks: chunks}}}) do
+    {:ok, chunks |> Enum.reverse() |> IO.iodata_to_binary()}
+  end
+
+  defp archive_body(%{body: body}) when is_binary(body) and byte_size(body) <= @max_archive_bytes,
+    do: {:ok, body}
+
+  defp archive_body(_response), do: {:error, :github_archive_body_invalid}
 
   @spec get_authenticated_user(keyword()) :: {:ok, map()} | {:error, term()}
   def get_authenticated_user(opts \\ []) do

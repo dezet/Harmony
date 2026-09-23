@@ -475,6 +475,12 @@ defmodule SymphonyElixir.Orchestrator do
       {:error, reason} -> {:error, reason}
       other -> {:error, {:invalid_project_fetcher_result, other}}
     end
+  rescue
+    exception ->
+      {:error, {:project_fetcher_failed, exception.__struct__}}
+  catch
+    kind, _reason ->
+      {:error, {:project_fetcher_failed, kind}}
   end
 
   defp linear_scope_options_for_slug(project_slug) when is_binary(project_slug) do

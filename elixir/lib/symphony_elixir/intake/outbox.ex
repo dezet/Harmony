@@ -16,12 +16,17 @@ defmodule SymphonyElixir.Intake.Outbox do
     IntakeCase,
     IntakeEvent,
     IntegrationConnection,
-    IntegrationDelivery
+    IntegrationDelivery,
+    WorkRun
   }
 
   @retry_intervals [30, 120, 600, 1_800]
   @max_automatic_attempts 5
-  @analysis_max_seconds 600
+  @max_analysis_model_starts 2
+  # Analysis.timeout_ms is capped at 900 seconds by Config.Schema.Analysis.
+  @analysis_deadline_max_seconds 900
+  @analysis_recovery_grace_seconds 60
+  @analysis_max_seconds @analysis_deadline_max_seconds + @analysis_recovery_grace_seconds
   @default_io_limit 4
   @default_analysis_limit 1
   @default_rate_limits %{email: 60, sms: 20}
@@ -108,7 +113,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   end
 
   defp persist_retry(current, delivery_id, lease_token, error_code, retry_after, now, opts) do
-    budget = @max_automatic_attempts + manual_retries(current.payload)
+    budget = retry_budget(current)
 
     {status, next_at} =
       if current.attempts < budget do
@@ -628,6 +633,8 @@ defmodule SymphonyElixir.Intake.Outbox do
       version = payload_version(delivery.payload)
 
       if delivery.case_id do
+        analysis = Repo.get_by(IntakeAnalysis, case_id: delivery.case_id, version: version)
+
         Repo.update_all(
           from(a in IntakeAnalysis,
             where: a.case_id == ^delivery.case_id and a.version == ^version and a.status == "running"
@@ -636,10 +643,12 @@ defmodule SymphonyElixir.Intake.Outbox do
         )
 
         Repo.update_all(
-          from(c in IntakeCase, where: c.id == ^delivery.case_id),
+          from(c in IntakeCase, where: c.id == ^delivery.case_id and c.analysis_version == ^version),
           set: [analysis_status: "queued", updated_at: now],
           inc: [lock_version: 1]
         )
+
+        mark_expired_analysis_work_run(analysis, now)
       end
 
       updated =
@@ -724,13 +733,36 @@ defmodule SymphonyElixir.Intake.Outbox do
     )
 
     Repo.update_all(
-      from(c in IntakeCase, where: c.id == ^delivery.case_id),
+      from(c in IntakeCase, where: c.id == ^delivery.case_id and c.analysis_version == ^version),
       set: [analysis_status: "running", updated_at: now],
       inc: [lock_version: 1]
     )
 
     record_event(delivery, "analysis_started", %{version: version}, now)
   end
+
+  defp retry_budget(%IntegrationDelivery{operation: "analysis"}), do: @max_analysis_model_starts
+
+  defp retry_budget(%IntegrationDelivery{payload: payload}) do
+    @max_automatic_attempts + manual_retries(payload)
+  end
+
+  defp mark_expired_analysis_work_run(%IntakeAnalysis{work_run_id: work_run_id}, _now)
+       when is_binary(work_run_id) do
+    case Repo.get(WorkRun, work_run_id) do
+      %WorkRun{status: "running"} = work_run ->
+        payload = Map.put(work_run.payload || %{}, "error_code", "analysis_lease_expired")
+
+        work_run
+        |> WorkRun.changeset(%{status: "failed", payload: payload})
+        |> Repo.update!()
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp mark_expired_analysis_work_run(_analysis, _now), do: :ok
 
   defp analysis_expired?(%IntegrationDelivery{lease_until: lease_until} = delivery, now) do
     lease_expired? = is_nil(lease_until) or DateTime.compare(lease_until, now) != :gt
@@ -758,6 +790,9 @@ defmodule SymphonyElixir.Intake.Outbox do
       _missing -> true
     end
   end
+
+  defp check_manual_retry(%IntegrationDelivery{operation: "analysis"}, _opts),
+    do: {:error, :analysis_retry_requires_new_version}
 
   defp check_manual_retry(%IntegrationDelivery{status: "unknown"}, opts) do
     if Keyword.get(opts, :confirm_duplicate_risk, false), do: :ok, else: {:error, :confirmation_required}

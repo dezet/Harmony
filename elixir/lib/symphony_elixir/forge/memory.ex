@@ -23,6 +23,7 @@ defmodule SymphonyElixir.Forge.Memory do
   defp initial_state do
     %{
       repositories: [],
+      repository_snapshots: %{},
       change_requests: [],
       comments: [],
       review_threads: [],
@@ -47,6 +48,17 @@ defmodule SymphonyElixir.Forge.Memory do
   def seed_repositories(repos) when is_list(repos) do
     ensure_started()
     Agent.update(@agent, &Map.put(&1, :repositories, repos))
+  end
+
+  @doc "Seed a repository's default-branch snapshot for tests and local development."
+  @spec seed_repository_snapshot(map()) :: :ok
+  def seed_repository_snapshot(%{owner: owner, repo: repo} = snapshot)
+      when is_binary(owner) and is_binary(repo) do
+    ensure_started()
+
+    Agent.update(@agent, fn state ->
+      Map.update!(state, :repository_snapshots, &Map.put(&1, {owner, repo}, snapshot))
+    end)
   end
 
   @doc "Seed the list of change requests returned by `list_change_requests/3`."
@@ -87,6 +99,25 @@ defmodule SymphonyElixir.Forge.Memory do
   # ---------------------------------------------------------------------------
   # Forge behaviour callbacks
   # ---------------------------------------------------------------------------
+
+  @impl SymphonyElixir.Forge
+  def get_repository_snapshot(creds, repo_ref) do
+    record_call(:get_repository_snapshot, [creds, repo_ref])
+
+    Agent.get(@agent, fn state ->
+      case Map.get(state.repository_snapshots, {repo_ref.owner, repo_ref.repo}) do
+        %{default_branch: branch, sha: sha, archive: archive} = snapshot
+        when is_binary(branch) and is_binary(sha) and is_binary(archive) ->
+          {:ok, Map.take(snapshot, [:default_branch, :sha, :archive])}
+
+        nil ->
+          {:error, :repository_snapshot_not_seeded}
+
+        _snapshot ->
+          {:error, :invalid_repository_snapshot}
+      end
+    end)
+  end
 
   @impl SymphonyElixir.Forge
   def list_repositories(creds, opts) do

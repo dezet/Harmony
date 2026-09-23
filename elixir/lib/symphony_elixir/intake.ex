@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Intake do
 
   alias SymphonyElixir.Config
   alias SymphonyElixir.Config.Schema
+  alias SymphonyElixir.Intake.Actions
   alias SymphonyElixir.Intake.Rules
 
   @spec settings() :: {:ok, Schema.t()} | {:error, term()}
@@ -55,6 +56,24 @@ defmodule SymphonyElixir.Intake do
   @spec snapshot_case_attrs(map(), SymphonyElixir.Storage.AutomationRule.t(), DateTime.t() | nil) :: map()
   def snapshot_case_attrs(attrs, rule, qualified_at \\ nil) when is_map(attrs) do
     Map.put(attrs, :rule_snapshot, rule_snapshot(rule, qualified_at))
+  end
+
+  @spec acknowledge(String.t(), pos_integer(), keyword()) ::
+          {:ok, SymphonyElixir.Storage.IntakeCase.t()} | {:error, term()}
+  def acknowledge(case_id, expected_version, opts \\ []) do
+    Actions.acknowledge(case_id, expected_version, opts)
+  end
+
+  @spec approve_repair(String.t(), pos_integer(), pos_integer(), boolean(), keyword()) ::
+          {:ok, SymphonyElixir.Storage.IntakeCase.t()} | {:error, term()}
+  def approve_repair(case_id, expected_version, analysis_version, confirmed?, opts \\ []) do
+    Actions.approve_repair(case_id, expected_version, analysis_version, confirmed?, opts)
+  end
+
+  @spec reanalyze(String.t(), pos_integer(), boolean(), keyword()) ::
+          {:ok, SymphonyElixir.Storage.IntakeCase.t()} | {:error, term()}
+  def reanalyze(case_id, expected_version, confirmed?, opts \\ []) do
+    Actions.reanalyze(case_id, expected_version, confirmed?, opts)
   end
 
   defp nonempty_string?(value), do: is_binary(value) and String.trim(value) != ""

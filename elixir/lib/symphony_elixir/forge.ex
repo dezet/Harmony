@@ -4,7 +4,14 @@ defmodule SymphonyElixir.Forge do
   @type creds :: map()
   # base_url: nil means the default host (github.com); set for GitHub Enterprise / self-hosted.
   @type repo_ref :: %{owner: String.t(), repo: String.t(), base_url: String.t() | nil}
+  @type repository_snapshot :: %{
+          default_branch: String.t(),
+          sha: String.t(),
+          archive: binary()
+        }
 
+  @callback get_repository_snapshot(creds, repo_ref) ::
+              {:ok, repository_snapshot()} | {:error, term()}
   @callback list_repositories(creds, keyword()) :: {:ok, [map()]} | {:error, term()}
   @callback get_repository(creds, String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   @callback list_change_requests(creds, repo_ref, keyword()) :: {:ok, [map()]} | {:error, term()}

@@ -1147,6 +1147,44 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     send(runner_pid, :stop)
   end
 
+  test "orchestrator leaves jira analysis work runs to the intake dispatcher" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
+
+    previous_fetchers = Application.get_env(:symphony_elixir, :work_source_fetchers)
+    previous_runner = Application.get_env(:symphony_elixir, :agent_runner_fun)
+    parent = self()
+
+    run = %WorkRun{
+      project_slug: "analysis-project",
+      type: "jira_analysis",
+      status: "queued",
+      dedupe_key: "intake:synthetic-case:jira_analysis:v1:attempt1",
+      payload: %{"case_id" => "synthetic-case", "analysis_version" => 1}
+    }
+
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, [run]} end])
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, _opts ->
+      send(parent, {:agent_run, issue})
+    end)
+
+    orchestrator_name = Module.concat(__MODULE__, :JiraAnalysisExclusionOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: Process.exit(pid, :normal)
+      restore_application_env(:work_source_fetchers, previous_fetchers)
+      restore_application_env(:agent_runner_fun, previous_runner)
+    end)
+
+    send(pid, :run_poll_cycle)
+    refute_receive {:agent_run, _issue}, 100
+
+    state = :sys.get_state(pid)
+    assert state.running == %{}
+    assert state.claimed == MapSet.new()
+  end
+
   test "orchestrator publishes code review work once per dedupe key" do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory", tracker_api_token: nil)
 
@@ -1316,6 +1354,59 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     send(pid, :run_poll_cycle)
 
     assert_receive :github_pr_source_polled, 1_000
+  end
+
+  test "project fetcher exceptions and exits fail closed without stopping or dispatching" do
+    previous_fetcher = Application.get_env(:symphony_elixir, :project_fetcher)
+    previous_agent_runner = Application.get_env(:symphony_elixir, :agent_runner_fun)
+    previous_trap_exit = Process.flag(:trap_exit, true)
+    parent = self()
+
+    failures = [
+      {:exception, fn -> raise "synthetic project storage failure" end},
+      {:exit, fn -> exit(:synthetic_project_storage_exit) end}
+    ]
+
+    Application.put_env(:symphony_elixir, :agent_runner_fun, fn issue, _recipient, _opts ->
+      send(parent, {:agent_run_started, issue.id})
+    end)
+
+    on_exit(fn ->
+      Enum.each(failures, fn {failure_kind, _failure} ->
+        orchestrator_name = Module.concat(__MODULE__, "ProjectFetcher#{failure_kind}Orchestrator")
+
+        if pid = Process.whereis(orchestrator_name) do
+          Process.exit(pid, :normal)
+        end
+      end)
+
+      restore_application_env(:project_fetcher, previous_fetcher)
+      restore_application_env(:agent_runner_fun, previous_agent_runner)
+    end)
+
+    try do
+      Enum.each(failures, fn {failure_kind, failure} ->
+        orchestrator_name = Module.concat(__MODULE__, "ProjectFetcher#{failure_kind}Orchestrator")
+
+        Application.put_env(:symphony_elixir, :project_fetcher, fn ->
+          send(parent, {:project_fetch_attempted, failure_kind})
+          failure.()
+        end)
+
+        {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+        assert Process.whereis(orchestrator_name) == pid
+
+        send(pid, :run_poll_cycle)
+        assert_receive {:project_fetch_attempted, ^failure_kind}, 1_000
+
+        state = :sys.get_state(pid)
+        assert Process.alive?(pid)
+        assert state.running == %{}
+        refute_receive {:agent_run_started, _issue_id}, 100
+      end)
+    after
+      Process.flag(:trap_exit, previous_trap_exit)
+    end
   end
 
   test "implementation completion hands off through runtime policy instead of retrying" do
@@ -2320,6 +2411,9 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     end)
     |> elem(1)
   end
+
+  defp restore_application_env(key, nil), do: Application.delete_env(:symphony_elixir, key)
+  defp restore_application_env(key, value), do: Application.put_env(:symphony_elixir, key, value)
 
   test "work-source fetchers dispatch by project forge_type" do
     github_called = :counters.new(1, [])
