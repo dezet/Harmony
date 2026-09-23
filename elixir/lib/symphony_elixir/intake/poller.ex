@@ -35,6 +35,10 @@ defmodule SymphonyElixir.Intake.Poller do
     else
       {:error, reason} -> finish_failure(context, reason, opts)
     end
+  rescue
+    _exception -> finish_failure(context, :unexpected_scan_failure, opts)
+  catch
+    _kind, _reason -> finish_failure(context, :unexpected_scan_failure, opts)
   end
 
   defp finish_scan(context, opts) do
@@ -489,9 +493,11 @@ defmodule SymphonyElixir.Intake.Poller do
     with {{year, month, day}, {hour, minute, second}} <-
            :httpd_util.convert_request_date(String.to_charlist(value)),
          {:ok, date} <- Date.new(year, month, day),
-         {:ok, time} <- Time.new(hour, minute, second),
+         true <- second <= 60,
+         {:ok, time} <- Time.new(hour, minute, min(second, 59)),
          {:ok, naive} <- NaiveDateTime.new(date, time) do
-      deadline = DateTime.from_naive!(naive, "Etc/UTC")
+      deadline_naive = if second == 60, do: NaiveDateTime.add(naive, 1, :second), else: naive
+      deadline = DateTime.from_naive!(deadline_naive, "Etc/UTC")
 
       deadline
       |> DateTime.diff(now, :microsecond)

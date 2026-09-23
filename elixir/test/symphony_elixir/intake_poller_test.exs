@@ -159,7 +159,10 @@ defmodule SymphonyElixir.IntakePollerTest do
           {"43", "30", ~U[2026-09-23 10:00:00.000000Z], 60},
           {"44", "3600", ~U[2026-09-23 10:00:00.000000Z], 3_600},
           {"45", "Wed, 23 Sep 2026 11:30:00 GMT", ~U[2026-09-23 10:00:00.000000Z], 5_400},
-          {"46", "Wed, 23 Sep 2026 11:00:00 GMT", ~U[2026-09-23 10:00:00.500000Z], 3_600}
+          {"46", "Wed, 23 Sep 2026 11:00:00 GMT", ~U[2026-09-23 10:00:00.500000Z], 3_600},
+          {"47", "Wednesday, 23-Sep-26 11:30:00 GMT", ~U[2026-09-23 10:00:00.000000Z], 5_400},
+          {"48", "Wed Sep 23 11:30:00 2026", ~U[2026-09-23 10:00:00.000000Z], 5_400},
+          {"49", "not a date", ~U[2026-09-23 10:00:00.000000Z], 60}
         ],
         fn {source_id, retry_after, now, expected_seconds} ->
           assert {:ok, candidate} = create_rule!(rule, %{source_id: source_id, interval_seconds: 60})
@@ -180,8 +183,63 @@ defmodule SymphonyElixir.IntakePollerTest do
              ~U[2026-09-23 10:01:00.000000Z],
              ~U[2026-09-23 11:00:00.000000Z],
              ~U[2026-09-23 11:30:00.000000Z],
-             ~U[2026-09-23 11:00:00.500000Z]
+             ~U[2026-09-23 11:00:00.500000Z],
+             ~U[2026-09-23 11:30:00.000000Z],
+             ~U[2026-09-23 11:30:00.000000Z],
+             ~U[2026-09-23 10:01:00.000000Z]
            ]
+  end
+
+  test "Jira Retry-After HTTP-date accepts a leap second", %{rule: rule} do
+    assert {:ok, activating} = Rules.activate(rule)
+    now = ~U[2015-06-30 23:00:00.000000Z]
+    response = {:http, 429, %{"retry-after" => ["Tue, 30 Jun 2015 23:59:60 GMT"]}, %{}}
+
+    assert {:error, %{kind: :http_status, status: 429}} =
+             Poller.run(activating.id, poll_opts([response], clock: fn -> now end))
+
+    assert Repo.get!(AutomationRule, rule.id).next_poll_at == ~U[2015-07-01 00:00:00.000000Z]
+  end
+
+  test "an unexpected Jira fetch exception fails the claimed scan and releases its lease", %{rule: rule} do
+    assert {:ok, activating} = Rules.activate(rule)
+    request_fun = fn _request -> raise "secret provider response" end
+
+    result = Poller.run(activating.id, poll_opts([], request_fun: request_fun))
+
+    assert result == {:error, :unexpected_scan_failure}
+    refute inspect(result) =~ "secret provider response"
+
+    failed_scan = Repo.one!(from(scan in AutomationScan, where: scan.rule_id == ^rule.id))
+    assert failed_scan.status == "failed"
+    assert failed_scan.error_code == "unexpected_scan_failure"
+
+    failed_rule = Repo.get!(AutomationRule, rule.id)
+    assert failed_rule.last_error_code == "unexpected_scan_failure"
+    assert is_nil(failed_rule.lease_token)
+    assert is_nil(failed_rule.lease_until)
+
+    assert {:ok, recovered} = Poller.run(rule.id, poll_opts([page([])]))
+    assert recovered.status == "succeeded"
+
+    throw_result =
+      Poller.run(rule.id, poll_opts([], request_fun: fn _request -> throw("secret provider throw") end))
+
+    assert throw_result == {:error, :unexpected_scan_failure}
+    refute inspect(throw_result) =~ "secret provider throw"
+
+    failed_poll =
+      Repo.one!(
+        from(scan in AutomationScan,
+          where: scan.rule_id == ^rule.id and scan.status == "failed" and scan.mode == "poll"
+        )
+      )
+
+    assert failed_poll.error_code == "unexpected_scan_failure"
+    assert is_nil(Repo.get!(AutomationRule, rule.id).lease_token)
+
+    assert {:ok, recovered_poll} = Poller.run(rule.id, poll_opts([page([])]))
+    assert recovered_poll.status == "succeeded"
   end
 
   test "new_matches_only excludes baseline matches while include_existing imports them once", %{rule: rule} do
