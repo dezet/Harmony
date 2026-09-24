@@ -28,8 +28,8 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel = "Potwierdź",
+  cancelLabel = "Anuluj",
   onConfirm,
   isPending = false,
   destructive = false,
@@ -49,7 +49,7 @@ export function ConfirmDialog({
             <Button
               disabled
               variant={destructive ? "destructive" : "default"}
-              aria-label="Working…"
+              aria-label="Trwa wykonywanie…"
             >
               <Loader2 className="animate-spin" />
               {confirmLabel}

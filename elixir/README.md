@@ -7,10 +7,6 @@ This directory contains the current Elixir/OTP implementation of Symphony, based
 > Symphony Elixir is prototype software intended for evaluation only and is presented as-is.
 > We recommend implementing your own hardened version based on `SPEC.md`.
 
-## Screenshot
-
-![Symphony Elixir screenshot](../.github/media/elixir-screenshot.png)
-
 ## How it works
 
 1. Polls Linear for candidate work
@@ -30,6 +26,11 @@ If Codex reports that operator input, approval, or MCP elicitation is required, 
 issue claimed and exposes it as blocked in the runtime state, JSON API, and dashboard. Blocked
 entries are in memory only; restarting the orchestrator clears that blocked map, so any still-active
 Linear issue can become a dispatch candidate again after restart.
+
+Harmony adds a Jira intake on top of this loop: rules scan Jira Cloud, a new match becomes a case with
+e-mail/SMS alerts, a Linear `Todo` issue and a read-only analysis published as a Jira comment. An
+imported issue is never implemented until an operator approves the repair in the Case Center
+(`ExecutionGate`). The intake ships disabled; see [Jira intake](#jira-intake).
 
 ## How to use it
 
@@ -164,6 +165,10 @@ mix ecto.migrate
 MIX_ENV=test mix ecto.migrate
 ```
 
+Run `mix ecto.migrate` again after every deploy or pull that adds migrations; the intake and Case
+Center migrations are listed in
+[`docs/harmony-operations.md`](../docs/harmony-operations.md#database-migrations).
+
 Optional flags:
 
 - `--logs-root` tells Symphony to write logs under a different directory (default: `./log`)
@@ -174,31 +179,6 @@ Codex session prompt.
 
 Project-specific production settings live in `projects/<slug>.yaml` and are synchronized into
 Postgres on application startup. `WORKFLOW.md` remains the global runtime contract and prompt.
-
-The Jira intake runtime reads rules from Postgres and scans each rule independently. It is disabled
-by default: `intake.enabled` controls scheduled scans, while `intake.effects_enabled` separately
-guards rule activation and external effects. A matched issue reserves its Linear UUID before any
-create request; analysis remains blocked until the matching Linear issue is confirmed. With
-`intake.enabled`, a dispatcher claims due outbox effects every second, at most four I/O effects and
-one analysis at a time; new effects also require `intake.effects_enabled`, and analyses additionally
-`analysis.enabled`. Keep both switches disabled until the intake rollout is explicitly approved.
-
-The intake configuration API lives under `/api/v1/automations`, `/api/v1/integrations`,
-`/api/v1/cases/:ref/{acknowledge,approve-repair,reanalyze}`, `/api/v1/deliveries/:id/retry` and
-`/api/v1/projects/:id/{linear-options,linear-hold-label}`. Every mutation there needs a JSON body,
-a same-origin `Origin` and the session token from `GET /api/v1/csrf` in `X-CSRF-Token`; otherwise
-it returns 403 without running. This is not authentication: keep the API behind a trusted network
-or proxy. Forge webhooks keep their own signature checks. Secrets are write-only (`secret_state`
-only). While `intake.effects_enabled` is false, rule activation, reanalysis, delivery retry, Linear
-hold-label creation and test-send return 409 `effects_disabled`; test-send also needs
-`intake.enabled`. A connection test only reads identity (Jira `myself`, SMTP EHLO/TLS/AUTH without
-DATA, SMSAPI profile); test-send queues one case-less outbox delivery per `Idempotency-Key` that
-counts toward the hourly limit. SMTP hosts must be listed in `intake.smtp_allowed_hosts`.
-Activation first verifies with reads only: the Jira connection, identity, source and priorities;
-the Linear team, project, the state named exactly `Todo` and the hold label; the configured analysis
-profile; and every selected channel. An unmet requirement returns 422 with its code (for example
-`linear_todo_state_missing`), an unavailable provider 503. A manual check claims the scan
-synchronously and returns its `scan_id`; a scan already running returns 409.
 
 Minimal project config:
 
@@ -291,18 +271,57 @@ codex:
 - If `WORKFLOW.md` is missing or has invalid YAML at startup, Symphony does not boot.
 - If a later reload fails, Symphony keeps running with the last known good workflow and logs the
   reload error until the file is fixed.
-- `server.port` or CLI `--port` enables the optional web dashboard and JSON API at
-  `/`, `/api/v1/state`, `/api/v1/<issue_identifier>`, and `/api/v1/refresh`.
+- `server.port` or CLI `--port` enables the web UI and the JSON API under `/api/v1/` (for example
+  `/api/v1/state`, `/api/v1/<issue_identifier>` and `/api/v1/refresh`).
+- The `intake` and `analysis` sections configure the Jira intake; all their switches default to
+  `false`. See [Jira intake](#jira-intake).
 
-## Web dashboard
+## Jira intake
 
-The observability UI is a React + TypeScript single-page app served same-origin by Phoenix:
+The Jira intake reads rules from Postgres and scans each rule independently. A matched issue
+reserves its Linear UUID before any create request; analysis waits until the matching Linear issue is
+confirmed. The dispatcher claims due outbox effects every second, at most four I/O effects and one
+analysis at a time. Three runtime switches in `WORKFLOW.md`, all `false` by default, gate it:
 
-- React SPA (Vite build) served from `priv/static/app` at `/`, with an `index.html` fallback
-  for client-side routes
-- Real-time dashboard over a Phoenix Channel (`socket("/socket")`, topic
-  `observability:dashboard`) that pushes `state_payload` snapshots into the React Query cache
-- JSON API for reads, project CRUD, and operational debugging under `/api/v1/*`
+- `intake.enabled`: scheduled scans and new outbox claims.
+- `intake.effects_enabled`: scans, rule activation and every external effect, including manual
+  checks, reanalysis, delivery retry, Linear hold-label creation and test-send.
+- `analysis.enabled`: new analyses; rule activation also needs a working analysis profile.
+
+`ExecutionGate` refuses implementation of an imported issue without an approved repair, independent
+of the switches. Keep the switches disabled until the intake rollout is explicitly approved. The
+operations runbook [`docs/harmony-operations.md`](../docs/harmony-operations.md#jira-intake) has the
+full runtime configuration example, the Jira/Linear/SMTP/SMSAPI access requirements, rule policies,
+limits and SMS cost, the procedure for unknown delivery results, backup and rollback.
+
+The intake configuration API lives under `/api/v1/automations`, `/api/v1/integrations`,
+`/api/v1/cases/:ref/{acknowledge,approve-repair,reanalyze}`, `/api/v1/deliveries/:id/retry` and
+`/api/v1/projects/:id/{linear-options,linear-hold-label}`. Every mutation there needs a JSON body,
+a same-origin `Origin` and the session token from `GET /api/v1/csrf` in `X-CSRF-Token`; otherwise
+it returns 403 without running. This is not authentication: keep the API behind a trusted network
+or proxy. Forge webhooks keep their own signature checks. Secrets are write-only (`secret_state`
+only). While `intake.effects_enabled` is false, the mutations with external effects return 409
+`effects_disabled`; test-send also needs `intake.enabled`. A connection test only reads identity
+(Jira `myself`, SMTP EHLO/TLS/AUTH without DATA, SMSAPI profile); test-send queues one case-less
+outbox delivery per `Idempotency-Key` that counts toward the hourly limit. SMTP hosts must be listed
+in `intake.smtp_allowed_hosts`. Activation first verifies with reads only: the Jira connection,
+identity, source and priorities; the Linear team, project, the state named exactly `Todo` and the
+hold label; the configured analysis profile; and every selected channel. An unmet requirement returns
+422 with its code (for example `linear_todo_state_missing`), an unavailable provider 503. A manual
+check claims the scan synchronously and returns its `scan_id`; a scan already running returns 409.
+
+## Web UI
+
+The UI is a React + TypeScript single-page app served same-origin by Phoenix:
+
+- React SPA (Vite build) served from `priv/static/app`, with an `index.html` fallback for
+  client-side routes
+- `/` is the Case Center (Centrum spraw: list, Kanban and case detail), `/automations` the Jira
+  rules, `/integrations` the Jira/e-mail/SMS connections, `/overview` Diagnostyka (agent runs and
+  intake metrics), `/runtime` the runtime view and `/projects` the project list, workspaces and runs
+- Real-time updates over a Phoenix Channel (`socket("/socket")`, topics `observability:dashboard`,
+  `observability:run:*` and `intake:workspace`) that refresh the React Query cache
+- JSON API for reads, project CRUD, intake configuration and operational debugging under `/api/v1/*`
 - Bandit as the HTTP server
 
 Build the SPA before serving it (also part of `make assets` and `make ci`):
@@ -322,17 +341,57 @@ Frontend development with hot-reload runs Vite alongside Phoenix; see `assets/CL
 
 ## Testing
 
+Every test run needs `CLOAK_KEY` in the environment; see
+[`docs/operations/credential-key.md`](../docs/operations/credential-key.md#tests--ci).
+
 ```bash
 make all
 ```
+
+### Browser E2E
+
+`make e2e` runs the Playwright suite in `assets/e2e/` against `mix harmony.react_spa_e2e_server`:
+
+```bash
+cd elixir
+export CLOAK_KEY="$(openssl rand -base64 32)"
+mise exec -- make e2e
+```
+
+The server uses its own PostgreSQL database, `harmony_e2e` (or `HARMONY_E2E_DATABASE_NAME`, which
+must contain `e2e`), created and migrated on start. It runs in one shared SQL sandbox that is never
+committed, so each run starts from the same synthetic data and nothing persists. Jira, Linear, SMTP and
+SMSAPI calls go to in-process stubs; nothing leaves the machine. The suite runs with `workers: 1`
+because every spec shares that one sandbox.
+
+Install the browser once from `assets/` with `npx playwright install chromium`. Playwright has no
+official build for Ubuntu 26.04; there, install the Ubuntu 24.04 build:
+
+```bash
+cd elixir/assets
+PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium
+```
+
+### SMTP integration (Mailpit)
+
+The SMTP transport test starts one throwaway Mailpit container on loopback ports and sends one message
+through the production adapter. It is tagged `smtp_integration`, excluded by default, and needs Podman
+or Docker:
+
+```bash
+cd elixir
+mise exec -- mix test --include smtp_integration test/symphony_elixir/notification_smtp_integration_test.exs
+```
+
+### Live external E2E
 
 Run the real external end-to-end test only when you want Symphony to create disposable Linear
 resources and launch a real `codex app-server` session:
 
 ```bash
 cd elixir
-export LINEAR_API_KEY=...
-make e2e
+export LINEAR_API_KEY=<linear-api-key>
+make live-e2e
 ```
 
 Optional environment variables:
@@ -340,7 +399,7 @@ Optional environment variables:
 - `SYMPHONY_LIVE_LINEAR_TEAM_KEY` defaults to `SYME2E`
 - `SYMPHONY_LIVE_SSH_WORKER_HOSTS` uses those SSH hosts when set, as a comma-separated list
 
-`make e2e` runs two live scenarios:
+`make live-e2e` runs two live scenarios:
 
 - one with a local worker
 - one with SSH workers
@@ -351,7 +410,7 @@ mounts the host `~/.codex/auth.json` into each worker, verifies that Symphony ca
 over real SSH, then runs the same orchestration flow against those worker addresses. This keeps
 the transport representative without depending on long-lived external machines.
 
-Set `SYMPHONY_LIVE_SSH_WORKER_HOSTS` if you want `make e2e` to target real SSH hosts instead.
+Set `SYMPHONY_LIVE_SSH_WORKER_HOSTS` if you want `make live-e2e` to target real SSH hosts instead.
 
 The live test creates a temporary Linear project and issue, writes a temporary `WORKFLOW.md`, runs
 a real agent turn, verifies the workspace side effect, requires Codex to comment on and close the

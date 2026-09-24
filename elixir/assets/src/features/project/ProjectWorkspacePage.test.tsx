@@ -133,23 +133,23 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Tab bar: Work enabled, Evidence enabled (no longer disabled)
-    const workTab = screen.getByRole("tab", { name: /^work$/i });
+    const workTab = screen.getByRole("tab", { name: "Praca" });
     expect(workTab).toBeInTheDocument();
     expect(workTab).not.toBeDisabled();
 
-    const evidenceTab = screen.getByRole("tab", { name: /^evidence$/i });
+    const evidenceTab = screen.getByRole("tab", { name: "Dowody" });
     expect(evidenceTab).not.toBeDisabled();
 
-    const activityTab = screen.getByRole("tab", { name: /^activity$/i });
+    const activityTab = screen.getByRole("tab", { name: "Aktywność" });
     expect(activityTab).not.toBeDisabled();
 
-    const configTab = screen.getByRole("tab", { name: /^configuration$/i });
+    const configTab = screen.getByRole("tab", { name: "Konfiguracja" });
     expect(configTab).not.toBeDisabled();
 
     // Three column headings (Work tab content)
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("Retry & blocked")).toBeInTheDocument();
-    expect(screen.getByText("→ Human Review")).toBeInTheDocument();
+    expect(screen.getByText("Przebiegi w toku")).toBeInTheDocument();
+    expect(screen.getByText("Ponawiane i zablokowane")).toBeInTheDocument();
+    expect(screen.getByText("→ Przegląd człowieka")).toBeInTheDocument();
 
     // PR link from fixture
     const prNumber = summaryFixture.human_review_prs[0].github_pr_number;
@@ -158,7 +158,7 @@ describe("ProjectWorkspacePage", () => {
     expect(prLink).toHaveAttribute("target", "_blank");
 
     // History section
-    expect(screen.getByRole("heading", { name: /history/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Historia" })).toBeInTheDocument();
 
     // A row from work_runs fixture
     await waitFor(() =>
@@ -175,10 +175,10 @@ describe("ProjectWorkspacePage", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText("Project not found")).toBeInTheDocument(),
+      expect(screen.getByRole("heading", { level: 1, name: "Nie znaleziono projektu" })).toBeInTheDocument(),
     );
 
-    const backLink = screen.getByRole("link", { name: /projects/i });
+    const backLink = screen.getByRole("link", { name: "Wróć do projektów" });
     expect(backLink).toHaveAttribute("href", "/projects");
   });
 
@@ -191,7 +191,7 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByRole("heading", { name: summaryFixture.project.slug })).toBeInTheDocument(),
     );
 
-    const evidenceTab = screen.getByRole("tab", { name: /^evidence$/i });
+    const evidenceTab = screen.getByRole("tab", { name: "Dowody" });
     await user.click(evidenceTab);
 
     // Location display should now include ?tab=evidence
@@ -213,7 +213,7 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Click Work tab
-    const workTab = screen.getByRole("tab", { name: /^work$/i });
+    const workTab = screen.getByRole("tab", { name: "Praca" });
     await user.click(workTab);
 
     // Location should no longer have ?tab=
@@ -222,7 +222,7 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Work tab content should be active
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Przebiegi w toku")).toBeInTheDocument();
   });
 
   it("renders ActivityTab when initialEntries includes ?tab=activity", async () => {
@@ -237,7 +237,7 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.queryByText("Coming soon.")).not.toBeInTheDocument();
 
     // Work tab content should NOT be rendered
-    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+    expect(screen.queryByText("Przebiegi w toku")).not.toBeInTheDocument();
   });
 
   it("invalid ?tab=bogus falls back to Work tab", async () => {
@@ -249,7 +249,7 @@ describe("ProjectWorkspacePage", () => {
     );
 
     // Work tab content should be visible (fallback)
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Przebiegi w toku")).toBeInTheDocument();
 
     // No stub "Coming soon." should be visible
     expect(screen.queryByText("Coming soon.")).not.toBeInTheDocument();
@@ -266,6 +266,6 @@ describe("ProjectWorkspacePage", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("Slug")).toBeInTheDocument(),
     );
-    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+    expect(screen.queryByText("Przebiegi w toku")).not.toBeInTheDocument();
   });
 });

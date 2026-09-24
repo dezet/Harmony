@@ -195,6 +195,26 @@ describe("T24.8 pauza, wznowienie i następny termin z odpowiedzi backendu", () 
     expect(within(paused).getByRole("switch")).toHaveAttribute("aria-checked", "true");
   });
 
+  it("odmowa wznowienia (activation_blocked) pokazuje polskie powody z pól odpowiedzi", async () => {
+    server.on(`POST /api/v1/automations/${PAUSED_ID}/activate`, () =>
+      apiError(422, "activation_blocked", {
+        linear_hold_label_id: ["linear_hold_label_missing"],
+        email_recipients: ["email_recipients_missing"],
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    const paused = await screen.findByRole("listitem", { name: "Wstrzymana reguła" });
+
+    await user.click(within(paused).getByRole("switch", { name: "Reguła Wstrzymana reguła aktywna" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Wznów regułę" }));
+
+    const alert = await within(paused).findByRole("alert");
+    expect(alert).toHaveTextContent(/Kanał e-mail jest włączony, ale nie ma adresatów/);
+    expect(alert).not.toHaveTextContent(/Nie udało się wykonać akcji/);
+    expect(within(paused).getByRole("switch")).toHaveAttribute("aria-checked", "false");
+  });
+
   it("nieudana pauza zostawia regułę aktywną i opisuje błąd", async () => {
     server.on(`POST /api/v1/automations/${RULE_ID}/pause`, () => apiError(409, "stale_version"));
     const user = userEvent.setup();

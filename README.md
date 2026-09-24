@@ -10,6 +10,20 @@ _In this [demo video](https://player.vimeo.com/video/1186371009?h=5626e4b899), S
 > [!WARNING]
 > Symphony is a low-key engineering preview for testing in trusted environments.
 
+## Harmony
+
+This repository runs Symphony as Harmony, with two additions on top of the reference implementation:
+
+- The Case Center (Centrum spraw) at `/`: one list and Kanban of Jira cases and agent runs per project,
+  with the case detail, Jira and Linear links and the operator decisions.
+- A Jira intake: rules scan Jira Cloud, a new match sends e-mail/SMS alerts, creates a Linear `Todo`
+  issue and runs a read-only analysis that is published as a Jira comment. Nothing is implemented
+  until an operator approves the repair.
+
+The intake ships disabled. Setup, access requirements, rollout and rollback are in
+[docs/harmony-operations.md](docs/harmony-operations.md); the Elixir run instructions are in
+[elixir/README.md](elixir/README.md).
+
 ## Running Symphony
 
 ### Requirements
@@ -23,7 +37,7 @@ moving from managing coding agents to managing work that needs to get done.
 Tell your favorite coding agent to build Symphony in a programming language of your choice:
 
 > Implement Symphony according to the following spec:
-> https://github.com/openai/symphony/blob/main/SPEC.md
+> <https://github.com/openai/symphony/blob/main/SPEC.md>
 
 ### Option 2. Use our experimental reference implementation
 
@@ -32,7 +46,7 @@ and run the Elixir-based Symphony implementation. You can also ask your favorite
 help with the setup:
 
 > Set up Symphony for my repository based on
-> https://github.com/openai/symphony/blob/main/elixir/README.md
+> <https://github.com/openai/symphony/blob/main/elixir/README.md>
 
 ---
 

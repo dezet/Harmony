@@ -72,12 +72,17 @@ describe("OverviewPage", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument(),
+      expect(screen.getByRole("heading", { level: 1, name: "Diagnostyka" })).toBeInTheDocument(),
     );
     expect(screen.getByText("5")).toBeInTheDocument(); // running metric
     expect(screen.getByText("HAR-42")).toBeInTheDocument(); // needs attention
     expect(screen.getByText("HAR-44")).toBeInTheDocument(); // active runs
-    expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Projekty" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wymaga uwagi" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Aktywne przebiegi" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Środowisko uruchomieniowe" })).toHaveAttribute("href", "/runtime");
+    expect(screen.getByText(/Dane diagnostyczne intake są niedostępne/)).toBeInTheDocument();
+    expect(document.title).toBe("Diagnostyka — Harmony");
   });
 
   it("surfaces a snapshot error payload", async () => {

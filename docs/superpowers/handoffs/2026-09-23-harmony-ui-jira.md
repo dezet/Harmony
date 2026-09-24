@@ -1,7 +1,7 @@
 ---
 title: "Harmony UI/Jira — przekazanie do nowej sesji"
 date: 2026-09-24
-status: m5-ready-for-review
+status: m6-ready-for-review
 audience: coding-agent
 ---
 
@@ -24,13 +24,22 @@ Plan ma siedem milestone’ów: M0–M6. Każde Txx jest osobnym zleceniem dla a
 | Etap | Stan |
 | --- | --- |
 | M0–M3 | Scalone do `main` (PR #17–#20), `origin/main` = `db2d0d1`. |
-| M4 | Ukończony; Draft PR [#21](https://github.com/dezet/Harmony/pull/21) (`feature/harmony-ui-jira-m4`) do scalenia przez użytkownika. |
-| M5 | Ukończony na `feature/harmony-ui-jira-m5` (stos nad M4); Draft PR do scalenia po M4. |
-| M6 | Nie rozpoczęto. |
+| M4 | Scalony do `main` (PR [#21](https://github.com/dezet/Harmony/pull/21)). |
+| M5 | Scalony do `main` (PR [#23](https://github.com/dezet/Harmony/pull/23); #22 trafił omyłkowo do gałęzi M4). |
+| M6 | Ukończony na `feature/harmony-ui-jira-m6`; PR do `main` do scalenia przez użytkownika. Otwarte tylko T29.3 (G-LIVE) i T29.7 (produkcyjne `enabled=true`) — wymagają decyzji operatora. |
 
 Bramka M4 (log: `output/verification/m4/`, lokalny, nieśledzony): `make all` exit 0 — 1041 testów, pokrycie 85,28%, Dialyzer 0 błędów; frontend 293 testy.
 
 Bramka M5 (`output/verification/m5/`): `make all` exit 0 — Credo bez uwag, 1064 testy, 0 błędów, pokrycie 85,35%, Dialyzer 0 błędów; frontend Vitest 481 testów, typecheck, lint i build exit 0.
+
+Bramka M6 (`output/verification/m6/final-*.log`): `make all` exit 0 — Credo bez uwag, 1080 testów, 0 błędów, pokrycie 86,32% (harness E2E wyłączony z pokrycia jednostkowego), Dialyzer 0 błędów; `make e2e` exit 0 (61 testów); frontend Vitest 508 testów, typecheck, lint i build exit 0; markdownlint i `git diff --check` exit 0. Zrzuty kandydackie (`output/verification/m6/screenshots/`) zatwierdzone przez użytkownika; przycisk zamknięcia menu mobilnego zmieniony na ikonę X.
+
+## Co zawiera M6
+
+- T26 polskie etykiety i tokeny A na starych ekranach, Diagnostyka intake (`Intake.Diagnostics`), stały kod `activation_blocked`, `display_name` w powiadomieniach, sprzątanie nieużywanych zależności.
+- T27 deterministyczne E2E Playwright (baza `harmony_e2e` w SQL Sandbox, stuby dostawców w procesie) i 90 zrzutów w czterech rozdzielczościach, jasny/ciemny/reduced motion.
+- T28 runbook intake w `docs/harmony-operations.md`, przykład konfiguracji z wyłączonymi flagami, procedura unknown, backup/`CLOAK_KEY`/rollback.
+- T29.2 macierz fault-injection §10.2 → testy: `docs/evidence/harmony-ui-jira/fault-injection-matrix.md`.
 
 ## Co zawiera M4
 
@@ -64,8 +73,12 @@ Bramka M5 (`output/verification/m5/`): `make all` exit 0 — Credo bez uwag, 106
 - UI rozpoznaje odmowę aktywacji (422) heurystycznie; rozważyć stały kod `activation_blocked` w backendzie.
 - E2E `e2e/react-spa.spec.ts` oczekuje starego shellu — do aktualizacji w T27.
 - Baza dev wymaga `mix ecto.migrate` (priority_ranking, indeksy projekcji, display_name).
+- Rotacja `CLOAK_KEY` nie jest zaimplementowana (`Vault` ładuje jeden szyfr) — dokumentacja poprawiona, potrzebne zadanie w kodzie.
+- Brak akcji UI dla `unknown` przy `linear_create`/`jira_comment` (API: 409 `reconciliation_required`, runbook: eskalacja).
+- G-LIVE: nazwy scope'ów tokenu Jira scoped i kody błędów SMSAPI do potwierdzenia.
+- Na Ubuntu 26.04 instalacja Chromium dla Playwright: `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium`.
 - Wszystkie worktree współdzielą bazę `harmony_test`; nie uruchamiać równolegle pełnych zestawów z dwóch worktree.
 
 ## Następny krok
 
-M6 (T26–T29, regresja, E2E, dokumentacja, końcowe bramki) na gałęzi `feature/harmony-ui-jira-m6` nad M5. Worktree roboczy: `/home/ddziag/projects/Harmony-m4` (nazwa historyczna). G-LIVE (T29.3) i produkcyjne `enabled=true` wymagają zgody operatora. Testowy `CLOAK_KEY` musi być 32-bajtowym kluczem w Base64, np. `python3 -c 'import base64; print(base64.b64encode(b"k" * 32).decode())'`.
+Po scaleniu M6: G-LIVE (T29.3, §10.4) na testowych zasobach wskazanych przez operatora, potem decyzja operatora o produkcyjnym `enabled=true` (T29.7). Worktree roboczy: `/home/ddziag/projects/Harmony-m4` (nazwa historyczna). Testowy `CLOAK_KEY` musi być 32-bajtowym kluczem w Base64, np. `python3 -c 'import base64; print(base64.b64encode(b"k" * 32).decode())'`.

@@ -4,6 +4,7 @@ defmodule SymphonyElixirWeb.Presenter do
   """
 
   alias SymphonyElixir.{Config, Orchestrator, StatusDashboard, Storage}
+  alias SymphonyElixir.Intake.Diagnostics
   alias SymphonyElixir.Storage.{WorkEvent, WorkRun}
 
   @durable_limit 50
@@ -387,6 +388,7 @@ defmodule SymphonyElixirWeb.Presenter do
         }
         |> maybe_put_projects(snapshot)
         |> maybe_put_durable()
+        |> maybe_put_intake()
 
       :timeout ->
         %{generated_at: generated_at, error: %{code: "snapshot_timeout", message: "Snapshot timed out"}}
@@ -500,6 +502,56 @@ defmodule SymphonyElixirWeb.Presenter do
       nil -> payload
       durable -> Map.put(payload, :durable, durable)
     end
+  end
+
+  defp maybe_put_intake(payload) do
+    Map.put(payload, :intake, intake_diagnostics_payload(Diagnostics.snapshot()))
+  rescue
+    DBConnection.OwnershipError -> payload
+  end
+
+  @doc """
+  JSON projection of `Intake.Diagnostics.snapshot/1` (spec §12): counts, ISO
+  timestamps, IDs, names and safe error codes only.
+  """
+  @spec intake_diagnostics_payload(Diagnostics.t()) :: map()
+  def intake_diagnostics_payload(snapshot) do
+    %{
+      generated_at: iso8601(snapshot.generated_at),
+      switches: snapshot.switches,
+      backlog: %{total: snapshot.backlog.total, oldest_waiting_at: iso8601(snapshot.backlog.oldest_waiting_at)},
+      unknown: snapshot.unknown,
+      stale_leases: snapshot.stale_leases,
+      analysis: snapshot.analysis,
+      queues: Enum.map(snapshot.queues, &Map.update!(&1, :oldest_waiting_at, fn at -> iso8601(at) end)),
+      channel_errors: snapshot.channel_errors,
+      rules: Enum.map(snapshot.rules, &intake_rule_payload/1)
+    }
+  end
+
+  defp intake_rule_payload(rule) do
+    %{
+      id: rule.id,
+      name: rule.name,
+      project: rule.project,
+      enabled: rule.enabled,
+      activation_status: rule.activation_status,
+      last_success_at: iso8601(rule.last_success_at),
+      next_poll_at: iso8601(rule.next_poll_at),
+      last_error_code: rule.last_error_code,
+      last_scan: rule.last_scan && intake_scan_payload(rule.last_scan)
+    }
+  end
+
+  defp intake_scan_payload(scan) do
+    %{
+      mode: scan.mode,
+      status: scan.status,
+      started_at: iso8601(scan.started_at),
+      finished_at: iso8601(scan.finished_at),
+      duration_ms: scan.duration_ms,
+      error_code: scan.error_code
+    }
   end
 
   defp durable_payload do

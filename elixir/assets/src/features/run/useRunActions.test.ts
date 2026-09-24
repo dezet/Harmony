@@ -38,7 +38,7 @@ describe("useStopRun", () => {
     expect(stopRunSpy).toHaveBeenCalledWith("COD-10");
 
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalledWith("Run stop requested");
+    expect(toast.success).toHaveBeenCalledWith("Zażądano zatrzymania przebiegu");
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: RUN_KEY("COD-10") });
   });
 
@@ -57,7 +57,7 @@ describe("useStopRun", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith("Failed to stop run (run_not_found)");
+    expect(toast.error).toHaveBeenCalledWith("Nie udało się zatrzymać przebiegu (run_not_found)");
   });
 
   it("shows error toast with 'unknown' code for non-ApiError failures", async () => {
@@ -73,7 +73,7 @@ describe("useStopRun", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith("Failed to stop run (unknown)");
+    expect(toast.error).toHaveBeenCalledWith("Nie udało się zatrzymać przebiegu (unknown)");
   });
 });
 
@@ -94,7 +94,7 @@ describe("useRetryRun", () => {
     expect(retryRunSpy).toHaveBeenCalledWith("COD-10");
 
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalledWith("Retry scheduled");
+    expect(toast.success).toHaveBeenCalledWith("Zaplanowano ponowienie");
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: RUN_KEY("COD-10") });
   });
 
@@ -113,7 +113,7 @@ describe("useRetryRun", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith("Failed to retry run (not_retrying)");
+    expect(toast.error).toHaveBeenCalledWith("Nie udało się ponowić przebiegu (not_retrying)");
   });
 
   it("shows error toast with 'unknown' code for non-ApiError failures", async () => {
@@ -129,6 +129,6 @@ describe("useRetryRun", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith("Failed to retry run (unknown)");
+    expect(toast.error).toHaveBeenCalledWith("Nie udało się ponowić przebiegu (unknown)");
   });
 });

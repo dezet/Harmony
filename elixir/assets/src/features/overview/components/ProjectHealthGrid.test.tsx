@@ -20,9 +20,10 @@ describe("ProjectHealthGrid", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("alpha")).toBeInTheDocument();
-    expect(screen.getByText("2 running")).toBeInTheDocument();
-    expect(screen.getByText("1 retrying")).toBeInTheDocument();
-    expect(screen.getByText("0 blocked")).toBeInTheDocument();
+    expect(screen.getByText("w toku: 2")).toBeInTheDocument();
+    expect(screen.getByText("ponawiane: 1")).toBeInTheDocument();
+    expect(screen.getByText("zablokowane: 0")).toBeInTheDocument();
+    expect(screen.getByText("(ponawia)")).toHaveClass("sr-only");
   });
 
   it("offers creating the first project when the list is empty", () => {
@@ -31,7 +32,7 @@ describe("ProjectHealthGrid", () => {
         <ProjectHealthGrid projects={[]} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("link", { name: /create the first one/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Utwórz pierwszy projekt." })).toHaveAttribute(
       "href",
       "/projects/new",
     );

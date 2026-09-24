@@ -136,11 +136,15 @@ describe("Sidebar", () => {
     renderSidebar();
 
     const main = screen.getByRole("navigation", { name: "Główna" });
+    const caseCenter = () => within(main).getByRole("link", { name: /^Centrum spraw/ });
+
+    // Browsers add a space between flex items when they join an accessible name
+    // from content ("Centrum spraw , 4 do decyzji"); one aria-label keeps the exact name.
     await waitFor(() =>
-      expect(within(main).getByRole("link", { name: /^Centrum spraw/ })).toHaveAccessibleName(
-        "Centrum spraw, 4 do decyzji",
-      ),
+      expect(caseCenter()).toHaveAttribute("aria-label", "Centrum spraw, 4 do decyzji"),
     );
+    expect(caseCenter()).toHaveAccessibleName("Centrum spraw, 4 do decyzji");
+    expect(within(caseCenter()).getByText("4")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("shows project display names and falls back to the slug", async () => {
@@ -187,6 +191,16 @@ describe("Sidebar", () => {
     expect(projectLink(/Finanse/)).toHaveTextContent("0");
     expect(projectLink(/Finanse/)).toHaveAccessibleName("Finanse, 0 spraw");
     expect(projectLink(/^hr/)).toHaveAccessibleName("hr, 3 sprawy");
+  });
+
+  it("names a project link with its case count in one label, independent of the flex layout", async () => {
+    stubApi([{ project_id: "p2", total: 30 }]);
+    renderSidebar();
+
+    // Browsers add a space between flex items when they join an accessible name
+    // from content ("Finanse , 30 spraw"); one aria-label keeps the exact name.
+    await waitFor(() => expect(projectLink(/Finanse/)).toHaveAttribute("aria-label", "Finanse, 30 spraw"));
+    expect(projectLink(/Finanse/)).toHaveAccessibleName("Finanse, 30 spraw");
   });
 
   it("requests the case projection totals, not live run counts", async () => {

@@ -27,12 +27,12 @@ describe("StreamItemRow", () => {
 
   it("renders 'event' badge for work_event kind", () => {
     render(<StreamItemRow item={makeItem({ kind: "work_event" })} />);
-    expect(screen.getByText("event")).toBeInTheDocument();
+    expect(screen.getByText("zapisane")).toBeInTheDocument();
   });
 
   it("renders 'live' badge for live_event kind", () => {
     render(<StreamItemRow item={makeItem({ kind: "live_event" })} />);
-    expect(screen.getByText("live")).toBeInTheDocument();
+    expect(screen.getByText("na żywo")).toBeInTheDocument();
   });
 
   it("renders payload.message when it is a string", () => {

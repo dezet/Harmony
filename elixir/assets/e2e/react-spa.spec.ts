@@ -1,85 +1,76 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./support";
 
-test("overview renders React data from REST and channel", async ({ page }) => {
-  await page.goto("/");
+// Kept screens in shell A (AC16): the technical overview moved to
+// /overview („Diagnostyka”), the sidebar project opens the Case Center and the
+// workspace is one link further, and every run screen stays reachable.
 
-  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(page.getByText("COD-1")).toBeVisible();
-  await expect(page.getByText("Live")).toBeVisible();
+test("diagnostics renders React data from REST and channel", async ({ page }) => {
+  await page.goto("/overview");
 
-  await page.request.post("/api/v1/refresh");
-  await expect(page.getByText("COD-2")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Diagnostyka" })).toBeVisible();
+  await expect(page.getByText("COD-1").first()).toBeVisible();
+  await expect(page.getByRole("complementary").getByRole("status")).toHaveText("Połączono");
+
+  const refresh = await page.request.post("/api/v1/refresh");
+  expect(refresh.status()).toBe(202);
+  await expect(page.getByText(/^COD-([2-9]|\d\d+)$/).first()).toBeVisible();
 });
 
 test("projects route is owned by the React router", async ({ page }) => {
   await page.goto("/projects");
 
-  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-  await expect(page.getByRole("main").getByRole("link", { name: "New project" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Projekty" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Nowy projekt" })).toBeVisible();
 });
 
 test("runtime route is owned by the React router", async ({ page }) => {
   await page.goto("/runtime");
 
-  await expect(page.getByRole("heading", { name: "Runtime" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Środowisko uruchomieniowe" })).toBeVisible();
 });
 
-test("sidebar project link navigates to the workspace", async ({ page }) => {
+test("sidebar project opens the Case Center and the workspace stays one link away", async ({ page }) => {
   await page.goto("/");
 
-  // Wait for the sidebar project to appear (derived from the snapshot entry)
-  const projectLink = page.getByRole("link", { name: /react-spa-e2e/i });
+  const projectLink = page.getByRole("navigation", { name: "Projekty" }).getByRole("link", { name: /^Portal klienta/ });
   await expect(projectLink).toBeVisible();
-
   await projectLink.click();
+  await expect(page).toHaveURL(/\/\?project=react-spa-e2e$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Portal klienta" })).toBeVisible();
 
+  await page.getByRole("link", { name: "Praca agentów i ustawienia" }).click();
   await expect(page).toHaveURL(/\/projects\/react-spa-e2e$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Portal klienta" })).toBeVisible();
+  await expect(page.getByText(/^react-spa-e2e · /)).toBeVisible();
 
-  // Workspace header shows the slug
-  await expect(page.getByRole("heading", { level: 1, name: "react-spa-e2e" })).toBeVisible();
-
-  // All four tab buttons are present and enabled
-  const evidenceTab = page.getByRole("button", { name: "Evidence" });
-  await expect(evidenceTab).toBeVisible();
-  await expect(evidenceTab).not.toBeDisabled();
-
-  // Running column heading is visible (card title — exact match to avoid the counts line)
-  await expect(page.getByText("Running", { exact: true })).toBeVisible();
+  // All four tabs are present and enabled.
+  for (const name of ["Praca", "Dowody", "Aktywność", "Konfiguracja"]) {
+    await expect(page.getByRole("tab", { name })).toBeEnabled();
+  }
+  await expect(page.getByText("Przebiegi w toku", { exact: true })).toBeVisible();
 });
 
 test("workspace tabs: evidence, activity, and configuration deep-link", async ({ page }) => {
   await page.goto("/projects/react-spa-e2e");
-
-  // Wait for the workspace to load
-  await expect(page.getByRole("heading", { level: 1, name: "react-spa-e2e" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Portal klienta" })).toBeVisible();
 
   // --- Evidence tab ---
-  await page.getByRole("button", { name: "Evidence" }).click();
+  await page.getByRole("tab", { name: "Dowody" }).click();
   await expect(page).toHaveURL(/[?&]tab=evidence/);
-
-  // An artifact group with the COD-1 run identifier should be visible.
-  // The EvidenceTab renders the identifier as a <span> — scope to it so the
-  // assertion is not confused by any COD-1 links that React is still unmounting
-  // from the Work tab after the URL change.
+  // The EvidenceTab renders the identifier as a <span>; scope to it so COD-1
+  // links still unmounting from the Work tab do not confuse the assertion.
   await expect(page.locator("span.font-mono").filter({ hasText: "COD-1" }).first()).toBeVisible();
-
-  // A screenshot <img> whose src contains the artifact API path
-  await expect(
-    page.locator('img[src*="/api/v1/artifacts/"]').first(),
-  ).toBeVisible();
+  await expect(page.locator('img[src*="/api/v1/artifacts/"]').first()).toBeVisible();
 
   // --- Activity tab ---
-  await page.getByRole("button", { name: "Activity" }).click();
+  await page.getByRole("tab", { name: "Aktywność" }).click();
   await expect(page).toHaveURL(/[?&]tab=activity/);
-
-  // The seeded run_started event should appear in the feed
+  // Raw event types stay verbatim.
   await expect(page.getByText("run_started")).toBeVisible();
 
   // --- Configuration tab ---
-  await page.getByRole("button", { name: "Configuration" }).click();
+  await page.getByRole("tab", { name: "Konfiguracja" }).click();
   await expect(page).toHaveURL(/[?&]tab=configuration/);
-
-  // The configuration form should be visible with the slug prefilled
   const slugInput = page.getByLabel("Slug", { exact: true });
   await expect(slugInput).toBeVisible();
   await expect(slugInput).toHaveValue("react-spa-e2e");
@@ -88,64 +79,76 @@ test("workspace tabs: evidence, activity, and configuration deep-link", async ({
 test("workspace tab deep-link: direct navigation to ?tab=configuration", async ({ page }) => {
   await page.goto("/projects/react-spa-e2e?tab=configuration");
 
-  // Configuration form should load directly with the slug prefilled
   const slugInput = page.getByLabel("Slug", { exact: true });
   await expect(slugInput).toBeVisible();
   await expect(slugInput).toHaveValue("react-spa-e2e");
 });
 
+test("the agent-work case links to its run detail", async ({ page }) => {
+  await page.goto("/?project=react-spa-e2e&q=COD-1");
+  await page.getByRole("region", { name: "Lista spraw" }).getByRole("button", { name: /Synchronizacja statusów/ }).click();
+  const detail = page.getByRole("region", { name: "Szczegóły sprawy" });
+  await expect(detail.getByText("Istniejąca praca agenta", { exact: true })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Zobacz w Jira" })).toBeDisabled();
+  await detail.getByRole("tab", { name: "Zgłoszenie" }).click();
+  await detail.getByRole("link", { name: "Szczegół przebiegu" }).click();
+  await expect(page).toHaveURL(/\/projects\/react-spa-e2e\/runs\/COD-1$/);
+  await expect(page.getByRole("heading", { level: 1, name: "COD-1" })).toBeVisible();
+});
+
 test("clicking a running identifier navigates to run detail", async ({ page }) => {
-  // Navigate to the project workspace where the running column is visible
   await page.goto("/projects/react-spa-e2e");
 
-  // Wait for the running column to appear and find a COD-1 link.
-  // When the snapshot has multiple running entries (e.g. after a /refresh bumped
-  // the version) COD-1 may appear both in the RunningColumn and the history table;
-  // .first() picks whichever renders first — both navigate to the same URL.
+  // COD-1 may appear both in the running column and in the history table;
+  // both navigate to the same URL.
   const runLink = page.getByRole("link", { name: "COD-1" }).first();
   await expect(runLink).toBeVisible();
-
   await runLink.click();
 
-  // URL should be the run detail page
   await expect(page).toHaveURL(/\/projects\/react-spa-e2e\/runs\/COD-1$/);
-
-  // h1 shows the identifier
   await expect(page.getByRole("heading", { level: 1, name: "COD-1" })).toBeVisible();
-
-  // Breadcrumb shows the identifier as the current page
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByText("COD-1")).toBeVisible();
-
-  // Stream shows the seeded work_event type
+  await expect(page.getByRole("navigation", { name: "Ścieżka" }).getByText("COD-1")).toBeVisible();
   await expect(page.getByText("run_started")).toBeVisible();
 
-  // Rail Stop button is enabled for a running run (wired in Phase 5)
-  const stopButton = page.getByRole("button", { name: "Stop this run" });
+  const stopButton = page.getByRole("button", { name: "Zatrzymaj ten przebieg" });
   await expect(stopButton).toBeVisible();
-  await expect(stopButton).not.toBeDisabled();
+  await expect(stopButton).toBeEnabled();
 });
 
 test("stop action: confirm dialog and success toast", async ({ page }) => {
-  // Navigate directly to the run detail for the seeded COD-1 (status: running)
   await page.goto("/projects/react-spa-e2e/runs/COD-1");
-
-  // Wait for the page to fully load
   await expect(page.getByRole("heading", { level: 1, name: "COD-1" })).toBeVisible();
 
-  // The Stop button is enabled (COD-1 is running)
-  const stopButton = page.getByRole("button", { name: "Stop this run" });
-  await expect(stopButton).toBeVisible();
-  await expect(stopButton).not.toBeDisabled();
-
-  // Click Stop — the ConfirmDialog should open
+  const stopButton = page.getByRole("button", { name: "Zatrzymaj ten przebieg" });
+  await expect(stopButton).toBeEnabled();
   await stopButton.click();
 
-  // The dialog title is visible
-  await expect(page.getByRole("heading", { name: "Stop this run?" })).toBeVisible();
+  const dialog = page.getByRole("alertdialog", { name: "Zatrzymać ten przebieg?" });
+  await expect(dialog).toBeVisible();
+  // Soft stop: the copy never promises to kill the OS process.
+  await expect(dialog).not.toContainText(/zabi/i);
+  await dialog.getByRole("button", { name: "Zatrzymaj przebieg" }).click();
 
-  // Click the confirm button ("Stop run") — fires POST /api/v1/runs/COD-1/stop
-  await page.getByRole("button", { name: "Stop run" }).click();
+  // The snapshot orchestrator returns :ok → HTTP 200 → success toast.
+  await expect(page.getByText("Zażądano zatrzymania przebiegu")).toBeVisible();
+});
 
-  // The mock orchestrator returns :ok → HTTP 200 → frontend shows success toast
-  await expect(page.getByText("Run stop requested")).toBeVisible();
+// The harness itself: a console error or an uncaught page error fails a test.
+// `test.fail` inverts the result, so this passes only while the guard works.
+test.describe("console guard", () => {
+  test.fail();
+
+  test("fails on console.error", async ({ page }) => {
+    await page.goto("/projects");
+    await page.evaluate(() => console.error("E2E guard probe"));
+  });
+
+  test("fails on an uncaught page error", async ({ page }) => {
+    await page.goto("/projects");
+    // An inline script, not a timer: the frozen clock owns the timers.
+    await Promise.all([
+      page.waitForEvent("pageerror"),
+      page.addScriptTag({ content: 'throw new Error("E2E guard probe");' }),
+    ]);
+  });
 });

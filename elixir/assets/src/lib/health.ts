@@ -29,7 +29,7 @@ export function needsAttention(state: StatePayload): AttentionItem[] {
       kind: "blocked",
       identifier: b.issue_identifier,
       projectSlug: b.project?.slug ?? null,
-      message: b.error ?? b.last_message ?? "Blocked",
+      message: b.error ?? b.last_message ?? "Zablokowany",
       since: b.blocked_at,
     });
   }
@@ -41,7 +41,7 @@ export function needsAttention(state: StatePayload): AttentionItem[] {
       kind: "retry_error",
       identifier: r.issue_identifier,
       projectSlug: r.project?.slug ?? null,
-      message: `Retry #${r.attempt}: ${r.error}`,
+      message: `Próba #${r.attempt}: ${r.error}`,
       since: r.due_at,
     });
   }

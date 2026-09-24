@@ -32,9 +32,9 @@ function renderTab(summary: ProjectSummary, slug: string) {
 describe("WorkTab", () => {
   it("renders three column headings", () => {
     renderTab(summaryFixture as ProjectSummary, "alpha");
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("Retry & blocked")).toBeInTheDocument();
-    expect(screen.getByText("→ Human Review")).toBeInTheDocument();
+    expect(screen.getByText("Przebiegi w toku")).toBeInTheDocument();
+    expect(screen.getByText("Ponawiane i zablokowane")).toBeInTheDocument();
+    expect(screen.getByText("→ Przegląd człowieka")).toBeInTheDocument();
   });
 
   it("shows running entry from fixture", () => {
@@ -62,7 +62,7 @@ describe("WorkTab", () => {
 
   it("shows History section with work run rows", async () => {
     renderTab(summaryFixture as ProjectSummary, "alpha");
-    expect(screen.getByRole("heading", { name: /history/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Historia" })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getAllByText("COD-10").length).toBeGreaterThan(0),
     );
@@ -77,8 +77,8 @@ describe("WorkTab", () => {
       human_review_prs: [],
     };
     renderTab(empty, "alpha");
-    expect(screen.getByText("No runs in progress.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing stuck.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing waiting for review.")).toBeInTheDocument();
+    expect(screen.getByText("Brak przebiegów w toku.")).toBeInTheDocument();
+    expect(screen.getByText("Nic nie utknęło.")).toBeInTheDocument();
+    expect(screen.getByText("Nic nie czeka na przegląd.")).toBeInTheDocument();
   });
 });

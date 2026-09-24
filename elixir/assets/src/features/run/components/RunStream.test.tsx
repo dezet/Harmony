@@ -36,7 +36,7 @@ const defaultProps = {
 describe("RunStream", () => {
   it("shows 'No events yet.' when empty and not loading", () => {
     render(<RunStream {...defaultProps} items={[]} />);
-    expect(screen.getByText("No events yet.")).toBeInTheDocument();
+    expect(screen.getByText("Brak zdarzeń.")).toBeInTheDocument();
   });
 
   it("shows skeletons when loading and empty", () => {
@@ -68,7 +68,7 @@ describe("RunStream", () => {
         onRetry={onRetry}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Spróbuj ponownie" }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
@@ -83,12 +83,12 @@ describe("RunStream", () => {
 
   it("shows 'Load more' button at BOTTOM when hasNextPage", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} hasNextPage={true} />);
-    expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wczytaj więcej" })).toBeInTheDocument();
   });
 
   it("does NOT show 'Load more' when hasNextPage is false", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} hasNextPage={false} />);
-    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wczytaj więcej" })).not.toBeInTheDocument();
   });
 
   it("calls onLoadMore when Load more button is clicked", () => {
@@ -101,25 +101,25 @@ describe("RunStream", () => {
         onLoadMore={onLoadMore}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Wczytaj więcej" }));
     expect(onLoadMore).toHaveBeenCalledOnce();
   });
 
   it("does NOT show filter buttons when only work_events present", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    expect(screen.queryByRole("button", { name: /^all$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^events$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wszystkie" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zapisane" })).not.toBeInTheDocument();
   });
 
   it("shows filter buttons All and Events when both kinds present", () => {
     render(<RunStream {...defaultProps} items={MIXED_ITEMS} />);
-    expect(screen.getByRole("button", { name: /^all$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^events$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wszystkie" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zapisane" })).toBeInTheDocument();
   });
 
   it("filters out live_events when Events filter is active", () => {
     render(<RunStream {...defaultProps} items={MIXED_ITEMS} />);
-    fireEvent.click(screen.getByRole("button", { name: /^events$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Zapisane" }));
     // turn_start (work_event) should still be visible
     expect(screen.getByText("turn_start")).toBeInTheDocument();
     // tool_use (live_event) should be hidden
@@ -129,30 +129,30 @@ describe("RunStream", () => {
   it("shows all items when All filter is clicked after Events", () => {
     render(<RunStream {...defaultProps} items={MIXED_ITEMS} />);
     // Filter down to events only
-    fireEvent.click(screen.getByRole("button", { name: /^events$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Zapisane" }));
     expect(screen.queryByText("tool_use")).not.toBeInTheDocument();
     // Then click All to show everything again
-    fireEvent.click(screen.getByRole("button", { name: /^all$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Wszystkie" }));
     expect(screen.getByText("turn_start")).toBeInTheDocument();
     expect(screen.getByText("tool_use")).toBeInTheDocument();
   });
 
   it("renders the stream card with title 'Stream'", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    expect(screen.getByText("Stream")).toBeInTheDocument();
+    expect(screen.getByText("Zdarzenia")).toBeInTheDocument();
   });
 
   it("the event list has aria-live='polite' and aria-label='Run event stream'", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    const list = screen.getByRole("list", { name: "Run event stream" });
+    const list = screen.getByRole("list", { name: "Strumień zdarzeń przebiegu" });
     expect(list).toHaveAttribute("aria-live", "polite");
     expect(list).toHaveAttribute("aria-atomic", "false");
   });
 
   it("filter buttons expose aria-pressed reflecting active filter", () => {
     render(<RunStream {...defaultProps} items={MIXED_ITEMS} />);
-    const allBtn = screen.getByRole("button", { name: /^all$/i });
-    const eventsBtn = screen.getByRole("button", { name: /^events$/i });
+    const allBtn = screen.getByRole("button", { name: "Wszystkie" });
+    const eventsBtn = screen.getByRole("button", { name: "Zapisane" });
     // Default filter is "all"
     expect(allBtn).toHaveAttribute("aria-pressed", "true");
     expect(eventsBtn).toHaveAttribute("aria-pressed", "false");
@@ -167,18 +167,18 @@ describe("RunStream", () => {
 
   it("shows a search input with aria-label 'Search events' when items are present", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    expect(screen.getByRole("textbox", { name: /search events/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Szukaj zdarzeń" })).toBeInTheDocument();
   });
 
   it("does NOT show search input when items list is empty", () => {
     render(<RunStream {...defaultProps} items={[]} />);
-    expect(screen.queryByRole("textbox", { name: /search events/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Szukaj zdarzeń" })).not.toBeInTheDocument();
   });
 
   it("typing in search filters items by type (case-insensitive)", async () => {
     const user = userEvent.setup();
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    await user.type(screen.getByRole("textbox", { name: /search events/i }), "turn_start");
+    await user.type(screen.getByRole("textbox", { name: "Szukaj zdarzeń" }), "turn_start");
     expect(screen.getByText("turn_start")).toBeInTheDocument();
     expect(screen.queryByText("turn_end")).not.toBeInTheDocument();
   });
@@ -186,7 +186,7 @@ describe("RunStream", () => {
   it("text search is case-insensitive", async () => {
     const user = userEvent.setup();
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    await user.type(screen.getByRole("textbox", { name: /search events/i }), "TURN_START");
+    await user.type(screen.getByRole("textbox", { name: "Szukaj zdarzeń" }), "TURN_START");
     expect(screen.getByText("turn_start")).toBeInTheDocument();
     expect(screen.queryByText("turn_end")).not.toBeInTheDocument();
   });
@@ -199,7 +199,7 @@ describe("RunStream", () => {
     ];
     render(<RunStream {...defaultProps} items={itemsWithMessage} />);
     // Both items have type "log", so searching by message disambiguates them
-    await user.type(screen.getByRole("textbox", { name: /search events/i }), "Hello");
+    await user.type(screen.getByRole("textbox", { name: "Szukaj zdarzeń" }), "Hello");
     // The first item's message should match
     expect(screen.getByText("Hello world")).toBeInTheDocument();
     // The second item's message should NOT be visible
@@ -209,15 +209,15 @@ describe("RunStream", () => {
   it("shows 'No events match your search.' when query matches nothing", async () => {
     const user = userEvent.setup();
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    await user.type(screen.getByRole("textbox", { name: /search events/i }), "xyzzy_nonexistent");
-    expect(screen.getByText("No events match your search.")).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Run event stream" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Szukaj zdarzeń" }), "xyzzy_nonexistent");
+    expect(screen.getByText("Brak zdarzeń pasujących do wyszukiwania.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Strumień zdarzeń przebiegu" })).not.toBeInTheDocument();
   });
 
   it("clears search and restores all items", async () => {
     const user = userEvent.setup();
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    const input = screen.getByRole("textbox", { name: /search events/i });
+    const input = screen.getByRole("textbox", { name: "Szukaj zdarzeń" });
     await user.type(input, "turn_start");
     expect(screen.queryByText("turn_end")).not.toBeInTheDocument();
     // Clear by selecting all and deleting
@@ -226,9 +226,9 @@ describe("RunStream", () => {
     expect(screen.getByText("turn_end")).toBeInTheDocument();
   });
 
-  it("search input has placeholder 'Search events…'", () => {
+  it("search input has placeholder 'Szukaj zdarzeń…'", () => {
     render(<RunStream {...defaultProps} items={WORK_ITEMS} />);
-    const input = screen.getByRole("textbox", { name: /search events/i });
-    expect(input).toHaveAttribute("placeholder", "Search events…");
+    const input = screen.getByRole("textbox", { name: "Szukaj zdarzeń" });
+    expect(input).toHaveAttribute("placeholder", "Szukaj zdarzeń…");
   });
 });

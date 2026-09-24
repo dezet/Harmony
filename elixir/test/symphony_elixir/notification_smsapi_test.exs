@@ -350,7 +350,11 @@ defmodule SymphonyElixir.NotificationSmsapiTest do
 
       case_deliveries =
         Enum.map(1..20, fn index ->
-          delivery!("sms", connection, case_id: intake_case.id, payload: %{"recipient" => "+486001002#{String.pad_leading("#{index}", 2, "0")}"})
+          delivery!("sms", connection,
+            case_id: intake_case.id,
+            payload: %{"recipient" => "+486001002#{String.pad_leading("#{index}", 2, "0")}"},
+            next_attempt_at: DateTime.add(now, -30, :second)
+          )
         end)
 
       parent = self()
@@ -375,7 +379,13 @@ defmodule SymphonyElixir.NotificationSmsapiTest do
       assert [%IntegrationDelivery{last_error_code: "rate_limited", attempts: 0} = waiting] = limited
       assert DateTime.diff(waiting.next_attempt_at, now, :second) == 3_600
 
-      second_test_send = delivery!("sms", connection, payload: %{"recipient" => "+48600100200", "test_send" => true})
+      # Due at the claim clock `now`, not at the wall clock of this insert.
+      second_test_send =
+        delivery!("sms", connection,
+          payload: %{"recipient" => "+48600100200", "test_send" => true},
+          next_attempt_at: DateTime.add(now, -60, :second)
+        )
+
       assert :empty = Dispatcher.dispatch_one(opts)
       assert Repo.get!(IntegrationDelivery, second_test_send.id).last_error_code == "rate_limited"
       assert sms_requests() == 19

@@ -132,6 +132,13 @@ defmodule SymphonyElixir.CoreTest do
     assert Map.get(hooks, "after_create") =~ "mise exec -- mix deps.get"
     assert Map.get(hooks, "before_remove") =~ "cd elixir && mise exec -- mix workspace.before_remove"
 
+    # The Jira intake switches are spelled out and off until a rollout is approved.
+    assert Map.get(config, "intake") == %{"enabled" => false, "effects_enabled" => false, "smtp_allowed_hosts" => []}
+    assert Map.get(config, "analysis") == %{"enabled" => false}
+    refute Config.settings!().intake.enabled
+    refute Config.settings!().intake.effects_enabled
+    refute Config.settings!().analysis.enabled
+
     assert String.trim(prompt) != ""
     assert is_binary(Config.workflow_prompt())
     assert Config.workflow_prompt() == prompt
