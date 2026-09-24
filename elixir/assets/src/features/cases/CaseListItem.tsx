@@ -26,6 +26,15 @@ function caseAge(detectedAt: string, now: number): string {
   return days === 1 ? "1 dzień" : `${days} dni`;
 }
 
+/** Age since detection with the full local date in the tooltip. */
+export function CaseAge({ detectedAt, now, className }: { detectedAt: string; now: number; className?: string }) {
+  return (
+    <time dateTime={detectedAt} title={fullDate.format(new Date(detectedAt))} className={className}>
+      {caseAge(detectedAt, now)}
+    </time>
+  );
+}
+
 export function PriorityBadge({ priority }: { priority: CasePriority }) {
   const critical = priority.tone === "critical";
   const marker = critical ? "!!" : priority.tone === "high" ? "↑" : null;
@@ -84,13 +93,7 @@ export function CaseListItem({ item, selected, now, onSelect }: CaseListItemProp
         <span className="mb-2.5 flex items-center gap-[7px]">
           <SourceKey item={item} />
           <PriorityBadge priority={item.priority} />
-          <time
-            dateTime={item.detected_at}
-            title={fullDate.format(new Date(item.detected_at))}
-            className="ml-auto text-[10px] text-muted-foreground"
-          >
-            {caseAge(item.detected_at, now)}
-          </time>
+          <CaseAge detectedAt={item.detected_at} now={now} className="ml-auto text-[10px] text-muted-foreground" />
         </span>
         <span data-slot="case-title" className="mb-2.5 block text-xs leading-[1.5] font-semibold text-foreground">
           {item.title}

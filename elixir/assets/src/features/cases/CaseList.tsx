@@ -19,6 +19,11 @@ function casesLabel(total: number): string {
   return `${total} spraw`;
 }
 
+/** Polish count of cases: "1 sprawa", "3 sprawy", "25 spraw". */
+export function CasesCount({ total }: { total: number }) {
+  return casesLabel(total);
+}
+
 interface CaseListProps {
   status: "pending" | "error" | "success";
   items: CaseSummary[];

@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CaseBoard } from "@/features/cases/CaseBoard";
 import { CaseDetail } from "@/features/cases/CaseDetail";
 import { CaseList } from "@/features/cases/CaseList";
 import { CaseStats } from "@/features/cases/CaseStats";
@@ -16,12 +17,17 @@ import { useCases } from "@/features/cases/useCases";
 import { useIntakeChannel } from "@/features/cases/useIntakeChannel";
 import { useProjects } from "@/features/projects/useProjects";
 
-// Case Center (spec §4.3–4.4), list view. Every piece of case data comes from
-// the T19 hooks; the URL holds the reproducible state. Desktop shows the list
-// with the detail panel of the selected case; a phone opens the detail as a
-// dialog only after a tap. The Kanban board is a separate screen (T23).
+// Case Center (spec §4.3–4.5). Every piece of case data comes from the T19
+// hooks; the URL holds the reproducible state. The list on desktop shows the
+// detail panel of the selected case; a phone opens the detail as a dialog only
+// after a tap. The Kanban board always opens the same detail as a dialog.
+// Switching views keeps filters, search and selection; cursors live in the
+// query cache of each list or column, never in the URL.
 
-const DESCRIPTION = "Wiesz, co się dzieje. Widzisz, co zrobić dalej.";
+const DESCRIPTION = {
+  list: "Wiesz, co się dzieje. Widzisz, co zrobić dalej.",
+  kanban: "Od zgłoszenia do ustaleń. Każda sprawa ma swój następny krok.",
+} as const;
 
 const actionButton =
   "h-auto min-h-[35px] gap-[7px] rounded-[7px] px-3 py-[9px] text-[11px] font-[550] leading-[1.3] max-[600px]:flex-1 [&_svg:not([class*='size-'])]:size-3.5";
@@ -82,20 +88,6 @@ function EmptyState({ title, children }: { title: string; children: ReactNode })
       <p className="font-semibold text-foreground">{title}</p>
       {children}
     </div>
-  );
-}
-
-function KanbanPending({ onList }: { onList: () => void }) {
-  return (
-    <section
-      aria-label="Kanban spraw"
-      className="grid justify-items-center gap-3 rounded-[11px] border bg-card px-6 py-10 text-center text-xs leading-[1.8] text-muted-foreground"
-    >
-      <p>Tablica Kanban jest przygotowywana. Filtry i wyszukiwanie zostaną zachowane.</p>
-      <Button variant="outline" size="sm" onClick={onList}>
-        Pokaż listę
-      </Button>
-    </section>
   );
 }
 
@@ -186,9 +178,11 @@ export function CasesPage() {
     }
   }, [caseRef, resultKnown, items, selectCase]);
 
-  // Desktop highlights the first result when the URL selects nothing; phones
-  // never open anything by themselves.
-  const selectedRef = caseRef ?? (isDesktop ? (items[0]?.ref ?? null) : null);
+  // The desktop list highlights the first result when the URL selects nothing;
+  // phones and the board never open anything by themselves.
+  const kanban = state.view === "kanban";
+  const detailInDialog = kanban || !isDesktop;
+  const selectedRef = caseRef ?? (detailInDialog ? null : (items[0]?.ref ?? null));
 
   const onSelect = useCallback((ref: string) => selectCase(ref), [selectCase]);
   const onCloseDialog = useCallback(() => selectCase(null, { replace: true }), [selectCase]);
@@ -226,7 +220,7 @@ export function CasesPage() {
           ) : (
             <h1 className="text-title max-[1150px]:text-[26px] max-[600px]:text-[27px]">{title}</h1>
           )}
-          <p className="mt-2 text-xs leading-[1.6] text-muted-foreground max-[600px]:text-[11px]">{DESCRIPTION}</p>
+          <p className="mt-2 text-xs leading-[1.6] text-muted-foreground max-[600px]:text-[11px]">{DESCRIPTION[state.view]}</p>
           {project ? (
             <Link
               className="mt-1 inline-block text-xs text-primary underline underline-offset-4"
@@ -292,8 +286,8 @@ export function CasesPage() {
         onView={setView}
       />
 
-      {state.view === "kanban" ? (
-        <KanbanPending onList={() => setView("list")} />
+      {kanban ? (
+        <CaseBoard filters={listFilters} selectedRef={caseRef} onOpen={onSelect} />
       ) : (
         <div
           className={
@@ -321,7 +315,7 @@ export function CasesPage() {
         </div>
       )}
 
-      {isDesktop ? null : (
+      {detailInDialog ? (
         <DetailDialog
           caseRef={caseRef}
           projectName={items.find((item) => item.ref === caseRef)?.project.name}
@@ -329,7 +323,7 @@ export function CasesPage() {
           onTabChange={setTab}
           onClose={onCloseDialog}
         />
-      )}
+      ) : null}
     </div>
   );
 }

@@ -566,12 +566,12 @@ Spec: §4.5, §11.3. Zależność: T22.
 Nowe pliki pod `FE/features/cases/`: `CaseBoard.tsx`, `CaseColumn.tsx`,
 `CaseBoardCard.tsx`, `CaseBoard.test.tsx`; `CasesPage.tsx`, `useCases.ts`.
 
-- [ ] T23.1 RED: 60 kart w Wykryte, pozostałe kolumny puste; paginacja zwraca wszystkie 60 raz.
-- [ ] T23.2 Cztery kolumny w stałej kolejności, breakpointy 1150/850/600 ze spec.
-- [ ] T23.3 Lista→Kanban→Lista zachowuje query i wybór, ale nie przenosi niezgodnych cursorów.
-- [ ] T23.4 Klik/Enter otwiera wspólny szczegół, Escape przywraca focus do karty.
-- [ ] T23.5 Empty i błąd pojedynczej kolumny nie blokują pozostałych; total to nie items.length.
-- [ ] T23.6 Bez biblioteki DnD, edycji statusów przez przeciąganie ani nowych mutacji.
+- [x] T23.1 RED: 60 kart w Wykryte, pozostałe kolumny puste; paginacja zwraca wszystkie 60 raz.
+- [x] T23.2 Cztery kolumny w stałej kolejności, breakpointy 1150/850/600 ze spec.
+- [x] T23.3 Lista→Kanban→Lista zachowuje query i wybór, ale nie przenosi niezgodnych cursorów.
+- [x] T23.4 Klik/Enter otwiera wspólny szczegół, Escape przywraca focus do karty.
+- [x] T23.5 Empty i błąd pojedynczej kolumny nie blokują pozostałych; total to nie items.length.
+- [x] T23.6 Bez biblioteki DnD, edycji statusów przez przeciąganie ani nowych mutacji.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CaseBoard.test.tsx`.
 Odbiór: AC01/AC02/AC17.
