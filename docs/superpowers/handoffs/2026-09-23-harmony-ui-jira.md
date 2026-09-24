@@ -1,7 +1,7 @@
 ---
 title: "Harmony UI/Jira — przekazanie do nowej sesji"
 date: 2026-09-24
-status: m4-ready-for-review
+status: m5-ready-for-review
 audience: coding-agent
 ---
 
@@ -24,10 +24,13 @@ Plan ma siedem milestone’ów: M0–M6. Każde Txx jest osobnym zleceniem dla a
 | Etap | Stan |
 | --- | --- |
 | M0–M3 | Scalone do `main` (PR #17–#20), `origin/main` = `db2d0d1`. |
-| M4 | Ukończony na gałęzi `feature/harmony-ui-jira-m4`; Draft PR do recenzji i scalenia przez użytkownika. |
-| M5–M6 | Nie rozpoczęto. |
+| M4 | Ukończony; Draft PR [#21](https://github.com/dezet/Harmony/pull/21) (`feature/harmony-ui-jira-m4`) do scalenia przez użytkownika. |
+| M5 | Ukończony na `feature/harmony-ui-jira-m5` (stos nad M4); Draft PR do scalenia po M4. |
+| M6 | Nie rozpoczęto. |
 
-Bramka M4 (log: `output/verification/m4/`, lokalny, nieśledzony): `make all` exit 0 — Credo bez uwag, 1041 testów, 0 błędów, pokrycie 85,28%, Dialyzer 0 błędów; frontend Vitest 293 testy, typecheck, lint i build exit 0.
+Bramka M4 (log: `output/verification/m4/`, lokalny, nieśledzony): `make all` exit 0 — 1041 testów, pokrycie 85,28%, Dialyzer 0 błędów; frontend 293 testy.
+
+Bramka M5 (`output/verification/m5/`): `make all` exit 0 — Credo bez uwag, 1064 testy, 0 błędów, pokrycie 85,35%, Dialyzer 0 błędów; frontend Vitest 481 testów, typecheck, lint i build exit 0.
 
 ## Co zawiera M4
 
@@ -40,6 +43,15 @@ Bramka M4 (log: `output/verification/m4/`, lokalny, nieśledzony): `make all` ex
 - T19 kanał `intake:workspace` z emisją po commit oraz hooki React Query spraw.
 - Stabilizacja testów: Orchestrator zachowuje ostatnią poprawną konfigurację przy błędnym `WORKFLOW.md`, `WorkflowStore` bez wyścigu odczytu, testy odizolowane od globalnego Orchestratora.
 
+## Co zawiera M5
+
+- T20 tokeny i typografia A, shell desktop/mobile po polsku (menu mobilne na dialogu Base UI — rejestr shadcn `sheet` importuje podejrzany pakiet npm `cn`), `display_name`/`ui_color` projektu w DB/API/YAML/formularzu.
+- T21 Centrum spraw: lista, filtry i wyszukiwanie w URL, liczniki z agregatów, „Sprawdź teraz” bez fałszywego sukcesu.
+- T22 szczegół sprawy: zakładki, analiza bez raw HTML, przyjęcie i zatwierdzenie naprawy jako osobne mutacje, reanaliza z ostrzeżeniem o koszcie, retry pojedynczej delivery.
+- T23 Kanban: cztery kolumny ze stronicowaniem per kolumna, bez DnD.
+- T24 automatyzacje: lista, formularz A, pickery Jira/Linear, podgląd zapisanej wersji, aktywacja z potwierdzeniem, konflikt wersji.
+- T25 integracje: sekrety tylko do zapisu, test połączenia bez wysyłki, test-send z `Idempotency-Key`; T25b allowlista hostów SMTP w API i reset stanu testu po zmianie ustawień/sekretu.
+
 ## Otwarte punkty
 
 - Kody błędów SMSAPI i format pola `to` potwierdzić w G-LIVE (T29).
@@ -48,8 +60,12 @@ Bramka M4 (log: `output/verification/m4/`, lokalny, nieśledzony): `make all` ex
 - Sprawy z reguł aktywowanych przed migracją rankingu mają tone `normal` do ponownej aktywacji.
 - `ObservabilityChannel` i `RunChannel` prawdopodobnie dostają podwójne pushe (jawna subskrypcja tego samego topicu) — istniejące zachowanie, niezmienione.
 - Niestabilny, istniejący test `OrchestratorStatusTest` (orchestrator_status_test.exs:1462) — sporadyczny wyścig.
+- Ostrzeżenie o niezapisanym formularzu reguły nie przechwytuje nawigacji z sidebaru/okruszków — wymaga data routera (`createBrowserRouter`), zmiana architektury do decyzji użytkownika.
+- UI rozpoznaje odmowę aktywacji (422) heurystycznie; rozważyć stały kod `activation_blocked` w backendzie.
+- E2E `e2e/react-spa.spec.ts` oczekuje starego shellu — do aktualizacji w T27.
+- Baza dev wymaga `mix ecto.migrate` (priority_ranking, indeksy projekcji, display_name).
 - Wszystkie worktree współdzielą bazę `harmony_test`; nie uruchamiać równolegle pełnych zestawów z dwóch worktree.
 
 ## Następny krok
 
-Po scaleniu M4 do `main`: M5 (T20–T25, interfejs A) na gałęzi `feature/harmony-ui-jira-m5` opartej na aktualnym `main`. Do czasu scalenia M5 może być budowany na gałęzi M4 jako stos. Testowy `CLOAK_KEY` musi być 32-bajtowym kluczem w Base64, np. `python3 -c 'import base64; print(base64.b64encode(b"k" * 32).decode())'`.
+M6 (T26–T29, regresja, E2E, dokumentacja, końcowe bramki) na gałęzi `feature/harmony-ui-jira-m6` nad M5. Worktree roboczy: `/home/ddziag/projects/Harmony-m4` (nazwa historyczna). G-LIVE (T29.3) i produkcyjne `enabled=true` wymagają zgody operatora. Testowy `CLOAK_KEY` musi być 32-bajtowym kluczem w Base64, np. `python3 -c 'import base64; print(base64.b64encode(b"k" * 32).decode())'`.
