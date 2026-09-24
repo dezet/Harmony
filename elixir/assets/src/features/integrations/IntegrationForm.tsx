@@ -10,6 +10,7 @@ import {
   emptyFormValues,
   formValuesFromConnection,
   integrationFormSchema,
+  isAllowedHost,
   MAX_NAME_LENGTH,
   MAX_SENDER_LENGTH,
   toConnectionInput,
@@ -18,6 +19,7 @@ import {
 import {
   integrationErrorMessage,
   SECRET_LABEL,
+  useConnections,
   useCreateIntegration,
   useReloadIntegration,
   useUpdateIntegration,
@@ -153,6 +155,73 @@ function RadioGroup({ legend, name, options, registration, error }: RadioGroupPr
   );
 }
 
+interface HostFieldProps {
+  id: string;
+  registration: UseFormRegisterReturn;
+  value: string;
+  allowed: string[] | null;
+  stored: string | null;
+  error?: string;
+}
+
+/**
+ * SMTP host chosen from the runtime allowlist only (spec §12). A stored host
+ * that is no longer allowed stays visible and selected, with a warning, until
+ * the operator picks an allowed one.
+ */
+function HostField({ id, registration, value, allowed, stored, error }: HostFieldProps) {
+  const known = [...new Set([stored, value].filter((host): host is string => Boolean(host)))];
+  const outside = known.filter((host) => !(allowed && isAllowedHost(allowed, host)));
+  const staleStored = stored && allowed !== null && !isAllowedHost(allowed, stored) ? stored : null;
+  const hintId = `${id}-hint`;
+  const warningId = `${id}-warning`;
+  return (
+    <div className={field}>
+      <label htmlFor={id}>Host SMTP</label>
+      <select
+        id={id}
+        className={input}
+        disabled={allowed === null || allowed.length === 0}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={ids(hintId, staleStored ? warningId : null, error ? `${id}-error` : null)}
+        {...registration}
+      >
+        <option value="">{allowed === null ? "Wczytywanie listy hostów…" : "Wybierz host"}</option>
+        {outside.map((host) => (
+          <option key={`outside-${host}`} value={host}>
+            {host} (spoza listy dozwolonych)
+          </option>
+        ))}
+        {(allowed ?? []).map((host) => (
+          <option key={host} value={host}>
+            {host}
+          </option>
+        ))}
+      </select>
+      <small id={hintId} className={hint}>
+        Lista pochodzi z ustawienia intake.smtp_allowed_hosts wdrożenia; z innymi hostami Harmony się nie łączy.
+      </small>
+      {staleStored ? (
+        <span id={warningId} className="flex items-start gap-1.5 text-[10px] leading-[1.6] text-warning">
+          <TriangleAlert aria-hidden className="mt-px size-3 shrink-0" strokeWidth={1.8} />
+          Zapisany host {staleStored} nie jest na liście dozwolonych (intake.smtp_allowed_hosts). Wybierz host z listy — do tego
+          czasu test i wysyłka tym połączeniem się nie powiodą.
+        </span>
+      ) : null}
+      {error ? (
+        <span id={`${id}-error`} className="text-[10px] leading-[1.6] text-destructive">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function storedHost(connection: IntegrationConnection | undefined): string | null {
+  const host = connection?.kind === "smtp" ? connection.settings?.host : null;
+  return typeof host === "string" && host !== "" ? host : null;
+}
+
 function secretHint(kind: IntegrationKind, connection: IntegrationConnection | undefined): string {
   const what = kind === "jira_cloud" ? "Token API Atlassian, nie hasło konta. " : "";
   if (!connection) return `${what}Sekret jest tylko do zapisu — po zapisaniu nie będzie wyświetlany.`;
@@ -174,7 +243,10 @@ export function IntegrationForm({ kind, connection, onSaved, onCancel }: Integra
   const [base, setBase] = useState<IntegrationConnection | undefined>(connection);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const schema = useMemo(() => integrationFormSchema(kind), [kind]);
+  const { smtpAllowedHosts } = useConnections();
+  const allowedHosts = kind === "smtp" ? smtpAllowedHosts : null;
+  const noAllowedHost = kind === "smtp" && allowedHosts !== null && allowedHosts.length === 0;
+  const schema = useMemo(() => integrationFormSchema(kind, allowedHosts), [kind, allowedHosts]);
 
   const form = useForm<IntegrationFormValues>({
     resolver: yupResolver(schema) as Resolver<IntegrationFormValues>,
@@ -183,6 +255,7 @@ export function IntegrationForm({ kind, connection, onSaved, onCancel }: Integra
   const { register, handleSubmit, reset, setError, control, formState } = form;
   const errors = formState.errors;
   const authMode = useWatch({ control, name: "auth_mode" });
+  const hostValue = useWatch({ control, name: "host" });
 
   const create = useCreateIntegration();
   const update = useUpdateIntegration(base?.id ?? "");
@@ -301,12 +374,13 @@ export function IntegrationForm({ kind, connection, onSaved, onCancel }: Integra
 
         {kind === "smtp" ? (
           <>
-            <TextField
+            <HostField
               id={id("host")}
-              label="Host SMTP"
               registration={register("host")}
+              value={hostValue}
+              allowed={allowedHosts}
+              stored={storedHost(base)}
               error={err("host")}
-              hint="Wyłącznie host z listy intake.smtp_allowed_hosts ustawionej przez operatora wdrożenia; z innymi hostami Harmony się nie łączy."
             />
             <TextField id={id("port")} label="Port" inputMode="numeric" registration={register("port")} error={err("port")} />
             <RadioGroup
@@ -366,6 +440,12 @@ export function IntegrationForm({ kind, connection, onSaved, onCancel }: Integra
         />
       </div>
 
+      {noAllowedHost ? (
+        <p role="alert" className="flex items-start gap-1.5 rounded-[7px] border border-warning/30 bg-warning-surface p-3 text-[11px] leading-[1.6] text-warning">
+          <TriangleAlert aria-hidden className="mt-px size-3 shrink-0" strokeWidth={1.8} />
+          Brak dozwolonych hostów SMTP: operator wdrożenia musi ustawić intake.smtp_allowed_hosts, zanim zapiszesz połączenie SMTP.
+        </p>
+      ) : null}
       {failure ? (
         <div role="alert" className="grid justify-items-start gap-1.5 rounded-[7px] border border-destructive/30 bg-destructive-surface p-3 text-[11px] leading-[1.6] text-destructive">
           <p className="flex items-start gap-1.5">
@@ -392,7 +472,7 @@ export function IntegrationForm({ kind, connection, onSaved, onCancel }: Integra
         <Button type="button" variant="outline" className={cn(actionButton, "bg-card")} onClick={onCancel}>
           Anuluj
         </Button>
-        <Button type="submit" className={actionButton} disabled={pending}>
+        <Button type="submit" className={actionButton} disabled={pending || noAllowedHost}>
           {pending ? <Loader2 aria-hidden className="animate-spin motion-reduce:animate-none" /> : null}
           Zapisz połączenie
         </Button>

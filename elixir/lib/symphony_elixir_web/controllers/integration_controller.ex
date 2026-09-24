@@ -3,7 +3,9 @@ defmodule SymphonyElixirWeb.IntegrationController do
   Jira Cloud, SMTP and SMSAPI connections: list, create, versioned edit,
   read-only connection test, confirmed test-send and Jira pickers.
 
-  Secrets are write-only: responses expose `secret_state` only. A test never
+  Secrets are write-only: responses expose `secret_state` only. The list
+  carries the runtime `intake.smtp_allowed_hosts` in `meta`, so the UI offers
+  only SMTP hosts the deployment allows (spec §12). A test never
   sends a message; test-send queues one case-less outbox delivery per
   `Idempotency-Key` and is refused while intake or its effects are disabled.
   There is no generic proxy to a provider.
@@ -12,6 +14,7 @@ defmodule SymphonyElixirWeb.IntegrationController do
   use Phoenix.Controller, formats: [:json]
 
   alias Plug.Conn
+  alias SymphonyElixir.Config
   alias SymphonyElixir.Intake.{ConnectionCheck, Connections, JiraAccess, Outbox}
   alias SymphonyElixir.Notifications.Smsapi
   alias SymphonyElixirWeb.{Endpoint, IntakeParams, IntakePresenter}
@@ -26,7 +29,13 @@ defmodule SymphonyElixirWeb.IntegrationController do
     with {:ok, page} <- IntakePresenter.page_params(params, "integrations"),
          {:ok, position} <- IntakePresenter.keyset_after(page.after) do
       connections = Connections.list_page(limit: page.page_size + 1, after: position)
-      json(conn, IntakePresenter.page(connections, page.page_size, "integrations", &IntakePresenter.connection/1))
+
+      body =
+        connections
+        |> IntakePresenter.page(page.page_size, "integrations", &IntakePresenter.connection/1)
+        |> put_in([:meta, :smtp_allowed_hosts], Config.intake_settings().smtp_allowed_hosts)
+
+      json(conn, body)
     else
       {:error, reason} -> IntakePresenter.render_error(conn, reason)
     end

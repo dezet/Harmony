@@ -83,12 +83,14 @@ interface ServerOptions {
   rules?: AutomationRule[];
   projects?: Project[];
   linearOptions?: LinearOptions;
+  smtpAllowedHosts?: string[];
 }
 
 export function installIntegrationServer(options: ServerOptions = {}): IntegrationServer {
   const connections = new Map((options.connections ?? defaultConnections()).map((entry) => [entry.id, entry]));
   const rules = options.rules ?? [makeRule()];
   const projects = options.projects ?? PROJECTS;
+  const smtpAllowedHosts = options.smtpAllowedHosts ?? ["smtp.electrum.pl", "smtp2.electrum.pl"];
   const calls: Call[] = [];
   const overrides = new Map<string, Handler>();
 
@@ -105,7 +107,10 @@ export function installIntegrationServer(options: ServerOptions = {}): Integrati
     if (method === "GET" && linear) return json(options.linearOptions ?? LINEAR_OPTIONS);
 
     if (method === "GET" && path === `${API}/integrations`) {
-      return json({ items: [...connections.values()], meta: { next_cursor: null, page_size: 100 } });
+      return json({
+        items: [...connections.values()],
+        meta: { next_cursor: null, page_size: 100, smtp_allowed_hosts: smtpAllowedHosts },
+      });
     }
     if (method === "POST" && path === `${API}/integrations`) {
       const { secret, ...attrs } = body as { secret?: string } & Partial<IntegrationConnection>;
@@ -135,12 +140,20 @@ export function installIntegrationServer(options: ServerOptions = {}): Integrati
           settings?: Record<string, unknown>;
         } & Partial<IntegrationConnection>;
         if (version !== current.lock_version) return apiError(409, "stale_version");
+        const nextSettings = { ...current.settings, ...(settings ?? {}) };
+        const enabled = clear_secret ? false : (attrs.enabled ?? current.enabled);
+        // Like Connections.update_input: a change of settings or secret makes the check stale.
+        const stale =
+          JSON.stringify(nextSettings) !== JSON.stringify(current.settings) ||
+          Boolean(secret) ||
+          (Boolean(clear_secret) && current.secret_state === "set");
         const next: IntegrationConnection = {
           ...current,
           ...attrs,
-          settings: { ...current.settings, ...(settings ?? {}) },
+          settings: nextSettings,
           secret_state: clear_secret ? "unset" : secret ? "set" : current.secret_state,
-          enabled: clear_secret ? false : (attrs.enabled ?? current.enabled),
+          enabled,
+          ...(stale ? { health: "unchecked" as const, error_code: null } : {}),
           lock_version: current.lock_version + 1,
         };
         connections.set(next.id, next);

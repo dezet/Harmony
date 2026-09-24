@@ -162,7 +162,7 @@ describe("IntegrationForm — provider settings (T25.2)", () => {
     });
   });
 
-  it("offers only STARTTLS or TLS for SMTP, defaults port 587 and shows the allowlist refusal at the host", async () => {
+  it("offers only STARTTLS or TLS for SMTP, defaults port 587 and picks the host from the runtime allowlist", async () => {
     server.on("POST /api/v1/integrations", () =>
       apiError(422, "validation_failed", { "settings.host": ["must be listed in intake.smtp_allowed_hosts"] }),
     );
@@ -173,7 +173,14 @@ describe("IntegrationForm — provider settings (T25.2)", () => {
     expect(screen.getByRole("radio", { name: /STARTTLS/ })).toBeChecked();
     expect(screen.getByLabelText("Port")).toHaveValue("587");
     expect(screen.getByLabelText("Nazwa nadawcy")).toHaveValue("Harmony");
-    expect(describedBy(screen.getByLabelText("Host SMTP"))).toMatch(/intake\.smtp_allowed_hosts/);
+    const host = await screen.findByRole("combobox", { name: "Host SMTP" });
+    await waitFor(() => expect(host).toBeEnabled());
+    expect(describedBy(host)).toMatch(/intake\.smtp_allowed_hosts/);
+    expect([...(host as HTMLSelectElement).options].map((option) => option.value)).toEqual([
+      "",
+      "smtp.electrum.pl",
+      "smtp2.electrum.pl",
+    ]);
 
     await save();
     for (const label of ["Nazwa połączenia", "Host SMTP", "Użytkownik", "Adres nadawcy", "Domena Message-ID"]) {
@@ -182,7 +189,7 @@ describe("IntegrationForm — provider settings (T25.2)", () => {
     expect(server.mutations()).toHaveLength(0);
 
     await userEvent.type(screen.getByLabelText("Nazwa połączenia"), "Poczta");
-    await userEvent.type(screen.getByLabelText("Host SMTP"), "smtp.nieznany.pl");
+    await userEvent.selectOptions(screen.getByLabelText("Host SMTP"), "smtp2.electrum.pl");
     await userEvent.clear(screen.getByLabelText("Port"));
     await userEvent.type(screen.getByLabelText("Port"), "465");
     await userEvent.click(screen.getByRole("radio", { name: /TLS od początku/ }));
@@ -200,7 +207,7 @@ describe("IntegrationForm — provider settings (T25.2)", () => {
       kind: "smtp",
       name: "Poczta",
       settings: {
-        host: "smtp.nieznany.pl",
+        host: "smtp2.electrum.pl",
         port: 465,
         tls_mode: "tls",
         username: "harmony",
@@ -231,6 +238,30 @@ describe("IntegrationForm — provider settings (T25.2)", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     const [patch] = server.requests("PATCH", `/api/v1/integrations/${SMS_ID}`);
     expect(patch.body).toEqual({ version: 1, settings: { sender: "Electrum" } });
+  });
+
+  it("blocks saving an SMTP connection while the deployment allows no host", async () => {
+    server = installIntegrationServer({ smtpAllowedHosts: [] });
+    renderForm("smtp");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/operator wdrożenia musi ustawić intake\.smtp_allowed_hosts/);
+    expect(screen.getByLabelText("Host SMTP")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zapisz połączenie" })).toBeDisabled();
+  });
+
+  it("warns about a stored host that is no longer on the allowlist and keeps it until changed", async () => {
+    const stored = makeConnection({ id: SMTP_ID, kind: "smtp", name: "Poczta", settings: { ...SMTP_SETTINGS, host: "smtp.stary.pl" } });
+    const { onSaved } = renderForm("smtp", stored);
+
+    const host = await screen.findByRole("combobox", { name: "Host SMTP" });
+    await waitFor(() => expect(describedBy(host)).toMatch(/Zapisany host smtp\.stary\.pl nie jest na liście dozwolonych/));
+    expect(host).toHaveValue("smtp.stary.pl");
+
+    await userEvent.selectOptions(host, "smtp.electrum.pl");
+    await save();
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const [patch] = server.requests("PATCH", `/api/v1/integrations/${SMTP_ID}`);
+    expect(patch.body).toEqual({ version: 1, settings: { host: "smtp.electrum.pl" } });
   });
 
   it("sends only the changed SMTP setting in a PATCH", async () => {

@@ -105,7 +105,7 @@ describe("IntegrationsPage — layout and states", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const [post] = server.requests("POST", "/api/v1/integrations");
     expect(post.body).toMatchObject({ kind: "smsapi", name: "SMS zapasowy", settings: { sender: "Electrum" } });
-    expect(await screen.findByText(/Połączenie zapisane i wyłączone/)).toBeInTheDocument();
+    expect(await screen.findByText(/Połączenie zapisane i wyłączone. Sprawdź je, a potem włącz/)).toBeInTheDocument();
     expect(server.connections.get(NEW_CONNECTION_ID)?.enabled).toBe(false);
   });
 });
@@ -151,6 +151,35 @@ describe("IntegrationsPage — health without false success (T25.6)", () => {
     expect(within(await findRow("Jira · Electrum")).getByText("Połączono")).toBeInTheDocument();
     expect(within(row("Poczta dyżurna")).getByText("Brak sekretu")).toBeInTheDocument();
     expect(within(row("SMSAPI dyżur")).getByText("Wyłączone")).toBeInTheDocument();
+  });
+});
+
+describe("IntegrationsPage — stale checks and the SMTP allowlist (T25b)", () => {
+  it("shows a connection as unchecked after its settings were changed", async () => {
+    renderPage();
+    const smtp = await findRow("Poczta dyżurna");
+    expect(within(smtp).getByText("Połączono")).toBeInTheDocument();
+
+    await userEvent.click(within(smtp).getByRole("button", { name: "Edytuj" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edycja połączenia · Poczta dyżurna" });
+    await userEvent.clear(within(dialog).getByLabelText("Port"));
+    await userEvent.type(within(dialog).getByLabelText("Port"), "2525");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Zapisz połączenie" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    const edited = row("Poczta dyżurna");
+    await waitFor(() => expect(within(edited).getByText("Nie sprawdzono")).toBeInTheDocument());
+    expect(within(edited).queryByText("Połączono")).not.toBeInTheDocument();
+    expect(edited).toHaveTextContent(/zmieniło się po ostatnim teście/);
+  });
+
+  it("warns when a stored SMTP host is not on the runtime allowlist", async () => {
+    withConnections([
+      makeConnection({ id: SMTP_ID, kind: "smtp", name: "Poczta dyżurna", settings: { ...SMTP_SETTINGS, host: "smtp.stary.pl" } }),
+    ]);
+    renderPage();
+    const smtp = await findRow("Poczta dyżurna");
+    await waitFor(() => expect(smtp).toHaveTextContent(/Host smtp\.stary\.pl nie jest na liście dozwolonych hostów SMTP/));
   });
 });
 
@@ -360,6 +389,7 @@ describe("IntegrationsPage — clearing a secret and stopped effects (T25.5)", (
     expect(jira).toHaveTextContent(/nie sprawdzają Jira/);
     await waitFor(() => expect(row("Jira · Electrum")).toHaveTextContent(/Korzystają z niego 2 reguły \(1 aktywna\)/));
 
+    // Enabling does not change what the last check verified, so its result stays.
     await userEvent.click(within(jira).getByRole("switch", { name: "Połączenie Jira · Electrum włączone" }));
     await waitFor(() => expect(within(row("Jira · Electrum")).getByText("Połączono")).toBeInTheDocument());
     const [patch] = server.requests("PATCH", `/api/v1/integrations/${JIRA_ID}`);

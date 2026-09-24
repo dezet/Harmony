@@ -60,12 +60,22 @@ type TextSchema = ReturnType<typeof text>;
 const singleLine = (message: string) =>
   text().test("single-line", message, (value) => value.trim() !== "" && !CONTROL.test(value));
 
+/** Host comparison of the backend allowlist check: trimmed and case-insensitive. */
+export function isAllowedHost(allowed: readonly string[], host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized !== "" && allowed.some((entry) => entry.trim().toLowerCase() === normalized);
+}
+
 /** Normalized site URL: trimmed, lower-case, without a trailing slash. */
 export function normalizeSiteUrl(value: string): string {
   return value.trim().toLowerCase().replace(/\/+$/, "");
 }
 
-export function integrationFormSchema(kind: IntegrationKind) {
+/**
+ * `smtpAllowedHosts` is the runtime `intake.smtp_allowed_hosts` (null while
+ * it loads): an SMTP host must be one of them (spec §12).
+ */
+export function integrationFormSchema(kind: IntegrationKind, smtpAllowedHosts: readonly string[] | null = null) {
   const on = (kinds: IntegrationKind[], schema: TextSchema): TextSchema => (kinds.includes(kind) ? schema : text());
 
   return yup.object({
@@ -89,7 +99,16 @@ export function integrationFormSchema(kind: IntegrationKind) {
       then: () =>
         text().test("cloud", "Cloud ID ma postać UUID, np. 0e4f7b0c-3a51-4d5c-9c2a-6f1e2d3c4b5a.", (value) => UUID.test(value.trim())),
     }),
-    host: on(["smtp"], text().test("host", "Podaj nazwę hosta SMTP, np. smtp.example.com.", (value) => HOST.test(value.trim()))),
+    host: on(
+      ["smtp"],
+      text()
+        .test("host", "Wybierz host SMTP z listy dozwolonych.", (value) => HOST.test(value.trim()))
+        .test(
+          "allowed-host",
+          "Wybierz host z listy dozwolonych hostów SMTP (intake.smtp_allowed_hosts).",
+          (value) => smtpAllowedHosts === null || isAllowedHost(smtpAllowedHosts, value),
+        ),
+    ),
     port: on(
       ["smtp"],
       text().test("port", "Port to liczba całkowita od 1 do 65 535.", (value) => {

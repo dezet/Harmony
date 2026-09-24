@@ -96,7 +96,8 @@ defmodule SymphonyElixir.Intake.Connections do
 
   A blank secret keeps the stored one. `clear_secret: true` removes it,
   disables the connection and disables every rule activation that depends
-  on it, in one transaction.
+  on it, in one transaction. A change of settings or secret resets the
+  stored check to `unchecked`.
   """
   @spec update_input(binary(), pos_integer(), attrs()) ::
           {:ok, IntegrationConnection.t()} | {:error, :not_found | :stale_version | Ecto.Changeset.t()}
@@ -163,7 +164,23 @@ defmodule SymphonyElixir.Intake.Connections do
     connection
     |> changeset_for_attrs(attrs, contains_secret_settings?)
     |> force_secret_clear(clear_secret?)
+    |> reset_check()
     |> reject_used_site_url_change(connection)
+  end
+
+  # A stored check describes the settings and secret it ran with. A change of
+  # either makes it stale, so the connection is "unchecked" again and the UI
+  # never shows an old success. A rename or an enabled toggle changes nothing
+  # the check verified. `last_checked_at` stays: it records that the
+  # connection was used, which guards the Jira site URL (spec §6.1).
+  defp reset_check(changeset) do
+    if Enum.any?([:settings, :secret], &Map.has_key?(changeset.changes, &1)) do
+      changeset
+      |> put_change(:health, "unchecked")
+      |> put_change(:error_code, nil)
+    else
+      changeset
+    end
   end
 
   defp persist_input_update(connection, attrs, clear_secret?) do

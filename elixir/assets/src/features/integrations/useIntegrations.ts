@@ -20,6 +20,7 @@ import type {
   IntegrationConnectionInput,
   IntegrationConnectionPatch,
   IntegrationKind,
+  IntegrationsPage,
 } from "@/types/contract";
 
 // Integration connections (spec §4.6, §10–12). Every screen reads the same
@@ -55,8 +56,11 @@ export function useConnections() {
     initialPageParam: undefined as string | undefined,
   });
   const connections = useAllPages<IntegrationConnection>(query);
+  // Every page carries the same runtime allowlist; null until the first page arrives.
+  const smtpAllowedHosts = query.data?.pages[0]?.meta.smtp_allowed_hosts ?? null;
   return {
     connections,
+    smtpAllowedHosts,
     isPending: query.isPending || query.hasNextPage,
     isError: query.isError,
     error: query.error,
@@ -91,7 +95,7 @@ export function rulesUsing(rules: AutomationRule[], connectionId: string): Autom
 // ─── Mutations ─────────────────────────────────────────────────────────────
 
 function writeConnection(queryClient: QueryClient, connection: IntegrationConnection) {
-  queryClient.setQueryData<InfiniteData<ApiPage<IntegrationConnection>>>(CONNECTIONS_KEY, (data) =>
+  queryClient.setQueryData<InfiniteData<IntegrationsPage>>(CONNECTIONS_KEY, (data) =>
     data?.pages
       ? {
           ...data,
@@ -153,7 +157,7 @@ export function useTestIntegration(connection: IntegrationConnection) {
     onSuccess: (check) => {
       const current =
         queryClient
-          .getQueryData<InfiniteData<ApiPage<IntegrationConnection>>>(CONNECTIONS_KEY)
+          .getQueryData<InfiniteData<IntegrationsPage>>(CONNECTIONS_KEY)
           ?.pages.flatMap((page) => page.items)
           .find((item) => item.id === connection.id) ?? connection;
       writeConnection(queryClient, {
@@ -244,10 +248,13 @@ export function connectionStatus(connection: IntegrationConnection): ConnectionS
   }
   if (connection.health === "error") return { tone: "danger", label: "Błąd połączenia", hint: checkHint(connection.error_code) };
   if (connection.health !== "ok") {
+    const changed = connection.last_checked_at
+      ? "Połączenie zmieniło się po ostatnim teście, więc jego stan jest nieznany"
+      : "Stan nieznany";
     return {
       tone: "warning",
       label: "Nie sprawdzono",
-      hint: "Stan nieznany — użyj „Sprawdź połączenie”. Test nie wysyła żadnej wiadomości.",
+      hint: `${changed} — użyj „Sprawdź połączenie”. Test nie wysyła żadnej wiadomości.`,
     };
   }
   if (!connection.enabled) return { tone: "neutral", label: "Wyłączone", hint: "Ostatni test był poprawny, ale połączenie jest wyłączone." };

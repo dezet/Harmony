@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/useProjects";
 import { formatRuleTime, useLinearOptions } from "@/features/automations/useAutomations";
+import { isAllowedHost } from "@/features/integrations/integrationSchema";
 import { IntegrationForm } from "@/features/integrations/IntegrationForm";
 import { TestDeliveryDialog } from "@/features/integrations/TestDeliveryDialog";
 import {
@@ -137,11 +138,12 @@ function ProviderCard({ provider, children }: { provider: Provider; children: Re
 interface ConnectionRowProps {
   connection: IntegrationConnection;
   rules: AutomationRule[] | null;
+  smtpAllowedHosts: string[] | null;
   onEdit: () => void;
   onTestSend: () => void;
 }
 
-function ConnectionRow({ connection, rules, onEdit, onTestSend }: ConnectionRowProps) {
+function ConnectionRow({ connection, rules, smtpAllowedHosts, onEdit, onTestSend }: ConnectionRowProps) {
   const nameId = useId();
   const blockedId = useId();
   const check = useTestIntegration(connection);
@@ -155,6 +157,8 @@ function ConnectionRow({ connection, rules, onEdit, onTestSend }: ConnectionRowP
   const sendBlocked = !connection.enabled ? "Włącz połączenie, aby wysłać test." : !hasSecret ? "Zapisz sekret, aby wysłać test." : null;
   const used = rules ? rulesUsing(rules, connection.id) : null;
   const lastCheck = check.data;
+  const host = connection.kind === "smtp" && typeof connection.settings?.host === "string" ? connection.settings.host : null;
+  const hostOutside = host !== null && smtpAllowedHosts !== null && !isAllowedHost(smtpAllowedHosts, host) ? host : null;
 
   const toggle = () => {
     update.reset();
@@ -205,6 +209,15 @@ function ConnectionRow({ connection, rules, onEdit, onTestSend }: ConnectionRowP
       {status.hint ? (
         <p className={cn("text-[11px] leading-[1.6]", status.tone === "danger" ? "text-destructive" : "text-muted-foreground")}>
           {status.hint}
+        </p>
+      ) : null}
+      {hostOutside ? (
+        <p className="flex items-start gap-1.5 rounded-[7px] border border-warning/30 bg-warning-surface p-2.5 text-[11px] leading-[1.6] text-warning">
+          <TriangleAlert aria-hidden className="mt-px size-3 shrink-0" strokeWidth={1.8} />
+          <span>
+            Host {hostOutside} nie jest na liście dozwolonych hostów SMTP wdrożenia (intake.smtp_allowed_hosts). Edytuj
+            połączenie i wybierz host z listy.
+          </span>
         </p>
       ) : null}
       {!connection.enabled ? (
@@ -425,6 +438,7 @@ function ConnectionCard({ kind, list, rules, onAdd, onEdit, onTestSend }: Connec
               key={connection.id}
               connection={connection}
               rules={rules}
+              smtpAllowedHosts={list.smtpAllowedHosts}
               onEdit={() => onEdit(connection)}
               onTestSend={() => onTestSend(connection)}
             />

@@ -773,6 +773,17 @@ export interface ApiPage<T> {
   meta: ApiPageMeta;
 }
 
+// GET /integrations: the page meta also carries the runtime
+// `intake.smtp_allowed_hosts`, the only SMTP hosts a connection may use.
+export interface IntegrationsPageMeta extends ApiPageMeta {
+  smtp_allowed_hosts: string[];
+}
+
+export interface IntegrationsPage {
+  items: IntegrationConnection[];
+  meta: IntegrationsPageMeta;
+}
+
 export interface CursorQuery {
   cursor?: string;
   page_size?: number;
