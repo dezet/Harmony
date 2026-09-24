@@ -41,7 +41,6 @@ import {
   useActivateAutomation,
   useAutomation,
   useCheckAutomation,
-  useConnections,
   useCreateAutomation,
   useCreateHoldLabel,
   useJiraPriorities,
@@ -51,6 +50,7 @@ import {
   usePreviewAutomation,
   useUpdateAutomation,
 } from "@/features/automations/useAutomations";
+import { useConnections } from "@/features/integrations/useIntegrations";
 import type { AutomationRule, AutomationSourceType, IntegrationConnection, IntegrationKind } from "@/types/contract";
 
 // Rule editor of layout A (spec §4.6, §7.1): three configuration sections and

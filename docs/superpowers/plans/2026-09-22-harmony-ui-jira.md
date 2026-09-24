@@ -602,12 +602,12 @@ Nowe pliki pod `FE/features/integrations/`: `IntegrationsPage.tsx`,
 `IntegrationForm.tsx`, `TestDeliveryDialog.tsx`, `integrationSchema.ts`,
 `useIntegrations.ts`, `IntegrationsPage.test.tsx`, `IntegrationForm.test.tsx`.
 
-- [ ] T25.1 RED: maskowany zapisany sekret nie wraca jako wartość input ani do localStorage.
-- [ ] T25.2 Jira classic/scoped z poprawnymi wymaganymi polami, SMTP TLS/host, SMSAPI nadawca.
-- [ ] T25.3 Karta Linear korzysta z projektu i istniejącego sekretu; nie tworzy connection kind linear.
-- [ ] T25.4 Test connection bez wysyłki; test-send osobny dialog, odbiorca, koszt i Idempotency-Key.
-- [ ] T25.5 clear_secret odrębne potwierdzenie; disabled connection pokazuje zatrzymane efekty.
-- [ ] T25.6 Unknown/preflight failed to konkretne wskazówki, nie zielony „Połączono”.
+- [x] T25.1 RED: maskowany zapisany sekret nie wraca jako wartość input ani do localStorage.
+- [x] T25.2 Jira classic/scoped z poprawnymi wymaganymi polami, SMTP TLS/host, SMSAPI nadawca.
+- [x] T25.3 Karta Linear korzysta z projektu i istniejącego sekretu; nie tworzy connection kind linear.
+- [x] T25.4 Test connection bez wysyłki; test-send osobny dialog, odbiorca, koszt i Idempotency-Key.
+- [x] T25.5 clear_secret odrębne potwierdzenie; disabled connection pokazuje zatrzymane efekty.
+- [x] T25.6 Unknown/preflight failed to konkretne wskazówki, nie zielony „Połączono”.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/integrations`.
 Odbiór M5: AC01–AC05/AC13/AC14/AC17; unit/typecheck/lint frontendu, jeszcze bez produkcyjnego intake.

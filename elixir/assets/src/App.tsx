@@ -5,11 +5,11 @@ import { RuntimePage } from "@/features/runtime/RuntimePage";
 import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
-import { SectionPlaceholder } from "@/routes/SectionPlaceholder";
 import { AutomationFormPage } from "@/features/automations/AutomationFormPage";
 import { AutomationsPage } from "@/features/automations/AutomationsPage";
 import { CaseDetailPage } from "@/features/cases/CaseDetailPage";
 import { CasesPage } from "@/features/cases/CasesPage";
+import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import { RunDetailPage } from "@/features/run/RunDetailPage";
 
@@ -22,15 +22,7 @@ export function AppRoutes() {
         <Route path="automations" element={<AutomationsPage />} />
         <Route path="automations/new" element={<AutomationFormPage />} />
         <Route path="automations/:id" element={<AutomationFormPage />} />
-        <Route
-          path="integrations"
-          element={
-            <SectionPlaceholder
-              title="Integracje"
-              description="Połączenia, na których opiera się Twoja automatyzacja."
-            />
-          }
-        />
+        <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="overview" element={<OverviewPage />} />
         <Route path="runtime" element={<RuntimePage />} />
         <Route path="projects" element={<ProjectsPage />} />

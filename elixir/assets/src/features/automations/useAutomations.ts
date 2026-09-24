@@ -16,7 +16,6 @@ import {
   getAutomation,
   getLinearOptions,
   listAutomations,
-  listIntegrations,
   listJiraBoards,
   listJiraFilters,
   listJiraPriorities,
@@ -34,7 +33,6 @@ import type {
   AutomationRuleInput,
   AutomationRulePatch,
   AutomationSourceType,
-  IntegrationConnection,
 } from "@/types/contract";
 
 // Automation rules (spec §4.6, §7, §11.2). Every rule list under the
@@ -124,27 +122,6 @@ export function useAutomation(id: string | undefined) {
     queryFn: () => getAutomation(id as string),
     enabled: Boolean(id),
   });
-}
-
-/** Every integration connection (all pages); the form filters them by kind. */
-export function useConnections() {
-  const query = useInfiniteQuery({
-    queryKey: [...INTEGRATIONS_KEY, { page_size: ALL_PAGE_SIZE }],
-    queryFn: ({ pageParam }) => listIntegrations({ page_size: ALL_PAGE_SIZE, cursor: pageParam }),
-    getNextPageParam: (last) => last.meta.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
-  });
-
-  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = query;
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
-
-  const connections = useMemo<IntegrationConnection[]>(
-    () => query.data?.pages.flatMap((page) => page.items) ?? [],
-    [query.data],
-  );
-  return { connections, isPending: query.isPending || hasNextPage, isError, refetch: query.refetch };
 }
 
 /** Boards or saved filters of a Jira connection; the cursor is pinned to `q`. */

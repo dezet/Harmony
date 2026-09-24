@@ -51,6 +51,7 @@ beforeEach(() => {
       const url = String(input);
       if (url.includes("/api/v1/projects")) return json({ projects: PROJECTS });
       if (url.includes("/api/v1/automations")) return json({ items: [], meta: { next_cursor: null, page_size: 100 } });
+      if (url.includes("/api/v1/integrations")) return json({ items: [], meta: { next_cursor: null, page_size: 100 } });
       if (url.endsWith(`/api/v1/cases/${caseDetailFixture.case.ref}`)) return json(caseDetailFixture);
       if (url.includes(`/api/v1/cases/${caseDetailFixture.case.ref}/events`)) {
         return json({ items: [], meta: { next_cursor: null, page_size: 50 } });
@@ -149,9 +150,10 @@ describe("AppRoutes", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Zapisz regułę" })).toBeInTheDocument());
   });
 
-  it("serves Integracje at /integrations", () => {
+  it("serves Integracje at /integrations", async () => {
     renderAt("/integrations");
     expect(heading()).toHaveTextContent("Integracje");
+    expect(await screen.findAllByText("Nie skonfigurowano")).toHaveLength(3);
   });
 
   it("keeps the run deep-link and the project routes", () => {

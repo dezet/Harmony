@@ -67,7 +67,7 @@ Vite builds with `base: "/"`, Phoenix serves `priv/static/app` from `/`, and Rea
 (`src/components/layout/AppShell.tsx`) is the theme A sidebar (`Sidebar.tsx`: Case Center,
 automations, integrations, projects linking to `/?project=<slug>`, all projects, diagnostics) +
 breadcrumb header; below 851 px the sidebar moves into a slide-out dialog behind the hamburger.
-Page features live under `src/features/{overview,runtime,projects,project,run,cases,automations}/`. The project workspace (`/projects/:slug`)
+Page features live under `src/features/{overview,runtime,projects,project,run,cases,automations,integrations}/`. `/integrations` (`src/features/integrations/`) shows the Jira/Linear/e-mail/SMS cards: connection secrets are write-only (the input always starts empty, never stored in the browser), a connection check never sends, a test-send has its own dialog with a per-attempt `Idempotency-Key`, and Linear uses each project's own token (there is no Linear connection). The project workspace (`/projects/:slug`)
 is implemented in `src/features/project/` and renders the Work tab with live data from
 `/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`. The run detail page
 (`/projects/:slug/runs/:identifier`) is implemented in `src/features/run/` and fetches from
