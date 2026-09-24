@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { hydrateFromChannel, DASHBOARD_KEY } from "@/lib/socket";
+import { Socket } from "phoenix";
+import { getSocket, hydrateFromChannel, DASHBOARD_KEY } from "@/lib/socket";
+
+vi.mock("phoenix", () => ({
+  Socket: vi.fn(function FakeSocket(this: { connect: () => void; channel: () => void }) {
+    this.connect = vi.fn();
+    this.channel = vi.fn();
+  }),
+}));
 
 function fakeChannel() {
   const handlers: Record<string, (payload: unknown) => void> = {};
@@ -79,5 +87,17 @@ describe("channel hydration", () => {
     fake.emitClose();
     expect(onStatus).toHaveBeenCalledWith("offline");
     expect(qc.getQueryData(DASHBOARD_KEY)).toEqual(joinSnapshot);
+  });
+});
+
+describe("shared socket", () => {
+  it("creates and connects one Socket for every channel of the app", () => {
+    const first = getSocket();
+    const second = getSocket();
+
+    expect(second).toBe(first);
+    expect(Socket).toHaveBeenCalledTimes(1);
+    expect(Socket).toHaveBeenCalledWith("/socket", expect.anything());
+    expect(first.connect).toHaveBeenCalledTimes(1);
   });
 });

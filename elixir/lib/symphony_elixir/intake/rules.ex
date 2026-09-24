@@ -4,7 +4,8 @@ defmodule SymphonyElixir.Intake.Rules do
 
   Rule edits are versioned. Activation is the only operation that enables a
   rule; changing the source or priorities of an active rule disables it and
-  requires a new baseline.
+  requires a new baseline. A saved rule is announced on `intake:workspace`
+  after commit.
   """
 
   import Ecto.Changeset
@@ -14,6 +15,7 @@ defmodule SymphonyElixir.Intake.Rules do
   alias SymphonyElixir.Notifications.Smsapi
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntegrationConnection, Project}
+  alias SymphonyElixirWeb.IntakePubSub
 
   @immutable_after_activation ~w(
     project_id
@@ -73,7 +75,7 @@ defmodule SymphonyElixir.Intake.Rules do
     attrs = attrs |> Map.put(:enabled, false) |> Map.put(:activation_status, "idle") |> Map.delete(:activated_at)
 
     with {:ok, changeset} <- validate_connection_kinds(changeset(%AutomationRule{}, attrs)) do
-      Repo.insert(changeset)
+      changeset |> Repo.insert() |> announce()
     end
   end
 
@@ -98,7 +100,7 @@ defmodule SymphonyElixir.Intake.Rules do
       changeset = changeset(rule, attrs)
 
       with {:ok, changeset} <- validate_connection_kinds(changeset) do
-        Repo.update(changeset)
+        changeset |> Repo.update() |> announce()
       end
     end
   end
@@ -127,7 +129,7 @@ defmodule SymphonyElixir.Intake.Rules do
 
       with {:ok, changeset} <- validate_connection_kinds(changeset),
            :ok <- ensure_effects_enabled() do
-        Repo.update(changeset) |> normalize_activation_error()
+        changeset |> Repo.update() |> normalize_activation_error() |> announce()
       end
     end
   end
@@ -143,6 +145,7 @@ defmodule SymphonyElixir.Intake.Rules do
       lock_version: rule.lock_version + 1
     })
     |> Repo.update()
+    |> announce()
   end
 
   @spec snapshot(AutomationRule.t(), DateTime.t() | nil) :: map()
@@ -235,7 +238,7 @@ defmodule SymphonyElixir.Intake.Rules do
   def pause_versioned(rule_id, version), do: with_config_version(rule_id, version, &disable/1)
 
   defp with_config_version(rule_id, version, fun) do
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       case Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE")) do
         nil -> Repo.rollback(:not_found)
         %AutomationRule{config_version: ^version} = rule -> unwrap_or_rollback(fun.(rule))
@@ -255,6 +258,14 @@ defmodule SymphonyElixir.Intake.Rules do
   defp after_position(query, {inserted_at, id}) do
     where(query, [rule], rule.inserted_at > ^inserted_at or (rule.inserted_at == ^inserted_at and rule.id > ^id))
   end
+
+  # Inside `with_config_version/3` the announcement waits for its commit.
+  defp announce({:ok, %AutomationRule{} = rule} = result) do
+    :ok = IntakePubSub.track_rule(rule)
+    result
+  end
+
+  defp announce(result), do: result
 
   defp normalize_activation_error({:ok, rule}), do: {:ok, rule}
 

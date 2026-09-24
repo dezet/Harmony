@@ -4,12 +4,15 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   Claims and state transitions are short PostgreSQL transactions. Callers perform
   network I/O only after `claim/1` returns and persist results with the lease token.
+  Every transition records an intake event; its case is announced on
+  `intake:workspace` once the transaction has committed (`IntakePubSub`).
   """
 
   import Ecto.Query
 
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Repo
+  alias SymphonyElixirWeb.IntakePubSub
 
   alias SymphonyElixir.Storage.{
     IntakeAnalysis,
@@ -42,7 +45,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     now = current_time(opts)
     switches = switches(opts)
 
-    case Repo.transaction(fn -> claim_in_transaction(opts, now, switches) end) do
+    case IntakePubSub.transaction(fn -> claim_in_transaction(opts, now, switches) end) do
       {:ok, {result, _expired}} -> result
       {:error, reason} -> {:error, reason}
     end
@@ -77,7 +80,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def complete(delivery_id, lease_token, attrs \\ %{}, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "succeeded",
@@ -102,7 +105,8 @@ defmodule SymphonyElixir.Intake.Outbox do
   def retry(delivery_id, lease_token, error_code, retry_after \\ nil, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn -> retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) end)
+    fn -> retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) end
+    |> IntakePubSub.transaction()
     |> flatten_transaction_result()
   end
 
@@ -146,7 +150,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def fail(delivery_id, lease_token, error_code, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "failed",
@@ -167,7 +171,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def mark_unknown(delivery_id, lease_token, error_code, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "unknown",
@@ -187,7 +191,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   @spec recover_expired(DateTime.t(), keyword()) ::
           %{unknown: non_neg_integer(), analyses: non_neg_integer()} | {:error, term()}
   def recover_expired(now \\ current_time([]), opts \\ []) do
-    case Repo.transaction(fn -> recover_expired_in_transaction(now, opts) end) do
+    case IntakePubSub.transaction(fn -> recover_expired_in_transaction(now, opts) end) do
       {:ok, counts} -> counts
       {:error, reason} -> {:error, reason}
     end
@@ -195,7 +199,7 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   @spec recover_expired_analyses(DateTime.t(), keyword()) :: non_neg_integer() | {:error, term()}
   def recover_expired_analyses(now, opts \\ []) do
-    case Repo.transaction(fn -> recover_expired_analysis_rows(now, opts) end) do
+    case IntakePubSub.transaction(fn -> recover_expired_analysis_rows(now, opts) end) do
       {:ok, count} -> count
       {:error, reason} -> {:error, reason}
     end
@@ -208,7 +212,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     with %IntegrationDelivery{} = initial <- Repo.get(IntegrationDelivery, delivery_id),
          :ok <- check_manual_retry(initial, opts),
          :ok <- reconcile_unknown(initial, opts) do
-      Repo.transaction(fn -> manual_retry_in_transaction(delivery_id, now) end)
+      IntakePubSub.transaction(fn -> manual_retry_in_transaction(delivery_id, now) end)
       |> flatten_transaction_result()
     else
       nil -> {:error, :not_found}
@@ -270,7 +274,7 @@ defmodule SymphonyElixir.Intake.Outbox do
       now = current_time(opts)
 
       fn -> insert_test_send(connection, operation, dedupe_key, recipient, now) end
-      |> Repo.transaction()
+      |> IntakePubSub.transaction()
       |> test_send_result(connection, dedupe_key, recipient)
     end
   end
@@ -910,7 +914,9 @@ defmodule SymphonyElixir.Intake.Outbox do
   defp flatten_transaction_result({:ok, {:error, reason}}), do: {:error, reason}
   defp flatten_transaction_result({:error, reason}), do: {:error, reason}
 
-  defp record_event(%IntegrationDelivery{case_id: case_id, id: delivery_id}, type, payload, now, actor \\ "system") do
+  defp record_event(%IntegrationDelivery{case_id: case_id, id: delivery_id} = delivery, type, payload, now, actor \\ "system") do
+    :ok = IntakePubSub.delivery_changed(delivery)
+
     %IntakeEvent{}
     |> IntakeEvent.changeset(%{
       case_id: case_id,

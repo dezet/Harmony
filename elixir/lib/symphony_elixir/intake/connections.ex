@@ -3,7 +3,8 @@ defmodule SymphonyElixir.Intake.Connections do
   Configuration and safe presentation of durable intake connections.
 
   Secrets are accepted for writes only. The presenter deliberately exposes a
-  set/unset marker instead of the encrypted value.
+  set/unset marker instead of the encrypted value. A saved connection is
+  announced on `intake:workspace` after commit, without any of its values.
   """
 
   import Ecto.Changeset
@@ -12,6 +13,7 @@ defmodule SymphonyElixir.Intake.Connections do
   alias SymphonyElixir.Config
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntakeEvent, IntegrationConnection}
+  alias SymphonyElixirWeb.IntakePubSub
 
   @input_settings %{
     "smtp" => ~w(host port tls_mode username from_email from_name message_id_domain),
@@ -56,6 +58,7 @@ defmodule SymphonyElixir.Intake.Connections do
     %IntegrationConnection{}
     |> changeset(attrs)
     |> Repo.insert()
+    |> announce()
   end
 
   @spec update(IntegrationConnection.t(), attrs()) ::
@@ -64,6 +67,7 @@ defmodule SymphonyElixir.Intake.Connections do
     connection
     |> update_changeset(attrs)
     |> Repo.update()
+    |> announce()
   end
 
   @doc """
@@ -84,6 +88,7 @@ defmodule SymphonyElixir.Intake.Connections do
     |> changeset(attrs)
     |> validate_input()
     |> Repo.insert()
+    |> announce()
   end
 
   @doc """
@@ -98,7 +103,7 @@ defmodule SymphonyElixir.Intake.Connections do
   def update_input(connection_id, version, attrs) when is_map(attrs) do
     clear_secret? = Map.get(attrs, "clear_secret") == true
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       connection = Repo.one(from(c in IntegrationConnection, where: c.id == ^connection_id, lock: "FOR UPDATE"))
 
       cond do
@@ -120,6 +125,7 @@ defmodule SymphonyElixir.Intake.Connections do
 
     changes = [health: health, error_code: error_code, last_checked_at: checked_at]
     {1, _rows} = Repo.update_all(from(c in IntegrationConnection, where: c.id == ^connection.id), set: changes)
+    :ok = IntakePubSub.track_config()
     struct(connection, changes)
   end
 
@@ -169,6 +175,7 @@ defmodule SymphonyElixir.Intake.Connections do
     case connection |> update_changeset(attrs) |> validate_input() |> Repo.update() do
       {:ok, updated} ->
         if clear_secret?, do: disable_dependent_rules(updated)
+        :ok = IntakePubSub.track_config()
         updated
 
       {:error, changeset} ->
@@ -179,20 +186,24 @@ defmodule SymphonyElixir.Intake.Connections do
   defp disable_dependent_rules(%IntegrationConnection{id: id}) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
-    rule_ids =
+    rules =
       Repo.all(
         from(rule in AutomationRule,
           where: rule.jira_connection_id == ^id or rule.email_connection_id == ^id or rule.sms_connection_id == ^id,
           where: rule.enabled or rule.activation_status == "activating",
           lock: "FOR UPDATE",
-          select: rule.id
+          select: %{id: rule.id, project_id: rule.project_id}
         )
       )
+
+    rule_ids = Enum.map(rules, & &1.id)
 
     Repo.update_all(from(rule in AutomationRule, where: rule.id in ^rule_ids),
       set: [enabled: false, activation_status: "idle", lease_token: nil, lease_until: nil, updated_at: now],
       inc: [lock_version: 1]
     )
+
+    Enum.each(rules, &IntakePubSub.track(%{project_id: &1.project_id, rule_id: &1.id}))
 
     Enum.each(rule_ids, fn rule_id ->
       %IntakeEvent{}
@@ -206,6 +217,13 @@ defmodule SymphonyElixir.Intake.Connections do
       |> Repo.insert!()
     end)
   end
+
+  defp announce({:ok, %IntegrationConnection{}} = result) do
+    :ok = IntakePubSub.track_config()
+    result
+  end
+
+  defp announce(result), do: result
 
   defp input_settings_defaults("smtp", settings) when is_map(settings) do
     settings

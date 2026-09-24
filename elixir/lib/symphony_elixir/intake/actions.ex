@@ -1,5 +1,8 @@
 defmodule SymphonyElixir.Intake.Actions do
-  @moduledoc "Transactional operator actions for Jira intake cases."
+  @moduledoc """
+  Transactional operator actions for Jira intake cases. A changed case is
+  announced on `intake:workspace` after the action's transaction commits.
+  """
 
   import Ecto.Query
 
@@ -12,6 +15,7 @@ defmodule SymphonyElixir.Intake.Actions do
   alias SymphonyElixir.Storage.IntakeCase
   alias SymphonyElixir.Storage.IntakeEvent
   alias SymphonyElixir.Storage.IntegrationDelivery
+  alias SymphonyElixirWeb.IntakePubSub
 
   @type action_error ::
           :analysis_not_published
@@ -383,6 +387,8 @@ defmodule SymphonyElixir.Intake.Actions do
   end
 
   defp record_event!(repo, %IntakeCase{} = intake_case, type, payload, now) do
+    :ok = IntakePubSub.track_case(intake_case)
+
     %IntakeEvent{}
     |> IntakeEvent.changeset(%{
       case_id: intake_case.id,
@@ -396,7 +402,7 @@ defmodule SymphonyElixir.Intake.Actions do
   end
 
   defp transact(repo, fun) do
-    case repo.transaction(fun) do
+    case IntakePubSub.transaction(fun, repo: repo) do
       {:ok, result} -> result
       {:error, reason} -> {:error, normalize_error(reason)}
     end

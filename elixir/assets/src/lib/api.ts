@@ -11,7 +11,11 @@ import type {
   CaseActionResult,
   CaseApproveResult,
   CaseDelivery,
+  CaseDetailResponse,
+  CaseEventsPage,
+  CaseFilters,
   CaseReanalyzeResult,
+  CasesPage,
   CursorQuery,
   DeliveryStatus,
   ForgeRepositoriesRequest,
@@ -287,6 +291,30 @@ export function createLinearHoldLabel(
   body: { team_id: string; confirmed: true },
 ): Promise<LinearHoldLabel> {
   return operatorMutation<LinearHoldLabel>("POST", `/projects/${enc(projectId)}/linear-hold-label`, body);
+}
+
+// ─── Case Center reads (spec §11.2–11.3) ───────────────────────────────────
+// `signal` comes from React Query, so a request of a filter the screen already
+// left is aborted instead of landing late.
+
+export function listCases(filters: CaseFilters, cursor?: string, signal?: AbortSignal): Promise<CasesPage> {
+  const params = query({
+    project: filters.project,
+    filter: filters.filter,
+    column: filters.column,
+    q: filters.q,
+    page_size: filters.page_size,
+    cursor,
+  });
+  return request<CasesPage>(`/cases${params}`, { signal });
+}
+
+export function getCase(ref: string, signal?: AbortSignal): Promise<CaseDetailResponse> {
+  return request<CaseDetailResponse>(`/cases/${enc(ref)}`, { signal });
+}
+
+export function listCaseEvents(ref: string, cursor?: string, signal?: AbortSignal): Promise<CaseEventsPage> {
+  return request<CaseEventsPage>(`/cases/${enc(ref)}/events${query({ cursor })}`, { signal });
 }
 
 export function acknowledgeCase(ref: string, body: { expected_version: number }): Promise<CaseActionResult> {

@@ -1,5 +1,8 @@
 defmodule SymphonyElixir.Intake.Poller do
-  @moduledoc "Runs durable, generation-scoped Jira baseline and polling scans."
+  @moduledoc """
+  Runs durable, generation-scoped Jira baseline and polling scans. The start
+  and the end of a scan announce the rule on `intake:workspace` after commit.
+  """
 
   import Ecto.Query
 
@@ -7,6 +10,7 @@ defmodule SymphonyElixir.Intake.Poller do
   alias SymphonyElixir.Intake.Matcher
   alias SymphonyElixir.Jira.CloudClient
   alias SymphonyElixir.Repo
+  alias SymphonyElixirWeb.IntakePubSub
 
   alias SymphonyElixir.Storage.{AutomationRule, AutomationScan, IntegrationConnection}
 
@@ -96,7 +100,7 @@ defmodule SymphonyElixir.Intake.Poller do
     now = current_time(opts)
     uuid_fun = Keyword.get(opts, :uuid_fun, &Ecto.UUID.generate/0)
 
-    case Repo.transaction(fn ->
+    case IntakePubSub.transaction(fn ->
            start_scan_transaction(rule_id, now, uuid_fun)
          end) do
       {:ok, context} -> {:ok, context}
@@ -148,6 +152,7 @@ defmodule SymphonyElixir.Intake.Poller do
     })
     |> Repo.update!()
 
+    :ok = IntakePubSub.track_rule(rule)
     %{scan: scan, rule: rule, lease_token: lease_token}
   end
 
@@ -299,7 +304,7 @@ defmodule SymphonyElixir.Intake.Poller do
   defp finish_success(context, opts) do
     now = current_time(opts)
 
-    case Repo.transaction(fn -> finish_success_transaction(context, now) end) do
+    case IntakePubSub.transaction(fn -> finish_success_transaction(context, now) end) do
       {:ok, {:ok, scan}} -> {:ok, scan}
       {:ok, {:error, reason}} -> {:error, reason}
       {:error, reason} -> {:error, reason}
@@ -309,6 +314,7 @@ defmodule SymphonyElixir.Intake.Poller do
   defp finish_success_transaction(context, now) do
     scan = Repo.one(from(scan in AutomationScan, where: scan.id == ^context.scan.id, lock: "FOR UPDATE"))
     rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^context.rule.id, lock: "FOR UPDATE"))
+    track_rule(rule)
 
     cond do
       not still_owner?(scan, rule, context, now) ->
@@ -353,9 +359,10 @@ defmodule SymphonyElixir.Intake.Poller do
     error_code = error_code(reason)
     status = if error_code == "stale_generation", do: "cancelled", else: "failed"
 
-    case Repo.transaction(fn ->
+    case IntakePubSub.transaction(fn ->
            scan = Repo.one(from(scan in AutomationScan, where: scan.id == ^context.scan.id, lock: "FOR UPDATE"))
            rule = Repo.one(from(rule in AutomationRule, where: rule.id == ^context.rule.id, lock: "FOR UPDATE"))
+           track_rule(rule)
 
            update_failed_scan(scan, status, error_code, now)
 
@@ -367,6 +374,9 @@ defmodule SymphonyElixir.Intake.Poller do
       {:error, transaction_reason} -> {:error, transaction_reason}
     end
   end
+
+  defp track_rule(%AutomationRule{} = rule), do: IntakePubSub.track_rule(rule)
+  defp track_rule(nil), do: :ok
 
   defp update_failed_scan(%AutomationScan{status: "running"} = scan, status, error_code, now) do
     scan

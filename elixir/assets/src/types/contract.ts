@@ -491,6 +491,27 @@ export interface CasesPage {
   project_counts: CaseProjectCount[];
 }
 
+// Query of GET /cases; empty values are not sent. `project` is a UUID or slug.
+export type CaseListFilter = "all" | "decision" | "analysis" | "done";
+
+export interface CaseFilters {
+  project?: string;
+  filter?: CaseListFilter;
+  column?: CaseColumn;
+  q?: string;
+  page_size?: number;
+}
+
+// `changed` push of the `intake:workspace` channel: identifiers only, never
+// content; the client invalidates the matching queries and refetches over REST.
+export interface IntakeChangedPayload {
+  project_id: string | null;
+  case_ref: string | null;
+  rule_id: string | null;
+  revision: number;
+  changed_at: string;
+}
+
 export type IntakeCaseStatus = "queued" | "running" | "ready" | "needs_input" | "failed";
 export type AnalysisStatus = "queued" | "running" | "succeeded" | "failed" | "needs_input";
 export type AnalysisConfidence = "low" | "medium" | "high";
@@ -748,6 +769,12 @@ export interface ApiPage<T> {
 
 export interface CursorQuery {
   cursor?: string;
+  page_size?: number;
+}
+
+// Filters of the rule list query key; the cursor belongs to the page, not the key.
+export interface AutomationFilters {
+  project?: string;
   page_size?: number;
 }
 

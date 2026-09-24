@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, stopRun, retryRun, ApiError } from "@/lib/api";
+import { getState, getCase, listCaseEvents, listCases, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, stopRun, retryRun, ApiError } from "@/lib/api";
 import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
@@ -789,5 +789,61 @@ describe("intake operator mutations", () => {
     const mutations = calls.slice(1, 13);
     expect(mutations.every((c) => header(c.init, "x-csrf-token") === "token-1")).toBe(true);
     expect(calls.slice(13).every((c) => header(c.init, "x-csrf-token") === null)).toBe(true);
+  });
+});
+
+describe("case center reads", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function recordFetch() {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), init });
+        return new Response(JSON.stringify({ items: [], meta: { next_cursor: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  it("builds the list query from filters and cursor, skipping empty values", async () => {
+    const calls = recordFetch();
+
+    await listCases({ project: "alpha beta", filter: "decision", column: "detected", q: "OPS-1", page_size: 50 }, "c/1");
+    await listCases({ project: "", q: undefined });
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/cases?project=alpha+beta&filter=decision&column=detected&q=OPS-1&page_size=50&cursor=c%2F1",
+      "/api/v1/cases",
+    ]);
+  });
+
+  it("encodes the ref of the detail and history and pages the history", async () => {
+    const calls = recordFetch();
+
+    await getCase("jira_a/b");
+    await listCaseEvents("jira_a/b");
+    await listCaseEvents("jira_a/b", "c2");
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/cases/jira_a%2Fb",
+      "/api/v1/cases/jira_a%2Fb/events",
+      "/api/v1/cases/jira_a%2Fb/events?cursor=c2",
+    ]);
+  });
+
+  it("passes the abort signal of the query to fetch", async () => {
+    const calls = recordFetch();
+    const controller = new AbortController();
+
+    await listCases({}, undefined, controller.signal);
+    await getCase("jira_1", controller.signal);
+    await listCaseEvents("jira_1", undefined, controller.signal);
+
+    expect(calls.every((c) => c.init?.signal === controller.signal)).toBe(true);
   });
 });

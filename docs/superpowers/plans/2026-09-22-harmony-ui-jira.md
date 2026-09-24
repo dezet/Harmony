@@ -489,10 +489,10 @@ Pliki: nowy `WEB/channels/intake_channel.ex`, `WEB/intake_pubsub.ex`, `BT/intake
 `WEB/channels/user_socket.ex`, `FE/lib/api.ts`, `FE/types/contract.ts`;
 nowe `FE/features/cases/{useCases,useCase,useCaseEvents,useIntakeChannel}.ts` i testy obok.
 
-- [ ] T19.1 RED: reconnect musi odświeżyć aktywną listę, a channel payload nie zawierać treści/sekretu.
-- [ ] T19.2 Event dopiero po commit; transakcja rollback nie wywołuje invalidacji.
-- [ ] T19.3 Jeden Socket, subskrypcja sprzątana po unmount, debounce 250 ms i fallback 30 s offline.
-- [ ] T19.4 Stare topics/cache bez regresji; zmiana projektu nie pokazuje danych poprzedniego requestu.
+- [x] T19.1 RED: reconnect musi odświeżyć aktywną listę, a channel payload nie zawierać treści/sekretu.
+- [x] T19.2 Event dopiero po commit; transakcja rollback nie wywołuje invalidacji.
+- [x] T19.3 Jeden Socket, subskrypcja sprzątana po unmount, debounce 250 ms i fallback 30 s offline.
+- [x] T19.4 Stare topics/cache bez regresji; zmiana projektu nie pokazuje danych poprzedniego requestu.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_channel_test.exs`;
 `cd elixir/assets && npm run test -- --run src/features/cases src/lib/socket.test.ts src/lib/api.test.ts`.
