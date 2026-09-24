@@ -472,12 +472,12 @@ Spec: §11.3. Zależność: T17.
 Pliki: nowe `BE/cases.ex`, `BE/cases/projection.ex`, `WEB/controllers/case_controller.ex`,
 `BT/cases_projection_test.exs`, `BT/cases_api_test.exs`; `WEB/intake_presenter.ex`.
 
-- [ ] T18.1 RED: 60 spraw w jednej kolumnie, po 25 na stronę, total=60 i kompletna suma projektów.
-- [ ] T18.2 PostgreSQL UNION i latest-per-source; nie wczytuj całej historii do Enum.
-- [ ] T18.3 Ref jira_/run_, stabilne cursory związane z filtrem, wyszukiwanie po tytule/ID.
-- [ ] T18.4 Poprawna kolejność precedence statusów i ukrycie implementation zduplikowanej z case.
-- [ ] T18.5 Legacy bez Linear, brak opisu, unknown status i błąd publikacji pozostają widoczne.
-- [ ] T18.6 Detail events stronicowane, actions obliczane przez backend; fixture T01 aktualna.
+- [x] T18.1 RED: 60 spraw w jednej kolumnie, po 25 na stronę, total=60 i kompletna suma projektów.
+- [x] T18.2 PostgreSQL UNION i latest-per-source; nie wczytuj całej historii do Enum.
+- [x] T18.3 Ref jira_/run_, stabilne cursory związane z filtrem, wyszukiwanie po tytule/ID.
+- [x] T18.4 Poprawna kolejność precedence statusów i ukrycie implementation zduplikowanej z case.
+- [x] T18.5 Legacy bez Linear, brak opisu, unknown status i błąd publikacji pozostają widoczne.
+- [x] T18.6 Detail events stronicowane, actions obliczane przez backend; fixture T01 aktualna.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/cases_projection_test.exs test/symphony_elixir/cases_api_test.exs test/symphony_elixir/intake_contract_test.exs`.
 Odbiór: AC02/AC04/AC16. Zapytania list/count stała liczba, brak N+1 na karty.

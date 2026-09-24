@@ -25,7 +25,7 @@ defmodule SymphonyElixirWeb.Router do
   end
 
   # Intake API. Declared before the /api/v1/:issue_identifier catch-all so the
-  # single-segment paths (/csrf, /automations, /integrations) are not captured.
+  # single-segment paths (/csrf, /automations, /integrations, /cases) are not captured.
   scope "/api/v1", SymphonyElixirWeb do
     pipe_through(:csrf_bootstrap)
 
@@ -61,6 +61,9 @@ defmodule SymphonyElixirWeb.Router do
     get("/projects/:id/linear-options", LinearOptionsController, :show)
     post("/projects/:id/linear-hold-label", LinearOptionsController, :create_hold_label)
 
+    get("/cases", CaseController, :index)
+    get("/cases/:ref", CaseController, :show)
+    get("/cases/:ref/events", CaseController, :events)
     post("/cases/:ref/acknowledge", CaseActionController, :acknowledge)
     post("/cases/:ref/approve-repair", CaseActionController, :approve_repair)
     post("/cases/:ref/reanalyze", CaseActionController, :reanalyze)
@@ -87,6 +90,9 @@ defmodule SymphonyElixirWeb.Router do
     match(:*, "/integrations/:id/jira/priorities", IntegrationController, :method_not_allowed)
     match(:*, "/projects/:id/linear-options", LinearOptionsController, :method_not_allowed)
     match(:*, "/projects/:id/linear-hold-label", LinearOptionsController, :method_not_allowed)
+    match(:*, "/cases", CaseController, :method_not_allowed)
+    match(:*, "/cases/:ref", CaseController, :method_not_allowed)
+    match(:*, "/cases/:ref/events", CaseController, :method_not_allowed)
     match(:*, "/cases/:ref/acknowledge", CaseActionController, :method_not_allowed)
     match(:*, "/cases/:ref/approve-repair", CaseActionController, :method_not_allowed)
     match(:*, "/cases/:ref/reanalyze", CaseActionController, :method_not_allowed)

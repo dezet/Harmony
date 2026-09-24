@@ -622,6 +622,60 @@ export interface CaseDetail {
   version: number;
 }
 
+export interface CaseWorkRunForge {
+  owner: string | null;
+  repo: string | null;
+  pr_number: number | null;
+  head_ref: string | null;
+  base_ref: string | null;
+}
+
+export interface CaseWorkRun {
+  id: string;
+  type: string;
+  status: string;
+  agent_backend: string | null;
+  forge: CaseWorkRunForge | null;
+}
+
+export interface AgentWorkDetailCase extends CaseSummary {
+  project_id: string;
+  work_run: CaseWorkRun;
+}
+
+// `run_<uuid>` detail: no Jira analysis, deliveries or publication; every
+// action is refused with `unsupported_case_kind`.
+export interface AgentWorkDetail {
+  case: AgentWorkDetailCase;
+  analysis: null;
+  links: CaseDetailLinks;
+  deliveries: CaseDelivery[];
+  actions: CaseActions;
+  publication: null;
+  version: null;
+}
+
+export type CaseDetailResponse = CaseDetail | AgentWorkDetail;
+
+// History entry of GET /cases/:ref/events; recipients arrive masked.
+export interface CaseEvent {
+  id: string;
+  type: string;
+  actor: "system" | "operator";
+  occurred_at: string;
+  operation: DeliveryOperation | null;
+  recipient: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface CaseEventsPage {
+  items: CaseEvent[];
+  meta: {
+    next_cursor: string | null;
+    page_size: number;
+  };
+}
+
 // ─── Automation and integration endpoints ──────────────────────────────────
 
 export type AutomationSourceType = "board" | "filter";

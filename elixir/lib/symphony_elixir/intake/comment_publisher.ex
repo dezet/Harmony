@@ -333,7 +333,9 @@ defmodule SymphonyElixir.Intake.CommentPublisher do
   defp read_error(status, _error) when status in 400..499, do: {:error, "jira_comment_read_rejected"}
   defp read_error(_status, _error), do: {:retry, "jira_comment_read_failed", nil}
 
-  defp marker(case_id, version), do: "Harmony analysis #{case_id}/v#{version}"
+  @doc "Marker that identifies the published comment of one analysis version."
+  @spec marker(String.t(), pos_integer()) :: String.t()
+  def marker(case_id, version), do: "Harmony analysis #{case_id}/v#{version}"
 
   defp payload_version(payload) when is_map(payload), do: payload_integer(payload, "version", 0)
   defp payload_version(_payload), do: 0

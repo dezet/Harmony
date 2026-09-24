@@ -1,6 +1,7 @@
 defmodule SymphonyElixirWeb.IntakePresenter do
   @moduledoc """
-  JSON projections and the error envelope of the intake configuration API.
+  JSON projections and the error envelope of the intake API: configuration,
+  deliveries and the Case Center reads.
 
   Responses never carry secrets, raw provider bodies or exception text.
   Every error is `{"error": {"code", "message", "fields"}}` with a stable code
@@ -162,14 +163,65 @@ defmodule SymphonyElixirWeb.IntakePresenter do
   Parses `page_size` and `cursor`. A cursor is bound to the query it came
   from through `scope`; a cursor of another query is rejected.
   """
-  @spec page_params(map(), String.t()) ::
+  @spec page_params(map(), String.t(), pos_integer()) ::
           {:ok, %{page_size: pos_integer(), after: term()}} | {:error, :invalid_cursor | :invalid_page_size}
-  def page_params(params, scope) do
-    with {:ok, page_size} <- page_size(Map.get(params, "page_size")),
+  def page_params(params, scope, default_page_size \\ @default_page_size) do
+    with {:ok, page_size} <- page_size(Map.get(params, "page_size"), default_page_size),
          {:ok, position} <- decode_cursor(Map.get(params, "cursor"), scope) do
       {:ok, %{page_size: page_size, after: position}}
     end
   end
+
+  @doc """
+  Turns a decoded `(timestamp, id)` cursor position into `{DateTime, id}`.
+  `valid_id?` checks the second element (a case ref or a UUID).
+  """
+  @spec timestamp_after(term(), (String.t() -> boolean())) ::
+          {:ok, nil | {DateTime.t(), String.t()}} | {:error, :invalid_cursor}
+  def timestamp_after(nil, _valid_id?), do: {:ok, nil}
+
+  def timestamp_after([timestamp, id], valid_id?) when is_binary(timestamp) and is_binary(id) do
+    with {:ok, datetime, 0} <- DateTime.from_iso8601(timestamp),
+         true <- valid_id?.(id) do
+      {:ok, {datetime, id}}
+    else
+      _invalid -> {:error, :invalid_cursor}
+    end
+  end
+
+  def timestamp_after(_position, _valid_id?), do: {:error, :invalid_cursor}
+
+  @doc "`GET /cases` response: summaries, totals, per-column counts and project sums."
+  @spec cases_page(map(), pos_integer(), String.t()) :: map()
+  def cases_page(result, page_size, scope) do
+    %{
+      items: result.items,
+      meta: %{
+        next_cursor: result.next_position && encode_cursor(result.next_position, scope),
+        total: result.total,
+        page_size: page_size
+      },
+      counts: result.counts,
+      project_counts: result.project_counts
+    }
+  end
+
+  @doc "Case detail with deliveries presented without payload or recipients."
+  @spec case_detail(map()) :: map()
+  def case_detail(detail), do: Map.update!(detail, :deliveries, fn deliveries -> Enum.map(deliveries, &delivery/1) end)
+
+  @doc "`GET /cases/:ref/events` response."
+  @spec case_events_page(map(), pos_integer(), String.t()) :: map()
+  def case_events_page(result, page_size, scope) do
+    %{
+      items: Enum.map(result.items, &case_event/1),
+      meta: %{next_cursor: result.next_position && encode_cursor(result.next_position, scope), page_size: page_size}
+    }
+  end
+
+  @doc "One history entry; `Cases.events/2` has already masked recipients."
+  @spec case_event(map()) :: map()
+  def case_event(event), do: Map.take(event, [:id, :type, :actor, :occurred_at, :operation, :recipient, :payload])
 
   @doc "Turns a decoded keyset cursor position into `{inserted_at, id}`."
   @spec keyset_after(term()) :: {:ok, nil | {DateTime.t(), binary()}} | {:error, :invalid_cursor}
@@ -274,16 +326,16 @@ defmodule SymphonyElixirWeb.IntakePresenter do
   defp retry_allowed?(%IntegrationDelivery{status: "unknown", operation: operation}), do: operation in ["email", "sms"]
   defp retry_allowed?(%IntegrationDelivery{}), do: false
 
-  defp page_size(nil), do: {:ok, @default_page_size}
+  defp page_size(nil, default), do: {:ok, default}
 
-  defp page_size(value) when is_binary(value) do
+  defp page_size(value, _default) when is_binary(value) do
     case Integer.parse(value) do
       {size, ""} when size in 1..@max_page_size -> {:ok, size}
       _invalid -> {:error, :invalid_page_size}
     end
   end
 
-  defp page_size(_value), do: {:error, :invalid_page_size}
+  defp page_size(_value, _default), do: {:error, :invalid_page_size}
 
   defp encode_cursor(position, scope) do
     %{"p" => position, "s" => scope_hash(scope)}

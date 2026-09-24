@@ -163,8 +163,8 @@
       "reason": null
     },
     "approve_repair": {
-      "allowed": false,
-      "reason": "repair_requires_explicit_confirmation"
+      "allowed": true,
+      "reason": null
     }
   },
   "publication": {
