@@ -141,6 +141,14 @@ describe("AppRoutes", () => {
     expect(screen.queryByText(/Jira · Electrum|Portal klienta|OPS-142/)).not.toBeInTheDocument();
   });
 
+  it("opens the rule editor at /automations/new", async () => {
+    renderAt("/automations/new");
+    expect(heading()).toHaveTextContent("Nowa reguła");
+    const trail = screen.getByRole("navigation", { name: "Ścieżka" });
+    expect(within(trail).getByText("Nowa reguła")).toHaveAttribute("aria-current", "page");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Zapisz regułę" })).toBeInTheDocument());
+  });
+
   it("serves Integracje at /integrations", () => {
     renderAt("/integrations");
     expect(heading()).toHaveTextContent("Integracje");

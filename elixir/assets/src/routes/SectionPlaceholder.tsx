@@ -1,8 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 
-// Reserved routes of layout A. The content arrives with automations (T24) and
-// integrations (T25); until then the pages show only their heading and never
-// sample data.
+// Reserved route of layout A. The integrations content arrives with T25; until
+// then the page shows only its heading and never sample data.
 
 function PageTitle({ title, children }: { title: string; children?: ReactNode }) {
   useEffect(() => {

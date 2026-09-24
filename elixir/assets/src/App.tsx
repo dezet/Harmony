@@ -6,6 +6,8 @@ import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
 import { SectionPlaceholder } from "@/routes/SectionPlaceholder";
+import { AutomationFormPage } from "@/features/automations/AutomationFormPage";
+import { AutomationsPage } from "@/features/automations/AutomationsPage";
 import { CaseDetailPage } from "@/features/cases/CaseDetailPage";
 import { CasesPage } from "@/features/cases/CasesPage";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
@@ -17,15 +19,9 @@ export function AppRoutes() {
       <Route element={<AppShell />}>
         <Route index element={<CasesPage />} />
         <Route path="cases/:ref" element={<CaseDetailPage />} />
-        <Route
-          path="automations"
-          element={
-            <SectionPlaceholder
-              title="Automatyzacje"
-              description="Reguły sprawdzania zgłoszeń Jira i ich stan."
-            />
-          }
-        />
+        <Route path="automations" element={<AutomationsPage />} />
+        <Route path="automations/new" element={<AutomationFormPage />} />
+        <Route path="automations/:id" element={<AutomationFormPage />} />
         <Route
           path="integrations"
           element={

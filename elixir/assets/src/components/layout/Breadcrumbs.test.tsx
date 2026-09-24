@@ -20,6 +20,13 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/")[0].to).toBeUndefined();
   });
 
+  it("names the rule editor under Automatyzacje", () => {
+    expect(labels("/automations/new")).toEqual(["Przestrzeń zespołu", "Automatyzacje", "Nowa reguła"]);
+    expect(labels("/automations/r1")).toEqual(["Przestrzeń zespołu", "Automatyzacje", "Reguła"]);
+    expect(crumbsFor("/automations/r1").find((c) => c.label === "Automatyzacje")?.to).toBe("/automations");
+    expect(labels("/automations/r1/extra")).toEqual(["Przestrzeń zespołu", "Nie znaleziono"]);
+  });
+
   it("names the standalone case detail under the Case Center", () => {
     expect(labels("/cases/jira_1")).toEqual(["Przestrzeń zespołu", "Centrum spraw", "Szczegóły sprawy"]);
     expect(crumbsFor("/cases/jira_1").find((c) => c.label === "Centrum spraw")?.to).toBe("/");

@@ -1,7 +1,7 @@
 import { Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/lib/useNow";
-import type { RuleSchedule } from "@/features/cases/useCaseChecks";
+import type { RuleSchedule } from "@/features/automations/useAutomations";
 import type { CaseCounts } from "@/types/contract";
 
 // Stats line of layout A. The numbers are aggregates of the selected project,

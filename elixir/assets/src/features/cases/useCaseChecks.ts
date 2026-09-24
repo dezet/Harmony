@@ -1,71 +1,11 @@
-import { useEffect, useMemo } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, checkAutomations, listAutomations, requestRefresh } from "@/lib/api";
-import { AUTOMATIONS_KEY } from "@/lib/queryClient";
-import type { AutomationBulkCheck, AutomationFilters, AutomationRule } from "@/types/contract";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError, checkAutomations, requestRefresh } from "@/lib/api";
+import type { AutomationBulkCheck } from "@/types/contract";
 
-// Jira rule state for the Case Center header (spec §4.4): the last and next
-// check come from the backend rules of the scope, and "Sprawdź teraz" queues
-// the active rules of that scope plus the existing Linear refresh. Neither is
-// reported as a finished synchronization.
-
-const RULES_PAGE_SIZE = 100;
-
-export type RuleSchedule =
-  | { kind: "none" }
-  | { kind: "active"; lastCheckAt: string | null; nextCheckAt: string | null };
-
-function latest(values: (string | null)[], pick: (a: number, b: number) => number): string | null {
-  let best: { at: number; iso: string } | null = null;
-  for (const iso of values) {
-    if (!iso) continue;
-    const at = new Date(iso).getTime();
-    if (Number.isNaN(at)) continue;
-    if (!best || pick(at, best.at) === at) best = { at, iso };
-  }
-  return best?.iso ?? null;
-}
-
-export function ruleSchedule(rules: AutomationRule[]): RuleSchedule {
-  const active = rules.filter((rule) => rule.enabled);
-  if (active.length === 0) return { kind: "none" };
-  return {
-    kind: "active",
-    lastCheckAt: latest(active.map((rule) => rule.last_success_at), Math.max),
-    nextCheckAt: latest(active.map((rule) => rule.next_poll_at), Math.min),
-  };
-}
-
-/**
- * Rules of one project (UUID) or of every project. All pages are read, since
- * "no active rule" must hold for every rule, not only the first page.
- */
-export function useRuleSchedule(projectId: string | undefined, enabled: boolean) {
-  const filters = useMemo<AutomationFilters>(
-    () => (projectId ? { project: projectId, page_size: RULES_PAGE_SIZE } : { page_size: RULES_PAGE_SIZE }),
-    [projectId],
-  );
-
-  const query = useInfiniteQuery({
-    queryKey: AUTOMATIONS_KEY(filters),
-    queryFn: ({ pageParam }) => listAutomations({ ...filters, cursor: pageParam }),
-    getNextPageParam: (last) => last.meta.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
-    enabled,
-  });
-
-  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = query;
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !isError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
-
-  const schedule = useMemo(
-    () => (query.data && !hasNextPage ? ruleSchedule(query.data.pages.flatMap((page) => page.items)) : null),
-    [query.data, hasNextPage],
-  );
-
-  return { schedule, isError: isError && !schedule, isLoading: !schedule && !isError };
-}
+// "Sprawdź teraz" of the Case Center header (spec §4.4): queues the active
+// rules of the scope plus the existing Linear refresh. Neither is reported as
+// a finished synchronization. The rule schedule itself lives with the rule
+// hooks in `features/automations/useAutomations.ts`.
 
 export type CheckTone = "success" | "warning" | "error";
 

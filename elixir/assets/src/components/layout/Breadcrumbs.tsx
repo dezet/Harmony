@@ -19,8 +19,10 @@ export function crumbsFor(pathname: string): Crumb[] {
   if (first === "cases" && second && !third) {
     return [TEAM_SPACE, { label: "Centrum spraw", to: "/" }, { label: "Szczegóły sprawy", to: pathname }];
   }
-  if (first === "automations" && !second) {
-    return [TEAM_SPACE, { label: "Automatyzacje", to: "/automations" }];
+  if (first === "automations" && !third) {
+    const crumbs: Crumb[] = [TEAM_SPACE, { label: "Automatyzacje", to: "/automations" }];
+    if (second) crumbs.push({ label: second === "new" ? "Nowa reguła" : "Reguła", to: pathname });
+    return crumbs;
   }
   if (first === "integrations" && !second) {
     return [TEAM_SPACE, { label: "Integracje", to: "/integrations" }];

@@ -583,14 +583,14 @@ Nowe pliki pod `FE/features/automations/`: `AutomationsPage.tsx`, `AutomationFor
 `AutomationForm.tsx`, `AutomationPreview.tsx`, `automationSchema.ts`, `useAutomations.ts`,
 `AutomationForm.test.tsx`, `AutomationsPage.test.tsx`.
 
-- [ ] T24.1 RED: zapis nie włącza reguły, a preview nie wywołuje activate/check.
-- [ ] T24.2 Pickery Jira źródła/priorytetów i Linear z jawnymi ID, loading/error/retry.
-- [ ] T24.3 Konwersja sekund/minut/godzin nie zaokrągla cicho; wszystkie granice walidacji.
-- [ ] T24.4 Odbiorcy SMTP/SMSAPI jawni, 10 max, obie listy opcjonalne według checkboxów.
-- [ ] T24.5 Podgląd plain language, baseline polityka, liczba istniejących matches, collision warning.
-- [ ] T24.6 Activate wymaga zapisu i potwierdzenia; edycja w dirty form ostrzega przed utratą zmian.
-- [ ] T24.7 Konflikt wersji 409 nie nadpisuje cudzej konfiguracji; pokazuje odświeżenie.
-- [ ] T24.8 Pauza/wznowienie i następny termin odzwierciedlają odpowiedź backendu.
+- [x] T24.1 RED: zapis nie włącza reguły, a preview nie wywołuje activate/check.
+- [x] T24.2 Pickery Jira źródła/priorytetów i Linear z jawnymi ID, loading/error/retry.
+- [x] T24.3 Konwersja sekund/minut/godzin nie zaokrągla cicho; wszystkie granice walidacji.
+- [x] T24.4 Odbiorcy SMTP/SMSAPI jawni, 10 max, obie listy opcjonalne według checkboxów.
+- [x] T24.5 Podgląd plain language, baseline polityka, liczba istniejących matches, collision warning.
+- [x] T24.6 Activate wymaga zapisu i potwierdzenia; edycja w dirty form ostrzega przed utratą zmian.
+- [x] T24.7 Konflikt wersji 409 nie nadpisuje cudzej konfiguracji; pokazuje odświeżenie.
+- [x] T24.8 Pauza/wznowienie i następny termin odzwierciedlają odpowiedź backendu.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/automations`.
 Odbiór: AC05/AC06/AC07/AC13; forma zgodna z A, nie edytor JSON reguły.
