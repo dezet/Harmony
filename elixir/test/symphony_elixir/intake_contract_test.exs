@@ -98,6 +98,18 @@ defmodule SymphonyElixir.IntakeContractTest do
     refute Map.has_key?(connection["settings"], "secret")
   end
 
+  test "the integrations page carries the runtime SMTP allowlist and no credentials" do
+    page = fixture!("integrations_page.fixture.json")
+    connection = fixture!("integration_connection.fixture.json")
+
+    assert Map.keys(page) |> Enum.sort() == ~w(items meta)
+    assert Map.keys(page["meta"]) |> Enum.sort() == ~w(next_cursor page_size smtp_allowed_hosts)
+    assert page["meta"]["smtp_allowed_hosts"] == ["smtp.example.test"]
+    assert Enum.all?(page["items"], &(Map.keys(&1) |> Enum.sort() == Map.keys(connection) |> Enum.sort()))
+    assert Enum.all?(page["items"], &(&1["settings"]["host"] in page["meta"]["smtp_allowed_hosts"]))
+    refute Jason.encode!(page) =~ ~r/secret"\s*:\s*"|password|token/
+  end
+
   test "legacy storage and orchestrator statuses map to visible columns" do
     assert Enum.all?(@legacy_status_cases, fn %{status: status, error: error, column: expected} ->
              legacy_column(status, error) == expected

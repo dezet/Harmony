@@ -12,28 +12,41 @@ defmodule SymphonyElixir.Storage do
   alias SymphonyElixir.Storage.{Artifact, Blocker, DedupeKey, Project, PullRequestLink, WorkEvent, WorkRun}
   alias SymphonyElixirWeb.IntakePubSub
 
+  @project_replaced_fields [
+    :linear_project_slug,
+    :linear_team_key,
+    :linear_human_review_state,
+    :forge_type,
+    :forge_owner,
+    :forge_repo,
+    :forge_base_branch,
+    :forge_base_url,
+    :config_version,
+    :config,
+    :updated_at
+  ]
+
+  # Presentation set in the UI survives a YAML sync: an upsert replaces these
+  # only when its attrs carry the key (nil included, which clears the name).
+  @project_presentation_fields [:display_name, :ui_color]
+
+  @doc """
+  Inserts a project or updates the one with the same slug.
+
+  `display_name` and `ui_color` are replaced only when `attrs` contains the
+  key; otherwise the stored values are kept.
+  """
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
     attrs = stringify_keys(attrs)
 
+    presentation =
+      Enum.filter(@project_presentation_fields, &Map.has_key?(attrs, Atom.to_string(&1)))
+
     %Project{}
     |> Project.changeset(attrs)
     |> Repo.insert(
-      on_conflict:
-        {:replace,
-         [
-           :linear_project_slug,
-           :linear_team_key,
-           :linear_human_review_state,
-           :forge_type,
-           :forge_owner,
-           :forge_repo,
-           :forge_base_branch,
-           :forge_base_url,
-           :config_version,
-           :config,
-           :updated_at
-         ]},
+      on_conflict: {:replace, @project_replaced_fields ++ presentation},
       conflict_target: [:slug],
       returning: true
     )

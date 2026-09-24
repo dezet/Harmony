@@ -13,7 +13,8 @@ defmodule SymphonyElixirWeb.ProjectController do
 
   @permitted ~w(slug linear_project_slug linear_team_key linear_human_review_state
                 github_owner github_repo github_base_branch forge_type forge_owner
-                forge_repo forge_base_branch forge_base_url config_version config)
+                forge_repo forge_base_branch forge_base_url display_name ui_color
+                config_version config)
 
   @secret_params ~w(forge_secret tracker_secret clear_forge_secret clear_tracker_secret)
 
@@ -95,6 +96,8 @@ defmodule SymphonyElixirWeb.ProjectController do
       forge_base_url: p.forge_base_url,
       forge_secret: secret_state(p.forge_secret),
       tracker_secret: secret_state(p.tracker_secret),
+      display_name: p.display_name,
+      ui_color: p.ui_color,
       config_version: p.config_version,
       config: p.config,
       inserted_at: p.inserted_at,

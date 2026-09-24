@@ -10,6 +10,8 @@
     "linear_project_slug": "alpha-linear",
     "linear_team_key": "COD",
     "linear_human_review_state": "Human Review",
+    "display_name": null,
+    "ui_color": "purple",
     "config_version": 3
   },
   "counts": { "running": 1, "retrying": 1, "blocked": 1 },

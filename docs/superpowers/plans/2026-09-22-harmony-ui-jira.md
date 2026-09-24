@@ -511,13 +511,13 @@ Pliki: `elixir/assets/{AGENTS,CLAUDE}.md`, `FE/index.css`, `FE/App.tsx`,
 `FE/features/project/components/ProjectConfigForm.tsx` i jego test,
 `BT/project_config_test.exs`, `BT/storage_test.exs`.
 
-- [ ] T20.1 RED: sidebar ma polskie pozycje i nazwy projektu, aktywny projekt wskazuje filtr spraw.
-- [ ] T20.2 Zaktualizuj obie instrukcje motywu po angielsku; zakaz hand-edit ui/* pozostaje.
-- [ ] T20.3 Tokeny i typografia A, desktop/mobile shell, menu wysuwane; bez paska koncepcji/profilu demo.
-- [ ] T20.4 Nowe route i /overview jako zachowany ekran techniczny; nie usuń run deep-linków.
-- [ ] T20.5 display_name/ui_color działają w DB/API/YAML/form; brak pola w YAML nie kasuje ustawienia UI.
-- [ ] T20.6 Badge, hover, focus i reduced motion dokładnie §4.2; color nie oznacza health.
-- [ ] T20.7 Dark mode zachowuje układ A, nie przełącza na makietę B.
+- [x] T20.1 RED: sidebar ma polskie pozycje i nazwy projektu, aktywny projekt wskazuje filtr spraw.
+- [x] T20.2 Zaktualizuj obie instrukcje motywu po angielsku; zakaz hand-edit ui/* pozostaje.
+- [x] T20.3 Tokeny i typografia A, desktop/mobile shell, menu wysuwane; bez paska koncepcji/profilu demo.
+- [x] T20.4 Nowe route i /overview jako zachowany ekran techniczny; nie usuń run deep-linków.
+- [x] T20.5 display_name/ui_color działają w DB/API/YAML/form; brak pola w YAML nie kasuje ustawienia UI.
+- [x] T20.6 Badge, hover, focus i reduced motion dokładnie §4.2; color nie oznacza health.
+- [x] T20.7 Dark mode zachowuje układ A, nie przełącza na makietę B.
 
 Test: `cd elixir/assets && npm run test -- --run src/components/layout src/App.test.tsx src/components/theme src/features/project/components/ProjectConfigForm.test.tsx`;
 `cd elixir && mise exec -- mix test test/symphony_elixir/project_config_test.exs test/symphony_elixir/storage_test.exs`.
@@ -530,13 +530,13 @@ Nowe pliki pod `FE/features/cases/`: `CasesPage.tsx`, `CaseToolbar.tsx`,
 `CaseStats.tsx`, `CaseList.tsx`, `CaseListItem.tsx`, `useCaseFilters.ts`,
 `CasesPage.test.tsx`, `useCaseFilters.test.ts`.
 
-- [ ] T21.1 RED: przejście po URL z project/q/filter oraz Back/Forward odtwarza wynik.
-- [ ] T21.2 Lista domyślna, 25 rekordów + pokaż więcej, dane wyłącznie przez hooki T19.
-- [ ] T21.3 Stats i badge używają różnych udokumentowanych zakresów agregacji, nie długości items.
-- [ ] T21.4 Szukanie 300 ms debounce, anulowanie starego requestu, reset cursorów, empty result.
-- [ ] T21.5 Loading/error/offline i brak Jira reguł to zaprojektowane stany, nie spinner bez końca.
-- [ ] T21.6 „Sprawdź teraz”: pending→zakolejkowano, 409/503 obsłużone bez fałszywego sukcesu skanu.
-- [ ] T21.7 Preferencja view w localStorage, jawny URL ma pierwszeństwo; nie zapisuj danych spraw.
+- [x] T21.1 RED: przejście po URL z project/q/filter oraz Back/Forward odtwarza wynik.
+- [x] T21.2 Lista domyślna, 25 rekordów + pokaż więcej, dane wyłącznie przez hooki T19.
+- [x] T21.3 Stats i badge używają różnych udokumentowanych zakresów agregacji, nie długości items.
+- [x] T21.4 Szukanie 300 ms debounce, anulowanie starego requestu, reset cursorów, empty result.
+- [x] T21.5 Loading/error/offline i brak Jira reguł to zaprojektowane stany, nie spinner bez końca.
+- [x] T21.6 „Sprawdź teraz”: pending→zakolejkowano, 409/503 obsłużone bez fałszywego sukcesu skanu.
+- [x] T21.7 Preferencja view w localStorage, jawny URL ma pierwszeństwo; nie zapisuj danych spraw.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CasesPage.test.tsx src/features/cases/useCaseFilters.test.ts`.
 Odbiór: AC01/AC02/AC17. Nie importuj danych z app.js makiety do runtime.
@@ -548,14 +548,14 @@ Nowe pliki pod `FE/features/cases/`: `CaseDetail.tsx`, `CaseDetailPage.tsx`,
 `CaseAnalysis.tsx`, `CaseHistory.tsx`, `CaseActions.tsx`, `ExternalIssueLink.tsx`,
 `useCaseActions.ts`, `CaseDetail.test.tsx`, `CaseActions.test.tsx`.
 
-- [ ] T22.1 RED: Jira/Linear linki mają ten sam variant/size, brak URL wyłącza przycisk.
-- [ ] T22.2 Zakładki mają osobne empty/loading/error; nie mieszaj historii dwóch case.
-- [ ] T22.3 Fakty/hipotezy/braki i wersja/model/SHA wyświetlone bez raw HTML i fałszywej pewności.
-- [ ] T22.4 Acknowledge i approve-repair to dwie różne mutacje; druga ma opisany dialog.
-- [ ] T22.5 Stale version i błąd publikacji pokazane przy akcji; backend actions sterują dostępnością.
-- [ ] T22.6 Reanaliza ostrzega o koszcie; retry dotyczy delivery, nie całego workflow.
-- [ ] T22.7 Mobile detail jako dialog, desktop lista z panelem; deep-link działa samodzielnie.
-- [ ] T22.8 Dla legacy agent_work brak fikcyjnej analizy, link do istniejącej historii/dowodów.
+- [x] T22.1 RED: Jira/Linear linki mają ten sam variant/size, brak URL wyłącza przycisk.
+- [x] T22.2 Zakładki mają osobne empty/loading/error; nie mieszaj historii dwóch case.
+- [x] T22.3 Fakty/hipotezy/braki i wersja/model/SHA wyświetlone bez raw HTML i fałszywej pewności.
+- [x] T22.4 Acknowledge i approve-repair to dwie różne mutacje; druga ma opisany dialog.
+- [x] T22.5 Stale version i błąd publikacji pokazane przy akcji; backend actions sterują dostępnością.
+- [x] T22.6 Reanaliza ostrzega o koszcie; retry dotyczy delivery, nie całego workflow.
+- [x] T22.7 Mobile detail jako dialog, desktop lista z panelem; deep-link działa samodzielnie.
+- [x] T22.8 Dla legacy agent_work brak fikcyjnej analizy, link do istniejącej historii/dowodów.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CaseDetail.test.tsx src/features/cases/CaseActions.test.tsx`.
 Odbiór: AC04/AC11/AC12/AC15/AC17.
@@ -566,12 +566,12 @@ Spec: §4.5, §11.3. Zależność: T22.
 Nowe pliki pod `FE/features/cases/`: `CaseBoard.tsx`, `CaseColumn.tsx`,
 `CaseBoardCard.tsx`, `CaseBoard.test.tsx`; `CasesPage.tsx`, `useCases.ts`.
 
-- [ ] T23.1 RED: 60 kart w Wykryte, pozostałe kolumny puste; paginacja zwraca wszystkie 60 raz.
-- [ ] T23.2 Cztery kolumny w stałej kolejności, breakpointy 1150/850/600 ze spec.
-- [ ] T23.3 Lista→Kanban→Lista zachowuje query i wybór, ale nie przenosi niezgodnych cursorów.
-- [ ] T23.4 Klik/Enter otwiera wspólny szczegół, Escape przywraca focus do karty.
-- [ ] T23.5 Empty i błąd pojedynczej kolumny nie blokują pozostałych; total to nie items.length.
-- [ ] T23.6 Bez biblioteki DnD, edycji statusów przez przeciąganie ani nowych mutacji.
+- [x] T23.1 RED: 60 kart w Wykryte, pozostałe kolumny puste; paginacja zwraca wszystkie 60 raz.
+- [x] T23.2 Cztery kolumny w stałej kolejności, breakpointy 1150/850/600 ze spec.
+- [x] T23.3 Lista→Kanban→Lista zachowuje query i wybór, ale nie przenosi niezgodnych cursorów.
+- [x] T23.4 Klik/Enter otwiera wspólny szczegół, Escape przywraca focus do karty.
+- [x] T23.5 Empty i błąd pojedynczej kolumny nie blokują pozostałych; total to nie items.length.
+- [x] T23.6 Bez biblioteki DnD, edycji statusów przez przeciąganie ani nowych mutacji.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CaseBoard.test.tsx`.
 Odbiór: AC01/AC02/AC17.
@@ -583,14 +583,14 @@ Nowe pliki pod `FE/features/automations/`: `AutomationsPage.tsx`, `AutomationFor
 `AutomationForm.tsx`, `AutomationPreview.tsx`, `automationSchema.ts`, `useAutomations.ts`,
 `AutomationForm.test.tsx`, `AutomationsPage.test.tsx`.
 
-- [ ] T24.1 RED: zapis nie włącza reguły, a preview nie wywołuje activate/check.
-- [ ] T24.2 Pickery Jira źródła/priorytetów i Linear z jawnymi ID, loading/error/retry.
-- [ ] T24.3 Konwersja sekund/minut/godzin nie zaokrągla cicho; wszystkie granice walidacji.
-- [ ] T24.4 Odbiorcy SMTP/SMSAPI jawni, 10 max, obie listy opcjonalne według checkboxów.
-- [ ] T24.5 Podgląd plain language, baseline polityka, liczba istniejących matches, collision warning.
-- [ ] T24.6 Activate wymaga zapisu i potwierdzenia; edycja w dirty form ostrzega przed utratą zmian.
-- [ ] T24.7 Konflikt wersji 409 nie nadpisuje cudzej konfiguracji; pokazuje odświeżenie.
-- [ ] T24.8 Pauza/wznowienie i następny termin odzwierciedlają odpowiedź backendu.
+- [x] T24.1 RED: zapis nie włącza reguły, a preview nie wywołuje activate/check.
+- [x] T24.2 Pickery Jira źródła/priorytetów i Linear z jawnymi ID, loading/error/retry.
+- [x] T24.3 Konwersja sekund/minut/godzin nie zaokrągla cicho; wszystkie granice walidacji.
+- [x] T24.4 Odbiorcy SMTP/SMSAPI jawni, 10 max, obie listy opcjonalne według checkboxów.
+- [x] T24.5 Podgląd plain language, baseline polityka, liczba istniejących matches, collision warning.
+- [x] T24.6 Activate wymaga zapisu i potwierdzenia; edycja w dirty form ostrzega przed utratą zmian.
+- [x] T24.7 Konflikt wersji 409 nie nadpisuje cudzej konfiguracji; pokazuje odświeżenie.
+- [x] T24.8 Pauza/wznowienie i następny termin odzwierciedlają odpowiedź backendu.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/automations`.
 Odbiór: AC05/AC06/AC07/AC13; forma zgodna z A, nie edytor JSON reguły.
@@ -602,12 +602,12 @@ Nowe pliki pod `FE/features/integrations/`: `IntegrationsPage.tsx`,
 `IntegrationForm.tsx`, `TestDeliveryDialog.tsx`, `integrationSchema.ts`,
 `useIntegrations.ts`, `IntegrationsPage.test.tsx`, `IntegrationForm.test.tsx`.
 
-- [ ] T25.1 RED: maskowany zapisany sekret nie wraca jako wartość input ani do localStorage.
-- [ ] T25.2 Jira classic/scoped z poprawnymi wymaganymi polami, SMTP TLS/host, SMSAPI nadawca.
-- [ ] T25.3 Karta Linear korzysta z projektu i istniejącego sekretu; nie tworzy connection kind linear.
-- [ ] T25.4 Test connection bez wysyłki; test-send osobny dialog, odbiorca, koszt i Idempotency-Key.
-- [ ] T25.5 clear_secret odrębne potwierdzenie; disabled connection pokazuje zatrzymane efekty.
-- [ ] T25.6 Unknown/preflight failed to konkretne wskazówki, nie zielony „Połączono”.
+- [x] T25.1 RED: maskowany zapisany sekret nie wraca jako wartość input ani do localStorage.
+- [x] T25.2 Jira classic/scoped z poprawnymi wymaganymi polami, SMTP TLS/host, SMSAPI nadawca.
+- [x] T25.3 Karta Linear korzysta z projektu i istniejącego sekretu; nie tworzy connection kind linear.
+- [x] T25.4 Test connection bez wysyłki; test-send osobny dialog, odbiorca, koszt i Idempotency-Key.
+- [x] T25.5 clear_secret odrębne potwierdzenie; disabled connection pokazuje zatrzymane efekty.
+- [x] T25.6 Unknown/preflight failed to konkretne wskazówki, nie zielony „Połączono”.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/integrations`.
 Odbiór M5: AC01–AC05/AC13/AC14/AC17; unit/typecheck/lint frontendu, jeszcze bez produkcyjnego intake.

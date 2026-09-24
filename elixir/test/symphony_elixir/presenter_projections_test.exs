@@ -22,6 +22,8 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
       linear_project_slug: "alpha-linear",
       linear_team_key: "COD",
       linear_human_review_state: "Human Review",
+      display_name: nil,
+      ui_color: "purple",
       config_version: 3
     }
 
@@ -181,6 +183,13 @@ defmodule SymphonyElixirWeb.PresenterProjectionsTest do
                linear_human_review_state: "Human Review",
                config_version: 3
              } = result.project
+    end
+
+    test "carries the presentation name and color" do
+      proj = project_struct(%{display_name: "Alfa", ui_color: "teal"})
+      result = Presenter.project_summary_payload(proj, snapshot(), [])
+
+      assert %{display_name: "Alfa", ui_color: "teal"} = result.project
     end
   end
 

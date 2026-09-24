@@ -154,6 +154,8 @@ describe("ProjectSummary contract fixture", () => {
       "linear_project_slug",
       "linear_team_key",
       "linear_human_review_state",
+      "display_name",
+      "ui_color",
       "config_version",
     ]);
     expectKeys(summary.counts, ["running", "retrying", "blocked"]);

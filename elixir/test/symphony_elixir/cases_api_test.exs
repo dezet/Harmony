@@ -60,6 +60,15 @@ defmodule SymphonyElixir.CasesApiTest do
       assert body["project_counts"] == [%{"project_id" => scope.project.id, "total" => 2}]
     end
 
+    test "the case project name is the display name, falling back to the slug" do
+      named = scope!(%{display_name: "Finanse", ui_color: "teal"})
+      ready_case!(named, %{detected_at: at(1)})
+
+      body = get(build_conn(), "/api/v1/cases") |> json_response(200)
+      assert [%{"project" => project}] = body["items"]
+      assert project == %{"id" => named.project.id, "slug" => named.project.slug, "name" => "Finanse", "color" => "teal"}
+    end
+
     test "Jira tones of the shared fixture follow a stored Jira ranking" do
       scope = scope!()
       fixture_jira = fixture!("cases_page.fixture.json")["items"] |> Enum.filter(&(&1["kind"] == "jira_intake"))

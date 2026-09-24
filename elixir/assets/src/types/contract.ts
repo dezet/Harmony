@@ -248,6 +248,8 @@ export interface SummaryProject {
   linear_project_slug: string | null;
   linear_team_key: string | null;
   linear_human_review_state: string | null;
+  display_name: string | null;
+  ui_color: ProjectColor;
   config_version: number;
 }
 
@@ -320,6 +322,10 @@ export interface Project {
   forge_base_url: string | null;
   forge_secret: SecretState;
   tracker_secret: SecretState;
+  // Presentation only: `display_name` null shows the slug; the color never
+  // encodes project health.
+  display_name: string | null;
+  ui_color: ProjectColor;
   config_version: number;
   config: Record<string, unknown>;
   inserted_at: string;
@@ -767,6 +773,17 @@ export interface ApiPage<T> {
   meta: ApiPageMeta;
 }
 
+// GET /integrations: the page meta also carries the runtime
+// `intake.smtp_allowed_hosts`, the only SMTP hosts a connection may use.
+export interface IntegrationsPageMeta extends ApiPageMeta {
+  smtp_allowed_hosts: string[];
+}
+
+export interface IntegrationsPage {
+  items: IntegrationConnection[];
+  meta: IntegrationsPageMeta;
+}
+
 export interface CursorQuery {
   cursor?: string;
   page_size?: number;
@@ -981,6 +998,9 @@ export interface ProjectInput {
   github_base_branch: string;
   forge_type?: string;
   forge_base_url?: string | null;
+  // Omitted keys keep the stored value; a null display name falls back to the slug.
+  display_name?: string | null;
+  ui_color?: ProjectColor;
   config_version: number;
   config: Record<string, unknown>;
   // Write-only secrets: a non-empty value sets it; the clear flag resets to env

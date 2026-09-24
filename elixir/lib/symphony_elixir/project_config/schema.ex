@@ -3,6 +3,8 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
   Typed per-project configuration loaded from projects/*.yaml.
   """
 
+  alias SymphonyElixir.Storage.Project
+
   defmodule Linear do
     @moduledoc false
     defstruct [:project_slug, :team_key, :human_review_state]
@@ -18,7 +20,9 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
     defstruct trigger: "@hreview", template_version: 1
   end
 
-  defstruct [:slug, :linear, :forge, :review, raw: %{}]
+  # `display_name` and `ui_color` are nil when the YAML does not set them, so a
+  # sync leaves the values chosen in the UI untouched.
+  defstruct [:slug, :display_name, :ui_color, :linear, :forge, :review, raw: %{}]
 
   @type t :: %__MODULE__{}
 
@@ -27,14 +31,31 @@ defmodule SymphonyElixir.ProjectConfig.Schema do
     raw = normalize_keys(raw)
 
     with {:ok, slug} <- required_string(raw, "slug"),
+         {:ok, ui_color} <- parse_ui_color(raw),
          {:ok, linear} <- parse_linear(Map.get(raw, "linear", %{})),
          {:ok, forge} <- parse_forge(raw),
          {:ok, review} <- parse_review(Map.get(raw, "review", %{})) do
-      {:ok, %__MODULE__{slug: slug, linear: linear, forge: forge, review: review, raw: raw}}
+      {:ok,
+       %__MODULE__{
+         slug: slug,
+         display_name: optional_string(raw, "display_name"),
+         ui_color: ui_color,
+         linear: linear,
+         forge: forge,
+         review: review,
+         raw: raw
+       }}
     end
   end
 
   def parse(_raw), do: {:error, :project_config_not_a_map}
+
+  defp parse_ui_color(raw) do
+    case optional_string(raw, "ui_color") do
+      nil -> {:ok, nil}
+      color -> if color in Project.ui_colors(), do: {:ok, color}, else: {:error, {:invalid_project_config_field, "ui_color"}}
+    end
+  end
 
   defp parse_linear(raw) when is_map(raw) do
     with {:ok, project_slug} <- required_string(raw, "project_slug"),

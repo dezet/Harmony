@@ -146,6 +146,99 @@ defmodule SymphonyElixir.StorageTest do
     end
   end
 
+  describe "presentation fields on Project" do
+    @tag :db
+    setup :checkout_repo
+
+    @tag :db
+    test "defaults to no display name and the purple color" do
+      {:ok, project} = SymphonyElixir.Storage.upsert_project(presentation_project(%{}))
+
+      assert project.display_name == nil
+      assert project.ui_color == "purple"
+    end
+
+    @tag :db
+    test "persists display_name and ui_color" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: "Finanse", ui_color: "gold"}))
+
+      assert project.display_name == "Finanse"
+      assert project.ui_color == "gold"
+      assert %{display_name: "Finanse", ui_color: "gold"} = SymphonyElixir.Storage.get_project!(project.id)
+    end
+
+    @tag :db
+    test "stores a blank display name as none and trims it" do
+      {:ok, blank} = SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: "   "}))
+      assert blank.display_name == nil
+
+      {:ok, trimmed} = SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: "  HR  "}))
+      assert trimmed.display_name == "HR"
+    end
+
+    @tag :db
+    test "rejects a display name over 100 characters and an unknown color" do
+      assert {:error, changeset} =
+               SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: String.duplicate("a", 101)}))
+
+      assert Keyword.has_key?(changeset.errors, :display_name)
+
+      assert {:error, changeset} = SymphonyElixir.Storage.upsert_project(presentation_project(%{ui_color: "red"}))
+      assert Keyword.has_key?(changeset.errors, :ui_color)
+    end
+
+    @tag :db
+    test "an upsert without presentation keys keeps the stored values" do
+      {:ok, project} =
+        SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: "Finanse", ui_color: "teal"}))
+
+      {:ok, updated} = SymphonyElixir.Storage.upsert_project(presentation_project(%{forge_base_branch: "develop"}))
+
+      assert updated.id == project.id
+      assert updated.forge_base_branch == "develop"
+      assert updated.display_name == "Finanse"
+      assert updated.ui_color == "teal"
+    end
+
+    @tag :db
+    test "an upsert with presentation keys replaces them and nil clears the name" do
+      {:ok, _project} =
+        SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: "Finanse", ui_color: "teal"}))
+
+      {:ok, updated} = SymphonyElixir.Storage.upsert_project(presentation_project(%{display_name: nil, ui_color: "gold"}))
+
+      assert updated.display_name == nil
+      assert updated.ui_color == "gold"
+    end
+
+    @tag :db
+    test "the database rejects a display name over 100 characters" do
+      {:ok, project} = SymphonyElixir.Storage.upsert_project(presentation_project(%{}))
+
+      assert_raise Postgrex.Error, ~r/projects_display_name_length_check/, fn ->
+        SymphonyElixir.Repo.query!("UPDATE projects SET display_name = $1 WHERE slug = $2", [
+          String.duplicate("a", 101),
+          project.slug
+        ])
+      end
+    end
+  end
+
+  defp presentation_project(attrs) do
+    Map.merge(
+      %{
+        slug: "presentation",
+        forge_owner: "o",
+        forge_repo: "r",
+        forge_base_branch: "main",
+        config_version: 1,
+        config: %{}
+      },
+      attrs
+    )
+  end
+
   describe "list_work_runs_for_project/2" do
     @tag :db
     setup :checkout_repo

@@ -95,6 +95,92 @@ defmodule SymphonyElixir.ProjectConfigTest do
     assert config.forge.type == "github"
   end
 
+  test "parse/1 reads the optional display_name and ui_color", _ do
+    assert {:ok, config} = Schema.parse(Map.merge(minimal_raw(), %{"display_name" => " Finanse ", "ui_color" => "gold"}))
+    assert config.display_name == "Finanse"
+    assert config.ui_color == "gold"
+  end
+
+  test "parse/1 leaves absent or blank presentation fields unset", _ do
+    assert {:ok, config} = Schema.parse(minimal_raw())
+    assert config.display_name == nil
+    assert config.ui_color == nil
+
+    assert {:ok, blank} = Schema.parse(Map.merge(minimal_raw(), %{"display_name" => "  ", "ui_color" => ""}))
+    assert blank.display_name == nil
+    assert blank.ui_color == nil
+  end
+
+  test "parse/1 rejects an unknown ui_color", _ do
+    assert {:error, {:invalid_project_config_field, "ui_color"}} =
+             Schema.parse(Map.put(minimal_raw(), "ui_color", "red"))
+  end
+
+  @tag :db
+  test "sync writes display_name and ui_color from yaml", %{projects_dir: projects_dir} do
+    write_project_config!(Path.join(projects_dir, "portal.yaml"), extra: "display_name: Portal klienta\nui_color: teal\n")
+
+    :ok = checkout_repo(%{})
+
+    assert {:ok, [project]} = Sync.sync_dir(projects_dir)
+    assert project.display_name == "Portal klienta"
+    assert project.ui_color == "teal"
+  end
+
+  @tag :db
+  test "sync keeps presentation set in the UI when yaml omits the fields", %{projects_dir: projects_dir} do
+    write_project_config!(Path.join(projects_dir, "portal.yaml"))
+
+    :ok = checkout_repo(%{})
+
+    assert {:ok, [project]} = Sync.sync_dir(projects_dir)
+    assert project.display_name == nil
+    assert project.ui_color == "purple"
+
+    {:ok, _ui} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
+        display_name: "Portal klienta",
+        ui_color: "gold",
+        config_version: 1,
+        config: %{}
+      })
+
+    {:ok, _secrets} = SymphonyElixir.Storage.update_project_secrets(project, %{"forge_secret" => "ghp_ui"})
+
+    assert {:ok, [synced]} = Sync.sync_dir(projects_dir)
+    assert synced.id == project.id
+    assert synced.display_name == "Portal klienta"
+    assert synced.ui_color == "gold"
+    assert synced.forge_secret == "ghp_ui"
+  end
+
+  @tag :db
+  test "sync overrides presentation set in the UI when yaml provides the fields", %{projects_dir: projects_dir} do
+    write_project_config!(Path.join(projects_dir, "portal.yaml"), extra: "display_name: Portal\nui_color: teal\n")
+
+    :ok = checkout_repo(%{})
+
+    {:ok, _ui} =
+      SymphonyElixir.Storage.upsert_project(%{
+        slug: "portal",
+        forge_owner: "dezet",
+        forge_repo: "portal",
+        forge_base_branch: "develop",
+        display_name: "Z interfejsu",
+        ui_color: "gold",
+        config_version: 1,
+        config: %{}
+      })
+
+    assert {:ok, [synced]} = Sync.sync_dir(projects_dir)
+    assert synced.display_name == "Portal"
+    assert synced.ui_color == "teal"
+  end
+
   @tag :db
   test "syncs a single project yaml into storage", %{projects_dir: projects_dir} do
     project_file = Path.join(projects_dir, "portal.yaml")
@@ -142,8 +228,17 @@ defmodule SymphonyElixir.ProjectConfigTest do
     assert Enum.map(projects, & &1.linear_project_slug) == ["admin-linear", "portal-linear"]
   end
 
+  defp minimal_raw do
+    %{
+      "slug" => "portal",
+      "linear" => %{"project_slug" => "portal-abc", "human_review_state" => "Human Review"},
+      "forge" => %{"owner" => "acme", "repo" => "portal", "base_branch" => "main"}
+    }
+  end
+
   defp write_project_config!(project_file, opts \\ []) do
     slug = Keyword.get(opts, :slug, "portal")
+    extra = Keyword.get(opts, :extra, "")
     github_repo = Keyword.get(opts, :github_repo, "portal")
     linear_project_slug = Keyword.get(opts, :linear_project_slug, "portal-6d90492ea04f")
 
@@ -160,6 +255,7 @@ defmodule SymphonyElixir.ProjectConfigTest do
     review:
       trigger: "@hreview"
       template_version: 1
+    #{extra}
     """)
   end
 end

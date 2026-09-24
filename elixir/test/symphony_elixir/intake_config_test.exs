@@ -110,6 +110,28 @@ defmodule SymphonyElixir.IntakeConfigTest do
     assert Connections.present(cleared).secret_status == "unset"
   end
 
+  test "an update of settings or secret resets the stored check; a rename or enabled toggle keeps it" do
+    assert {:ok, connection} =
+             Connections.create(%{kind: "smtp", name: "SMTP", settings: %{host: "smtp.example.test"}, secret: "smtp-password"})
+
+    checked_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    checked = Connections.record_check(connection, {:error, "smtp_auth_failed"}, checked_at)
+
+    assert {:ok, renamed} = Connections.update(checked, %{name: "Renamed"})
+    assert {renamed.health, renamed.error_code} == {"error", "smtp_auth_failed"}
+
+    for attrs <- [%{enabled: true}, %{enabled: false}] do
+      assert {:ok, toggled} = Connections.update(Repo.get!(IntegrationConnection, connection.id), attrs)
+      assert {toggled.health, toggled.error_code} == {"error", "smtp_auth_failed"}, inspect(attrs)
+    end
+
+    for attrs <- [%{settings: %{host: "smtp2.example.test"}}, %{secret: "rotated"}, %{clear_secret: true}] do
+      failed = Connections.record_check(Repo.get!(IntegrationConnection, connection.id), {:error, "smtp_auth_failed"}, checked_at)
+      assert {:ok, updated} = Connections.update(failed, attrs)
+      assert {updated.health, updated.error_code, updated.last_checked_at} == {"unchecked", nil, checked_at}, inspect(attrs)
+    end
+  end
+
   test "string-key clear_secret clears a credential while an unused Jira URL remains editable" do
     assert {:ok, smtp} =
              Connections.create(%{
