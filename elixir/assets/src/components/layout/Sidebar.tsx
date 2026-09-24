@@ -81,12 +81,15 @@ function SectionLink({
   to,
   icon: Icon,
   active,
+  label,
   onNavigate,
   children,
 }: {
   to: string;
   icon: LucideIcon;
   active: boolean;
+  /** Replaces the name joined from content, e.g. to add a hidden counter. */
+  label?: string;
   onNavigate?: () => void;
   children: ReactNode;
 }) {
@@ -94,6 +97,7 @@ function SectionLink({
     <Link
       to={to}
       aria-current={active ? "page" : undefined}
+      aria-label={label}
       onClick={onNavigate}
       className={sectionItem}
     >
@@ -219,18 +223,22 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
       </Link>
 
       <nav aria-label="Główna" className="grid gap-1">
-        <SectionLink to="/" icon={Inbox} active={pathname === "/"} onNavigate={onNavigate}>
+        <SectionLink
+          to="/"
+          icon={Inbox}
+          active={pathname === "/"}
+          // One label: a name joined from flex items gets a space before the comma.
+          label={decisions > 0 ? `Centrum spraw, ${decisions} do decyzji` : undefined}
+          onNavigate={onNavigate}
+        >
           Centrum spraw
           {decisions > 0 ? (
-            <>
-              <span
-                aria-hidden
-                className="ml-auto rounded-[4px] bg-primary px-[5px] py-px text-[10px] font-normal text-primary-foreground"
-              >
-                {decisions}
-              </span>
-              <span className="sr-only">{`, ${decisions} do decyzji`}</span>
-            </>
+            <span
+              aria-hidden
+              className="ml-auto rounded-[4px] bg-primary px-[5px] py-px text-[10px] font-normal text-primary-foreground"
+            >
+              {decisions}
+            </span>
           ) : null}
         </SectionLink>
         <SectionLink

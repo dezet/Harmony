@@ -136,11 +136,15 @@ describe("Sidebar", () => {
     renderSidebar();
 
     const main = screen.getByRole("navigation", { name: "Główna" });
+    const caseCenter = () => within(main).getByRole("link", { name: /^Centrum spraw/ });
+
+    // Browsers add a space between flex items when they join an accessible name
+    // from content ("Centrum spraw , 4 do decyzji"); one aria-label keeps the exact name.
     await waitFor(() =>
-      expect(within(main).getByRole("link", { name: /^Centrum spraw/ })).toHaveAccessibleName(
-        "Centrum spraw, 4 do decyzji",
-      ),
+      expect(caseCenter()).toHaveAttribute("aria-label", "Centrum spraw, 4 do decyzji"),
     );
+    expect(caseCenter()).toHaveAccessibleName("Centrum spraw, 4 do decyzji");
+    expect(within(caseCenter()).getByText("4")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("shows project display names and falls back to the slug", async () => {

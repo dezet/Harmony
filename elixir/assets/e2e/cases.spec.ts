@@ -114,7 +114,11 @@ test.describe("desktop 1440×1050", () => {
     // Back to the list and to all projects.
     await page.getByRole("group", { name: "Widok spraw" }).getByRole("button", { name: "Lista" }).click();
     await expect(caseList(page)).toBeVisible();
-    await page.getByRole("navigation", { name: "Główna" }).getByRole("link", { name: /^Centrum spraw/ }).click();
+    // Finanse 27 and Portal klienta 1 case await a decision.
+    await page
+      .getByRole("navigation", { name: "Główna" })
+      .getByRole("link", { name: "Centrum spraw, 28 do decyzji", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { level: 1, name: "Centrum spraw" })).toBeVisible();
     await expect(caseList(page).getByText("35 spraw")).toBeVisible();
