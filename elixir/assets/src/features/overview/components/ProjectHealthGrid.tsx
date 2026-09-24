@@ -4,11 +4,19 @@ import { projectHealth, type ProjectHealth } from "@/lib/health";
 import { cn } from "@/lib/utils";
 import type { ProjectCounts, ProjectRef } from "@/types/contract";
 
+// Health of the agent runs; unrelated to the project identity color.
 const healthStyles: Record<ProjectHealth, string> = {
-  healthy: "bg-emerald-500",
-  retrying: "bg-amber-500",
+  healthy: "bg-success",
+  retrying: "bg-warning",
   blocked: "bg-destructive",
   idle: "bg-muted-foreground/40",
+};
+
+const healthLabels: Record<ProjectHealth, string> = {
+  healthy: "w toku",
+  retrying: "ponawia",
+  blocked: "zablokowany",
+  idle: "bezczynny",
 };
 
 export function ProjectHealthGrid({
@@ -19,9 +27,9 @@ export function ProjectHealthGrid({
   if (projects.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No projects configured yet.{" "}
+        Nie skonfigurowano jeszcze projektów.{" "}
         <Link className="underline underline-offset-4 hover:text-foreground" to="/projects/new">
-          Create the first one.
+          Utwórz pierwszy projekt.
         </Link>
       </p>
     );
@@ -36,14 +44,14 @@ export function ProjectHealthGrid({
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <span aria-hidden className={cn("size-2.5 rounded-full", healthStyles[health])} />
-                <span className="truncate">{p.slug ?? p.name ?? "unnamed"}</span>
-                <span className="sr-only">({health})</span>
+                <span className="truncate">{p.slug ?? p.name ?? "bez nazwy"}</span>
+                <span className="sr-only">({healthLabels[health]})</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="flex gap-4 font-mono text-sm text-muted-foreground">
-              <span>{p.counts.running} running</span>
-              <span>{p.counts.retrying} retrying</span>
-              <span>{p.counts.blocked} blocked</span>
+              <span>w toku: {p.counts.running}</span>
+              <span>ponawiane: {p.counts.retrying}</span>
+              <span>zablokowane: {p.counts.blocked}</span>
             </CardContent>
           </Card>
         );

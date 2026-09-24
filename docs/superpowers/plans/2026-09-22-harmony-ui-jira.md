@@ -621,11 +621,11 @@ Pliki: `FE/features/{overview,project,projects,run,runtime}/`, `FE/routes/`,
 `FE/components/{StatusBadge,ErrorBoundary}.tsx` i odpowiadające istniejące testy;
 `WEB/presenter.ex` tylko addytywne dane diagnostyczne, nowy `BT/intake_diagnostics_test.exs`.
 
-- [ ] T26.1 RED: istniejące deep-linki, Stop/Retry, dowody/logi i konfiguracja są nadal osiągalne.
-- [ ] T26.2 Polskie etykiety i tokeny A we wszystkich ekranach; nie zmieniaj surowych danych trackerów.
-- [ ] T26.3 Diagnostyka pokazuje kolejki, unknown, lease, ostatnie sukcesy i pulę analizy.
-- [ ] T26.4 Nie nazywaj soft-stop „zabiciem procesu”; regresja API stop/retry bez zmiany kontraktu.
-- [ ] T26.5 Usuń wyłącznie rzeczywiście zastąpione nieużywane komponenty/importy/style/dependencies.
+- [x] T26.1 RED: istniejące deep-linki, Stop/Retry, dowody/logi i konfiguracja są nadal osiągalne.
+- [x] T26.2 Polskie etykiety i tokeny A we wszystkich ekranach; nie zmieniaj surowych danych trackerów.
+- [x] T26.3 Diagnostyka pokazuje kolejki, unknown, lease, ostatnie sukcesy i pulę analizy.
+- [x] T26.4 Nie nazywaj soft-stop „zabiciem procesu”; regresja API stop/retry bez zmiany kontraktu.
+- [x] T26.5 Usuń wyłącznie rzeczywiście zastąpione nieużywane komponenty/importy/style/dependencies.
       Nie usuwaj Overview, bo pozostaje na /overview, ani historii przebiegów.
 
 Test: `cd elixir/assets && npm run test -- --run src/features src/routes src/components`;

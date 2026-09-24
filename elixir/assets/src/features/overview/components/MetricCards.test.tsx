@@ -13,13 +13,13 @@ describe("MetricCards", () => {
   it("renders the running/retrying/blocked counts and token total", () => {
     render(<MetricCards state={state} />);
     // Values are distinct in this fixture, so presence checks are unambiguous.
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("W toku")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("Retrying")).toBeInTheDocument();
+    expect(screen.getByText("Ponawiane")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByText("Zablokowane")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("Total tokens")).toBeInTheDocument();
+    expect(screen.getByText("Tokeny łącznie")).toBeInTheDocument();
     expect(screen.getByText("30")).toBeInTheDocument();
   });
 });

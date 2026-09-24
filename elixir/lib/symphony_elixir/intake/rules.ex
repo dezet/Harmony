@@ -158,7 +158,7 @@ defmodule SymphonyElixir.Intake.Rules do
 
     %{
       project_id: rule.project_id,
-      project_name: project && project.slug,
+      project_name: project && (project.display_name || project.slug),
       jira_connection_id: rule.jira_connection_id,
       jira_connection_name: jira_connection && jira_connection.name,
       name: rule.name,

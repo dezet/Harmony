@@ -68,11 +68,11 @@ export function Combobox({
       <ComboboxContent>
         <ComboboxEmpty>
           {loading ? (
-            "Loading…"
+            "Wczytywanie…"
           ) : error ? (
             <span className="text-destructive">{error}</span>
           ) : (
-            "No results."
+            "Brak wyników."
           )}
         </ComboboxEmpty>
         <ComboboxList>

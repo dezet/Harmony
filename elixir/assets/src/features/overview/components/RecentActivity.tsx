@@ -13,7 +13,9 @@ export function RecentActivity({ events }: { events: DurableWorkEvent[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Recent activity</CardTitle>
+        <CardTitle>
+          <h2 className="text-[17px] font-semibold">Ostatnia aktywność</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ul className="divide-y">
@@ -22,7 +24,7 @@ export function RecentActivity({ events }: { events: DurableWorkEvent[] }) {
               <span className="font-mono">{e.type}</span>
               {e.inserted_at ? (
                 <span className="text-muted-foreground ml-auto">
-                  <ElapsedTime since={e.inserted_at} /> ago
+                  <ElapsedTime since={e.inserted_at} /> temu
                 </span>
               ) : null}
             </li>

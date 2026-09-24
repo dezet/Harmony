@@ -51,7 +51,7 @@ export function RunStream({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle>Stream</CardTitle>
+          <CardTitle>Zdarzenia</CardTitle>
           {hasMixedKinds && (
             <div className="flex items-center gap-1">
               <Button
@@ -60,7 +60,7 @@ export function RunStream({
                 onClick={() => setFilter("all")}
                 aria-pressed={filter === "all"}
               >
-                All
+                Wszystkie
               </Button>
               <Button
                 variant={filter === "events" ? "secondary" : "outline"}
@@ -68,15 +68,15 @@ export function RunStream({
                 onClick={() => setFilter("events")}
                 aria-pressed={filter === "events"}
               >
-                Events
+                Zapisane
               </Button>
             </div>
           )}
         </div>
         {items.length > 0 && (
           <Input
-            aria-label="Search events"
-            placeholder="Search events…"
+            aria-label="Szukaj zdarzeń"
+            placeholder="Szukaj zdarzeń…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="mt-2 h-7 text-sm"
@@ -89,7 +89,7 @@ export function RunStream({
             <AlertDescription className="flex items-center justify-between gap-2">
               <span>{error.message}</span>
               <Button variant="outline" size="xs" onClick={onRetry}>
-                Retry
+                Spróbuj ponownie
               </Button>
             </AlertDescription>
           </Alert>
@@ -104,8 +104,8 @@ export function RunStream({
         ) : visibleItems.length === 0 && !error ? (
           <p className="text-sm text-muted-foreground">
             {items.length > 0 && query.trim()
-              ? "No events match your search."
-              : "No events yet."}
+              ? "Brak zdarzeń pasujących do wyszukiwania."
+              : "Brak zdarzeń."}
           </p>
         ) : (
           <>
@@ -113,7 +113,7 @@ export function RunStream({
               className="divide-y divide-border"
               aria-live="polite"
               aria-atomic="false"
-              aria-label="Run event stream"
+              aria-label="Strumień zdarzeń przebiegu"
             >
               {visibleItems.map((item) => (
                 <StreamItemRow key={item.id} item={item} />
@@ -122,7 +122,7 @@ export function RunStream({
             {hasNextPage && (
               <div className="flex justify-center pt-2">
                 <Button variant="outline" size="sm" onClick={onLoadMore}>
-                  Load more
+                  Wczytaj więcej
                 </Button>
               </div>
             )}

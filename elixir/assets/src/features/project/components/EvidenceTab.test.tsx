@@ -44,7 +44,7 @@ describe("EvidenceTab", () => {
     const imgLink = img.closest("a");
     expect(imgLink).toHaveAttribute("href", "/api/v1/artifacts/art-uuid-1");
     expect(imgLink).toHaveAttribute("target", "_blank");
-    expect(imgLink).toHaveAttribute("rel", "noreferrer");
+    expect(imgLink).toHaveAttribute("rel", "noopener noreferrer");
 
     // Report artifact (unattached): download link
     const downloadLink = screen.getByRole("link", { name: /report/i });
@@ -61,17 +61,17 @@ describe("EvidenceTab", () => {
     expect(screen.getByText("COD-42")).toBeInTheDocument();
 
     // Unattached group label
-    expect(screen.getByText("Unattached")).toBeInTheDocument();
+    expect(screen.getByText("Nieprzypisane")).toBeInTheDocument();
 
     // completed badge from run
-    expect(screen.getByText("completed")).toBeInTheDocument();
+    expect(screen.getByText("Zakończony")).toBeInTheDocument();
   });
 
   it("shows empty state when artifacts array is empty", async () => {
     renderTab(makeOkFetch({ artifacts: [] }));
 
     await waitFor(() =>
-      expect(screen.getByText("No evidence yet.")).toBeInTheDocument(),
+      expect(screen.getByText("Brak dowodów.")).toBeInTheDocument(),
     );
   });
 
@@ -86,9 +86,9 @@ describe("EvidenceTab", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText("Error loading evidence")).toBeInTheDocument(),
+      expect(screen.getByText("Nie udało się wczytać dowodów")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBeInTheDocument();
   });
 
   it("renders identifier as em-dash when work_run is null", async () => {

@@ -20,11 +20,19 @@ function isValidTab(value: string | null): value is Tab {
   return VALID_TABS.includes(value as Tab);
 }
 
+// Health of the agent runs; unrelated to the project identity color.
 const healthDotClass: Record<string, string> = {
-  healthy: "bg-emerald-500",
-  retrying: "bg-amber-500",
+  healthy: "bg-success",
+  retrying: "bg-warning",
   blocked: "bg-destructive",
   idle: "bg-muted-foreground",
+};
+
+const healthLabel: Record<string, string> = {
+  healthy: "w toku",
+  retrying: "ponawia",
+  blocked: "zablokowany",
+  idle: "bezczynny",
 };
 
 
@@ -56,12 +64,12 @@ export function ProjectWorkspacePage() {
     if (error instanceof ApiError && error.status === 404) {
       return (
         <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-          <h1 className="text-2xl font-semibold">Project not found</h1>
+          <h1 className="text-title">Nie znaleziono projektu</h1>
           <p className="text-muted-foreground">
-            No project with slug <span className="font-mono">{slug}</span> exists.
+            Nie ma projektu o slugu <span className="font-mono">{slug}</span>.
           </p>
           <Link to="/projects" className="text-sm underline underline-offset-2">
-            Back to projects
+            Wróć do projektów
           </Link>
         </div>
       );
@@ -69,11 +77,11 @@ export function ProjectWorkspacePage() {
 
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load project</AlertTitle>
+        <AlertTitle>Nie udało się wczytać projektu</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>
@@ -86,10 +94,10 @@ export function ProjectWorkspacePage() {
   const { running, retrying, blocked } = summary.counts;
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "work", label: "Work" },
-    { id: "evidence", label: "Evidence" },
-    { id: "activity", label: "Activity" },
-    { id: "configuration", label: "Configuration" },
+    { id: "work", label: "Praca" },
+    { id: "evidence", label: "Dowody" },
+    { id: "activity", label: "Aktywność" },
+    { id: "configuration", label: "Konfiguracja" },
   ];
 
   function handleTabChange(id: Tab) {
@@ -109,12 +117,18 @@ export function ProjectWorkspacePage() {
             className={`inline-block h-2.5 w-2.5 rounded-full ${healthDotClass[health] ?? "bg-muted-foreground"}`}
             aria-hidden="true"
           />
-          <h1 className="text-2xl font-semibold">{summary.project.slug}</h1>
-          <span className="sr-only">{health}</span>
+          <h1 className="text-title max-[1150px]:text-[26px] max-[600px]:text-[27px]">
+            {summary.project.display_name ?? summary.project.slug}
+          </h1>
+          <span className="sr-only">{healthLabel[health] ?? health}</span>
         </div>
         <p className="font-mono text-sm text-muted-foreground">
-          {running} running · {retrying} retrying · {blocked} blocked
+          {summary.project.display_name ? `${summary.project.slug} · ` : ""}w toku: {running} · ponawiane: {retrying} ·
+          zablokowane: {blocked}
         </p>
+        <Link to={`/?project=${encodeURIComponent(summary.project.slug)}`} className="text-xs text-primary underline-offset-2 hover:underline">
+          Sprawy projektu w Centrum spraw
+        </Link>
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => handleTabChange(value as Tab)}>

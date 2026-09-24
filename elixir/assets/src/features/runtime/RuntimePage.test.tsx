@@ -42,17 +42,20 @@ describe("RuntimePage", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Runtime" })).toBeInTheDocument(),
+      expect(screen.getByRole("heading", { level: 1, name: "Środowisko uruchomieniowe" })).toBeInTheDocument(),
     );
     expect(screen.getByText(/bubblewrap/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Rate limits" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Limity zapytań" })).toBeInTheDocument();
+    expect(screen.getByText("Bubblewrap dostępny")).toBeInTheDocument();
+    expect(screen.getByText("tak")).toBeInTheDocument();
+    expect(document.title).toBe("Środowisko uruchomieniowe — Harmony");
   });
 
   it("renders empty messages when runtime data is absent", async () => {
     renderPage({ generated_at: "2026-06-12T00:00:00Z" });
     await waitFor(() =>
-      expect(screen.getByText(/no sandbox info reported/i)).toBeInTheDocument(),
+      expect(screen.getByText("Brak informacji o sandboxie.")).toBeInTheDocument(),
     );
-    expect(screen.getByText(/no rate limit data/i)).toBeInTheDocument();
+    expect(screen.getByText("Brak danych o limitach zapytań.")).toBeInTheDocument();
   });
 });

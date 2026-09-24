@@ -64,8 +64,8 @@ function renderForm(props: Parameters<typeof ProjectConfigForm>[0] = {}) {
 describe("ProjectConfigForm (create mode)", () => {
   it("shows a validation error when slug is empty", async () => {
     renderForm();
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
-    expect(await screen.findByText(/slug is required/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
+    expect(await screen.findByText("Podaj slug projektu")).toBeInTheDocument();
   });
 
   it("calls create API and onSuccess after picking a repository", async () => {
@@ -90,10 +90,10 @@ describe("ProjectConfigForm (create mode)", () => {
     renderForm({ onSuccess });
 
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repozytorium" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
@@ -104,9 +104,9 @@ describe("ProjectConfigForm (edit mode)", () => {
     renderForm({ project: sampleProject });
 
     expect(await screen.findByLabelText("Slug")).toHaveValue("portal");
-    expect(screen.getByLabelText("GitHub owner")).toHaveValue("dezet");
-    expect(screen.getByLabelText("Base branch")).toHaveValue("develop");
-    expect(screen.getByLabelText("Config (JSON)")).toHaveValue(
+    expect(screen.getByLabelText("Właściciel repozytorium")).toHaveValue("dezet");
+    expect(screen.getByLabelText("Gałąź bazowa")).toHaveValue("develop");
+    expect(screen.getByLabelText("Konfiguracja (JSON)")).toHaveValue(
       JSON.stringify({ review: { trigger: "@hreview" } }, null, 2),
     );
   });
@@ -132,7 +132,7 @@ describe("ProjectConfigForm (edit mode)", () => {
 
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
 
@@ -151,9 +151,9 @@ describe("ProjectConfigForm (edit mode)", () => {
   it("shows the current secret state and never pre-fills the value", async () => {
     renderForm({ project: sampleProject });
 
-    expect(await screen.findByText(/Forge token — currently: set/i)).toBeInTheDocument();
-    expect(screen.getByText(/Tracker key — currently: unset/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Forge token/i)).toHaveValue("");
+    expect(await screen.findByText("Token forge — obecnie: ustawiony")).toBeInTheDocument();
+    expect(screen.getByText("Klucz trackera — obecnie: nieustawiony")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Token forge/)).toHaveValue("");
   });
 
   it("sends a typed forge_secret and the clear flag in the update body", async () => {
@@ -169,10 +169,10 @@ describe("ProjectConfigForm (edit mode)", () => {
     renderForm({ project: sampleProject });
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.type(screen.getByLabelText(/Forge token/i), "ghp_new");
+    await userEvent.type(screen.getByLabelText(/Token forge/), "ghp_new");
     // Two clear checkboxes: [0] forge, [1] tracker. Check the tracker one.
     await userEvent.click(screen.getAllByRole("checkbox")[1]);
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const putCall = fetchMock.mock.calls.find(
@@ -209,13 +209,13 @@ describe("ProjectConfigForm (edit mode)", () => {
     renderForm({ project: sampleProject });
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.click(screen.getByRole("combobox", { name: /repository/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repozytorium" }));
     await screen.findByRole("option", { name: /acme\/api/i });
     await userEvent.click(screen.getByRole("option", { name: /acme\/api/i }));
 
-    expect(screen.getByLabelText("GitHub owner")).toHaveValue("acme");
-    expect(screen.getByLabelText("GitHub repo")).toHaveValue("api");
-    expect(screen.getByLabelText("Base branch")).toHaveValue("trunk");
+    expect(screen.getByLabelText("Właściciel repozytorium")).toHaveValue("acme");
+    expect(screen.getByLabelText("Nazwa repozytorium")).toHaveValue("api");
+    expect(screen.getByLabelText("Gałąź bazowa")).toHaveValue("trunk");
   });
 
   it("maps a server config error onto the JSON field", async () => {
@@ -239,7 +239,7 @@ describe("ProjectConfigForm (edit mode)", () => {
     renderForm({ project: sampleProject });
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     expect(await screen.findByText("must be a JSON object")).toBeInTheDocument();
   });
@@ -294,7 +294,7 @@ describe("ProjectConfigForm (presentation)", () => {
     await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
     await userEvent.type(screen.getByLabelText("Nazwa wyświetlana"), "  Finanse  ");
     await userEvent.click(screen.getByRole("radio", { name: "Morski" }));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(putBody(fetchMock)).toMatchObject({ display_name: "Finanse", ui_color: "teal" }));
   });
@@ -305,7 +305,7 @@ describe("ProjectConfigForm (presentation)", () => {
     await waitFor(() => expect(screen.getByLabelText("Nazwa wyświetlana")).toHaveValue("Portal klienta"));
 
     await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(putBody(fetchMock)).toMatchObject({ display_name: null, ui_color: "gold" }));
   });
@@ -318,7 +318,7 @@ describe("ProjectConfigForm (presentation)", () => {
     await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
     await userEvent.click(screen.getByLabelText("Nazwa wyświetlana"));
     await userEvent.paste("a".repeat(101));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     expect(await screen.findByText("Nazwa może mieć najwyżej 100 znaków")).toBeInTheDocument();
     expect(screen.getByLabelText("Nazwa wyświetlana")).toHaveAttribute("aria-invalid", "true");
@@ -345,7 +345,7 @@ describe("ProjectConfigForm (presentation)", () => {
     renderForm({ project: sampleProject });
     await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
 
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     expect(await screen.findByText("is invalid")).toBeInTheDocument();
   });

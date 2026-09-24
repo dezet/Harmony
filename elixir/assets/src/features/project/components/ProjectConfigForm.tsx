@@ -42,20 +42,20 @@ const COLOR_LABELS: Record<ProjectColor, string> = {
 
 const FIELDS = [
   { name: "slug", label: "Slug" },
-  { name: "linear_human_review_state", label: "Linear human review state" },
+  { name: "linear_human_review_state", label: "Stan przeglądu człowieka w Linear" },
 ] as const;
 
 const SECRETS = [
   {
     name: "forge_secret",
     clearName: "clear_forge_secret",
-    label: "Forge token",
+    label: "Token forge",
     state: (p?: Project) => p?.forge_secret ?? "unset",
   },
   {
     name: "tracker_secret",
     clearName: "clear_tracker_secret",
-    label: "Tracker key",
+    label: "Klucz trackera",
     state: (p?: Project) => p?.tracker_secret ?? "unset",
   },
 ] as const;
@@ -63,6 +63,8 @@ const SECRETS = [
 // Maps the stored forge value to its display label so the Select trigger shows
 // "GitHub" rather than the raw "github" value.
 const FORGE_LABELS: Record<string, string> = { github: "GitHub", gitlab: "GitLab" };
+
+const SECRET_STATE_LABEL: Record<string, string> = { set: "ustawiony", unset: "nieustawiony" };
 
 function serverFieldToFormField(field: string): keyof ProjectFormValues {
   if (field === "config") return "config_json";
@@ -155,7 +157,7 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
       } else if (err instanceof ApiError) {
         toast.error(err.message);
       } else {
-        toast.error("Unexpected error saving the project");
+        toast.error("Nieoczekiwany błąd zapisu projektu");
       }
     }
   }
@@ -225,13 +227,13 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         {SECRETS.map((s) => (
           <Field key={s.name}>
             <FieldLabel htmlFor={s.name}>
-              {s.label} — currently: {s.state(project)}
+              {s.label} — obecnie: {SECRET_STATE_LABEL[s.state(project)] ?? s.state(project)}
             </FieldLabel>
             <Input
               id={s.name}
               type="password"
               autoComplete="new-password"
-              placeholder={editing ? "Leave blank to keep current" : ""}
+              placeholder={editing ? "Pozostaw puste, aby zachować obecny" : ""}
               {...register(s.name)}
             />
             {editing ? (
@@ -248,7 +250,7 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
                   )}
                 />
                 <FieldLabel htmlFor={s.clearName} className="font-normal text-muted-foreground">
-                  Clear (revert to environment default)
+                  Wyczyść (przywróć wartość domyślną ze środowiska)
                 </FieldLabel>
               </Field>
             ) : null}
@@ -275,21 +277,21 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         </Field>
 
         <Field>
-          <FieldLabel htmlFor="forge_base_url">Forge base URL (self-host, optional)</FieldLabel>
+          <FieldLabel htmlFor="forge_base_url">Adres bazowy forge (self-host, opcjonalnie)</FieldLabel>
           <Input id="forge_base_url" {...register("forge_base_url")} />
         </Field>
 
         <Field>
-          <FieldLabel>Repository</FieldLabel>
+          <FieldLabel>Repozytorium</FieldLabel>
           <Combobox
-            label="Repository"
+            label="Repozytorium"
             value={owner && repo ? { value: `${owner}/${repo}`, label: `${owner}/${repo}` } : null}
             items={(repos.data?.repositories ?? []).map((r) => ({
               value: `${r.owner}/${r.name}`,
               label: `${r.owner}/${r.name}`,
             }))}
             loading={repos.isPending}
-            error={repos.isError ? "Could not list repositories — check the token and retry." : null}
+            error={repos.isError ? "Nie udało się pobrać repozytoriów — sprawdź token i spróbuj ponownie." : null}
             onOpen={() =>
               repos.mutate({ forge_type: forgeType, base_url: forgeBaseUrl || null, token: forgeToken || null })
             }
@@ -302,23 +304,23 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
               }
             }}
           />
-          <FieldDescription>Selected owner, repository, and base branch:</FieldDescription>
-          <Input aria-label="GitHub owner" {...register("github_owner")} readOnly />
-          <Input aria-label="GitHub repo" {...register("github_repo")} readOnly />
-          <Input aria-label="Base branch" {...register("github_base_branch")} readOnly />
+          <FieldDescription>Wybrany właściciel, repozytorium i gałąź bazowa:</FieldDescription>
+          <Input aria-label="Właściciel repozytorium" {...register("github_owner")} readOnly />
+          <Input aria-label="Nazwa repozytorium" {...register("github_repo")} readOnly />
+          <Input aria-label="Gałąź bazowa" {...register("github_base_branch")} readOnly />
         </Field>
 
         <Field>
-          <FieldLabel>Linear project</FieldLabel>
+          <FieldLabel>Projekt Linear</FieldLabel>
           <Combobox
-            label="Linear project"
+            label="Projekt Linear"
             value={linearSlug ? { value: linearSlug, label: linearSlug } : null}
             items={(projects.data?.projects ?? []).map((p) => ({
               value: p.slug,
               label: `${p.name} (${p.team_key})`,
             }))}
             loading={projects.isPending}
-            error={projects.isError ? "Could not list projects — check the token and retry." : null}
+            error={projects.isError ? "Nie udało się pobrać projektów — sprawdź token i spróbuj ponownie." : null}
             onOpen={() => projects.mutate({ token: trackerToken || null, base_url: null })}
             onSelect={(item) => {
               const p = (projects.data?.projects ?? []).find((x) => x.slug === item.value);
@@ -328,12 +330,12 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
               }
             }}
           />
-          <Input aria-label="Linear project slug" {...register("linear_project_slug")} readOnly />
+          <Input aria-label="Slug projektu Linear" {...register("linear_project_slug")} readOnly />
           <input type="hidden" {...register("linear_team_key")} />
         </Field>
 
         <Field data-invalid={errors.config_version ? true : undefined}>
-          <FieldLabel htmlFor="config_version">Config version</FieldLabel>
+          <FieldLabel htmlFor="config_version">Wersja konfiguracji</FieldLabel>
           <Input
             id="config_version"
             type="number"
@@ -345,7 +347,7 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         </Field>
 
         <Field data-invalid={errors.config_json ? true : undefined}>
-          <FieldLabel htmlFor="config_json">Config (JSON)</FieldLabel>
+          <FieldLabel htmlFor="config_json">Konfiguracja (JSON)</FieldLabel>
           <Controller
             name="config_json"
             control={control}
@@ -353,7 +355,7 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
               <JsonEditor
                 value={field.value}
                 onChange={field.onChange}
-                ariaLabel="Config (JSON)"
+                ariaLabel="Konfiguracja (JSON)"
                 ariaDescribedBy={errors.config_json ? errorId("config_json") : undefined}
               />
             )}
@@ -362,7 +364,7 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
         </Field>
 
         <Button type="submit" disabled={isSubmitting || isSaving}>
-          Save
+          Zapisz
         </Button>
       </FieldGroup>
     </form>

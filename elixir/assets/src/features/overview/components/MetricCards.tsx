@@ -5,9 +5,9 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
+        <CardTitle className="text-[11px] font-normal text-muted-foreground">{label}</CardTitle>
       </CardHeader>
-      <CardContent className="text-3xl font-semibold">{value}</CardContent>
+      <CardContent className="text-[22px] font-semibold tabular-nums">{value}</CardContent>
     </Card>
   );
 }
@@ -18,10 +18,10 @@ export function MetricCards({ state }: { state: StatePayload }) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <Metric label="Running" value={counts.running} />
-      <Metric label="Retrying" value={counts.retrying} />
-      <Metric label="Blocked" value={counts.blocked} />
-      <Metric label="Total tokens" value={totalTokens} />
+      <Metric label="W toku" value={counts.running} />
+      <Metric label="Ponawiane" value={counts.retrying} />
+      <Metric label="Zablokowane" value={counts.blocked} />
+      <Metric label="Tokeny łącznie" value={totalTokens.toLocaleString("pl-PL")} />
     </div>
   );
 }

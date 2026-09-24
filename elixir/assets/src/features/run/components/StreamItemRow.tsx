@@ -44,7 +44,7 @@ function PayloadSummary({ payload }: { payload: Record<string, unknown> | null }
 
 export function StreamItemRow({ item }: { item: RunStreamItem }) {
   const kindBadgeVariant = item.kind === "live_event" ? "secondary" : "outline";
-  const kindLabel = item.kind === "live_event" ? "live" : "event";
+  const kindLabel = item.kind === "live_event" ? "na żywo" : "zapisane";
 
   return (
     <li className="flex flex-col gap-0.5 py-1 text-sm">

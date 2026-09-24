@@ -40,6 +40,10 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   @type delivery_result :: {:ok, IntegrationDelivery.t()} | {:error, term()}
 
+  @doc "Default number of concurrently leased effects per claim category (I/O and analysis)."
+  @spec claim_limits() :: %{io: pos_integer(), analysis: pos_integer()}
+  def claim_limits, do: %{io: @default_io_limit, analysis: @default_analysis_limit}
+
   @spec claim(keyword()) :: delivery_result() | :empty
   def claim(opts \\ []) do
     now = current_time(opts)

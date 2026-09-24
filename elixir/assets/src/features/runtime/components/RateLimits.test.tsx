@@ -5,17 +5,17 @@ import { RateLimits } from "@/features/runtime/components/RateLimits";
 describe("RateLimits", () => {
   it("renders the empty message for null", () => {
     render(<RateLimits value={null} />);
-    expect(screen.getByText(/no rate limit data/i)).toBeInTheDocument();
+    expect(screen.getByText("Brak danych o limitach zapytań.")).toBeInTheDocument();
   });
 
   it("renders the empty message for undefined", () => {
     render(<RateLimits value={undefined} />);
-    expect(screen.getByText(/no rate limit data/i)).toBeInTheDocument();
+    expect(screen.getByText("Brak danych o limitach zapytań.")).toBeInTheDocument();
   });
 
   it("renders the empty message for an empty object", () => {
     render(<RateLimits value={{}} />);
-    expect(screen.getByText(/no rate limit data/i)).toBeInTheDocument();
+    expect(screen.getByText("Brak danych o limitach zapytań.")).toBeInTheDocument();
   });
 
   it("renders key-value fallback for stub shape {remaining: 42} without crashing", () => {
@@ -41,7 +41,7 @@ describe("RateLimits", () => {
     expect(screen.getByText("default")).toBeInTheDocument();
 
     // Primary progress bar
-    const primaryBar = screen.getByRole("progressbar", { name: "primary usage" });
+    const primaryBar = screen.getByRole("progressbar", { name: "Wykorzystanie: podstawowy" });
     expect(primaryBar).toBeInTheDocument();
     expect(primaryBar).toHaveAttribute("aria-valuenow", "1200");
     expect(primaryBar).toHaveAttribute("aria-valuemin", "0");
@@ -51,7 +51,7 @@ describe("RateLimits", () => {
     expect(screen.getByText("1200 / 5000")).toBeInTheDocument();
 
     // Secondary progress bar
-    const secondaryBar = screen.getByRole("progressbar", { name: "secondary usage" });
+    const secondaryBar = screen.getByRole("progressbar", { name: "Wykorzystanie: dodatkowy" });
     expect(secondaryBar).toBeInTheDocument();
     expect(secondaryBar).toHaveAttribute("aria-valuenow", "30");
     expect(secondaryBar).toHaveAttribute("aria-valuemax", "100");
@@ -68,7 +68,7 @@ describe("RateLimits", () => {
         }}
       />,
     );
-    expect(screen.getByText(/resets in/i)).toBeInTheDocument();
+    expect(screen.getByText(/reset za/)).toBeInTheDocument();
   });
 
   it("shows limit_name header when present (preferred over limit_id)", () => {

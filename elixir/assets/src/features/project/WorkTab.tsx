@@ -19,7 +19,7 @@ export function WorkTab({ summary, slug }: WorkTabProps) {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-medium">History</h2>
+        <h2 className="text-[17px] font-semibold">Historia</h2>
         <WorkRunHistoryTable slug={slug} />
       </section>
     </div>
