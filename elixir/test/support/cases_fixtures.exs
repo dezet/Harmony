@@ -90,7 +90,9 @@ defmodule SymphonyElixir.CasesFixtures do
     %{project: project, jira: jira, rule: rule!(project, jira)}
   end
 
+  @doc "`:priority_ranking` goes into the rule snapshot; absent means no stored ranking."
   def intake_case!(%{project: project, jira: jira, rule: rule}, attrs \\ %{}) do
+    {ranking, attrs} = Map.pop(attrs, :priority_ranking, :absent)
     n = System.unique_integer([:positive])
     key = Map.get(attrs, :jira_key, "OPS-#{n}")
     detected_at = Map.get(attrs, :detected_at, @base_time)
@@ -129,9 +131,12 @@ defmodule SymphonyElixir.CasesFixtures do
     }
 
     %IntakeCase{}
-    |> IntakeCase.changeset(Map.merge(defaults, attrs))
+    |> IntakeCase.changeset(defaults |> put_ranking(ranking) |> Map.merge(attrs))
     |> Repo.insert!()
   end
+
+  defp put_ranking(defaults, :absent), do: defaults
+  defp put_ranking(defaults, ranking), do: put_in(defaults, [:rule_snapshot, "priority_ranking"], ranking)
 
   @doc "A ready case with a succeeded analysis and, by default, a published comment."
   def ready_case!(scope, attrs \\ %{}, opts \\ []) do

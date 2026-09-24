@@ -20,6 +20,7 @@ defmodule SymphonyElixir.Storage.AutomationRule do
     field(:source_type, :string)
     field(:source_id, :string)
     field(:priority_ids, {:array, :string}, default: [])
+    field(:priority_ranking, {:array, :string})
     field(:interval_seconds, :integer, default: 300)
     field(:initial_policy, :string, default: "new_matches_only")
     field(:linear_team_id, :string)
@@ -56,6 +57,7 @@ defmodule SymphonyElixir.Storage.AutomationRule do
       :source_type,
       :source_id,
       :priority_ids,
+      :priority_ranking,
       :interval_seconds,
       :initial_policy,
       :linear_team_id,
@@ -114,6 +116,9 @@ defmodule SymphonyElixir.Storage.AutomationRule do
       else
         [priority_ids: "must contain at least one non-empty ID"]
       end
+    end)
+    |> validate_change(:priority_ranking, fn :priority_ranking, values ->
+      if Enum.all?(values, &(is_binary(&1) and &1 != "")), do: [], else: [priority_ranking: "must contain non-empty IDs"]
     end)
     |> assoc_constraint(:project)
     |> assoc_constraint(:jira_connection)

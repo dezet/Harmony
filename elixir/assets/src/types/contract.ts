@@ -690,6 +690,9 @@ export interface AutomationRule {
   source_type: AutomationSourceType;
   source_id: string;
   priority_ids: string[];
+  // Jira priority IDs in the order of the Jira response, stored at activation;
+  // null = no ranking known (every Jira priority tone is then "normal").
+  priority_ranking: string[] | null;
   interval_seconds: number;
   initial_policy: AutomationInitialPolicy;
   linear_team_id: string;

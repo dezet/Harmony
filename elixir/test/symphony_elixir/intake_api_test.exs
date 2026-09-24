@@ -6,7 +6,7 @@ defmodule SymphonyElixir.IntakeApiTest do
   import Plug.Conn, only: [put_req_header: 3]
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias SymphonyElixir.Intake.Dispatcher
+  alias SymphonyElixir.Intake.{Dispatcher, Rules}
   alias SymphonyElixir.Notifications.Templates
   alias SymphonyElixir.Repo
 
@@ -257,7 +257,8 @@ defmodule SymphonyElixir.IntakeApiTest do
 
     test "activation is a separate confirmed step and the kill switch blocks it", ctx do
       %{rule: rule} = rule_fixture!()
-      Process.put(:jira_priorities, [%{"id" => "1", "name" => "High"}, %{"id" => "2", "name" => "Medium"}])
+      Process.put(:jira_priorities, [%{"id" => "2", "name" => "Medium"}, %{"id" => "1", "name" => "High"}, %{"id" => "7", "name" => "Low"}])
+      assert json_response(get(build_conn(), "/api/v1/automations/#{rule.id}"), 200)["rule"]["priority_ranking"] == nil
 
       unconfirmed = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version})
       assert %{"error" => %{"code" => "confirmation_required", "fields" => %{"confirmed" => _}}} = json_response(unconfirmed, 422)
@@ -275,6 +276,9 @@ defmodule SymphonyElixir.IntakeApiTest do
       assert %{"status" => "activating", "rule" => activated} = json_response(accepted, 202)
       assert activated["enabled"] == false
       assert activated["activation_status"] == "activating"
+      assert activated["priority_ranking"] == ["2", "1", "7"]
+      assert Repo.get!(AutomationRule, rule.id).priority_ranking == ["2", "1", "7"]
+      assert Rules.snapshot(Repo.get!(AutomationRule, rule.id)).priority_ranking == ["2", "1", "7"]
 
       paused = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/pause", %{"version" => activated["config_version"]})
       assert %{"rule" => %{"enabled" => false, "activation_status" => "idle"}} = json_response(paused, 200)

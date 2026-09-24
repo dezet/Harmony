@@ -13,7 +13,9 @@ defmodule SymphonyElixir.Intake.ActivationCheck do
     channels may be off.
 
   Unmet requirements are collected and returned with the code of the first
-  one. An unavailable dependency stops the check with its error code.
+  one. An unavailable dependency stops the check with its error code. A met
+  check returns the Jira priority IDs in the order of the Jira response
+  (`priority_ranking`), which is the ranking used for priority tones.
   """
 
   alias SymphonyElixir.Config
@@ -31,12 +33,12 @@ defmodule SymphonyElixir.Intake.ActivationCheck do
   Options: `:jira_opts` and `:linear_opts` (injected request functions) and
   `:analysis_profile_fun` (defaults to `Intake.analysis_profile/0`).
   """
-  @spec run(AutomationRule.t(), keyword()) :: :ok | {:error, error()}
+  @spec run(AutomationRule.t(), keyword()) :: {:ok, %{priority_ranking: [String.t()]}} | {:error, error()}
   def run(%AutomationRule{} = rule, opts \\ []) do
-    with {:ok, jira_failures} <- jira(rule, Keyword.get(opts, :jira_opts, [])),
+    with {:ok, jira_failures, ranking} <- jira(rule, Keyword.get(opts, :jira_opts, [])),
          {:ok, linear_failures} <- linear(rule, Keyword.get(opts, :linear_opts, [])) do
       case jira_failures ++ linear_failures ++ analysis(opts) ++ channels(rule) do
-        [] -> :ok
+        [] -> {:ok, %{priority_ranking: ranking}}
         [{code, _field} | _rest] = failures -> {:error, {:activation_blocked, code, fields(failures)}}
       end
     end
@@ -49,8 +51,8 @@ defmodule SymphonyElixir.Intake.ActivationCheck do
       jira_source_and_priorities(rule, client_opts)
     else
       {:error, {:dependency, _code}} = error -> error
-      {:error, :jira_invalid_configuration} -> {:ok, [{"jira_invalid_configuration", "jira_connection_id"}]}
-      _unavailable -> {:ok, [{"jira_connection_unavailable", "jira_connection_id"}]}
+      {:error, :jira_invalid_configuration} -> {:ok, [{"jira_invalid_configuration", "jira_connection_id"}], nil}
+      _unavailable -> {:ok, [{"jira_connection_unavailable", "jira_connection_id"}], nil}
     end
   end
 
@@ -65,8 +67,8 @@ defmodule SymphonyElixir.Intake.ActivationCheck do
 
   defp jira_source_and_priorities(rule, client_opts) do
     with {:ok, source_failures} <- jira_source(rule, client_opts),
-         {:ok, priority_failures} <- jira_priorities(rule, client_opts) do
-      {:ok, source_failures ++ priority_failures}
+         {:ok, priority_failures, ranking} <- jira_priorities(rule, client_opts) do
+      {:ok, source_failures ++ priority_failures, ranking}
     end
   end
 
@@ -92,8 +94,9 @@ defmodule SymphonyElixir.Intake.ActivationCheck do
   defp jira_priorities(rule, client_opts) do
     case CloudClient.list_priorities(client_opts) do
       {:ok, priorities} ->
-        known = Enum.flat_map(priorities, &priority_id/1)
-        if Enum.all?(rule.priority_ids, &(&1 in known)), do: {:ok, []}, else: {:ok, [{"jira_priority_unknown", "priority_ids"}]}
+        ranking = Enum.flat_map(priorities, &priority_id/1)
+        failures = if Enum.all?(rule.priority_ids, &(&1 in ranking)), do: [], else: [{"jira_priority_unknown", "priority_ids"}]
+        {:ok, failures, ranking}
 
       {:error, reason} ->
         {:error, {:dependency, JiraAccess.error_code(reason)}}

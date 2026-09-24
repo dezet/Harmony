@@ -92,8 +92,8 @@ defmodule SymphonyElixirWeb.AutomationController do
          :ok <- IntakeParams.effects_enabled(),
          {:ok, current} <- Rules.fetch(id),
          :ok <- if(current.config_version == version, do: :ok, else: {:error, :stale_version}),
-         :ok <- ActivationCheck.run(current, activation_opts()),
-         {:ok, rule} <- Rules.activate_versioned(current.id, version) do
+         {:ok, %{priority_ranking: ranking}} <- ActivationCheck.run(current, activation_opts()),
+         {:ok, rule} <- Rules.activate_versioned(current.id, version, priority_ranking: ranking) do
       status = if rule.enabled, do: "enabled", else: rule.activation_status
       conn |> put_status(:accepted) |> json(%{status: status, rule: IntakePresenter.rule(rule)})
     else

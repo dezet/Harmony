@@ -82,6 +82,7 @@ defmodule SymphonyElixirWeb.IntakePresenter do
       :source_type,
       :source_id,
       :priority_ids,
+      :priority_ranking,
       :interval_seconds,
       :initial_policy,
       :linear_team_id,

@@ -35,7 +35,7 @@ defmodule SymphonyElixir.Cases.Projection do
 
   @row_fields ~w(
     ref kind project_id project_slug project_color title jira_key jira_url linear_identifier linear_url
-    priority_id priority_label legacy_priority case_column state raw_status run_status run_type
+    priority_id priority_label priority_rank legacy_priority case_column state raw_status run_status run_type
     execution_mode detected_at updated_at paused failure_operation
   )a
 
@@ -194,6 +194,7 @@ defmodule SymphonyElixir.Cases.Projection do
         CASE WHEN #{confirmed_linear()} THEN c.linear_url END AS linear_url,
         c.priority_id,
         c.priority_name AS priority_label,
+        #{priority_rank()} AS priority_rank,
         NULL::text AS legacy_priority,
         c.detected_at,
         c.updated_at,
@@ -244,6 +245,7 @@ defmodule SymphonyElixir.Cases.Projection do
         CASE WHEN #{run_linear()} THEN w.linear_url END AS linear_url,
         NULL::text AS priority_id,
         NULL::text AS priority_label,
+        NULL::bigint AS priority_rank,
         w.payload #>> '{issue,priority}' AS legacy_priority,
         w.inserted_at AS detected_at,
         w.updated_at,
@@ -265,6 +267,20 @@ defmodule SymphonyElixir.Cases.Projection do
 
   defp confirmed_linear do
     "c.linear_confirmed_at IS NOT NULL AND COALESCE(c.linear_identifier, '') <> '' AND COALESCE(c.linear_url, '') <> ''"
+  end
+
+  # Zero-based position of the case priority in the Jira ranking stored in the
+  # rule snapshot at qualification; NULL without a ranking or outside it.
+  defp priority_rank do
+    """
+    (CASE WHEN jsonb_typeof(c.rule_snapshot -> 'priority_ranking') = 'array' THEN
+      (SELECT r.ord - 1
+        FROM jsonb_array_elements_text(c.rule_snapshot -> 'priority_ranking') WITH ORDINALITY AS r(id, ord)
+        WHERE r.id = c.priority_id
+        ORDER BY r.ord
+        LIMIT 1)
+    END)
+    """
   end
 
   defp run_linear, do: "COALESCE(w.linear_identifier, '') <> '' AND COALESCE(w.linear_url, '') <> ''"
@@ -335,7 +351,7 @@ defmodule SymphonyElixir.Cases.Projection do
   defp select_list do
     """
     x.ref, x.kind, x.project_id::text, p.slug, p.ui_color, x.title, x.jira_key, x.jira_url,
-    x.linear_identifier, x.linear_url, x.priority_id, x.priority_label, x.legacy_priority,
+    x.linear_identifier, x.linear_url, x.priority_id, x.priority_label, x.priority_rank, x.legacy_priority,
     x.case_column, x.state, x.raw_status, x.run_status, x.run_type, x.execution_mode,
     x.detected_at, x.updated_at, x.paused, x.failure_operation
     """
@@ -405,9 +421,11 @@ defmodule SymphonyElixir.Cases.Projection do
   defp link(_key, _value, nil), do: nil
   defp link(key, value, url), do: %{key => value, url: url}
 
-  # Jira priorities keep their ID and name. No ranking of Jira priorities is
-  # stored, so every Jira priority is `normal` instead of guessing from names.
-  defp priority(%{kind: "jira_intake"} = row), do: %{id: row.priority_id, label: row.priority_label, tone: "normal"}
+  # Jira priorities keep their ID and name. The tone comes only from the Jira
+  # ranking stored at rule activation: the first priority is critical, the
+  # next one high, the rest normal. Without a ranking every tone is normal;
+  # names are never interpreted.
+  defp priority(%{kind: "jira_intake"} = row), do: %{id: row.priority_id, label: row.priority_label, tone: jira_tone(row.priority_rank)}
 
   defp priority(%{legacy_priority: raw}) do
     case raw && Integer.parse(raw) do
@@ -418,6 +436,10 @@ defmodule SymphonyElixir.Cases.Projection do
       _none -> %{id: nil, label: "Brak priorytetu", tone: "normal"}
     end
   end
+
+  defp jira_tone(0), do: "critical"
+  defp jira_tone(1), do: "high"
+  defp jira_tone(_rank_or_nil), do: "normal"
 
   @jira_labels %{
     "jira_waiting_linear" => "Oczekuje na Linear",

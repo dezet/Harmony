@@ -414,6 +414,7 @@ describe("Intake contract fixtures", () => {
       "name",
       "next_poll_at",
       "priority_ids",
+      "priority_ranking",
       "project_id",
       "sms_connection_id",
       "sms_recipients",

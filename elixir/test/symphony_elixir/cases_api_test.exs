@@ -60,6 +60,23 @@ defmodule SymphonyElixir.CasesApiTest do
       assert body["project_counts"] == [%{"project_id" => scope.project.id, "total" => 2}]
     end
 
+    test "Jira tones of the shared fixture follow a stored Jira ranking" do
+      scope = scope!()
+      fixture_jira = fixture!("cases_page.fixture.json")["items"] |> Enum.filter(&(&1["kind"] == "jira_intake"))
+
+      for {item, index} <- Enum.with_index(fixture_jira) do
+        intake_case!(scope, %{
+          priority_ranking: ["1", "2", "3", "4", "5"],
+          priority_id: item["priority"]["id"],
+          priority_name: item["priority"]["label"],
+          detected_at: at(index)
+        })
+      end
+
+      body = get(build_conn(), "/api/v1/cases") |> json_response(200)
+      assert Enum.map(body["items"], & &1["priority"]) == Enum.map(fixture_jira, & &1["priority"])
+    end
+
     test "cursors are stable and bound to the filters that produced them" do
       scope = scope!()
       for index <- 1..30, do: intake_case!(scope, %{detected_at: at(index)})

@@ -279,12 +279,40 @@ defmodule SymphonyElixir.CasesProjectionTest do
       end
     end
 
+    test "Jira tone follows the stored Jira ranking, not the priority name" do
+      scope = scope!()
+      ranking = ["3", "1", "2", "4"]
+
+      ranked = fn id, name, minutes ->
+        %{priority_ranking: ranking, priority_id: id, priority_name: name, detected_at: at(minutes)}
+      end
+
+      top = intake_case!(scope, ranked.("3", "Blocker", 1))
+      second = intake_case!(scope, ranked.("1", "Highest", 2))
+      third = intake_case!(scope, ranked.("2", "Highest", 3))
+      unranked = intake_case!(scope, ranked.("9", "Highest", 4))
+      no_ranking = intake_case!(scope, %{ranked.("3", "Highest", 5) | priority_ranking: nil})
+
+      assert only("jira_#{top.id}").priority == %{id: "3", label: "Blocker", tone: "critical"}
+      assert only("jira_#{second.id}").priority == %{id: "1", label: "Highest", tone: "high"}
+      assert only("jira_#{third.id}").priority.tone == "normal"
+      assert only("jira_#{unranked.id}").priority.tone == "normal"
+      assert only("jira_#{no_ranking.id}").priority.tone == "normal"
+    end
+
     test "Jira priorities keep their original ID and name with a normal tone when no ranking is stored" do
       scope = scope!()
       intake_case = intake_case!(scope, %{priority_id: "10001", priority_name: "Blocker"})
 
       assert only("jira_#{intake_case.id}").priority == %{id: "10001", label: "Blocker", tone: "normal"}
     end
+  end
+
+  test "indexes back the projection joins and the newest-run selection" do
+    expected = ["integration_deliveries_case_id_index", "work_runs_linear_issue_id_index", "work_runs_source_key_index"]
+    sql = "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND indexname = ANY($1)"
+
+    assert Repo.query!(sql, [expected]).rows |> List.flatten() |> Enum.sort() == expected
   end
 
   describe "detail and history (T18.6)" do

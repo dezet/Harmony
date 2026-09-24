@@ -103,9 +103,14 @@ defmodule SymphonyElixir.Intake.Rules do
     end
   end
 
-  @spec activate(AutomationRule.t()) ::
+  @doc """
+  Activates a rule. `:priority_ranking` stores the Jira priority IDs in the
+  order of the Jira response, read by the activation check; without it the
+  stored ranking is kept.
+  """
+  @spec activate(AutomationRule.t(), keyword()) ::
           {:ok, AutomationRule.t()} | {:error, :effects_disabled | :source_conflict | Ecto.Changeset.t()}
-  def activate(%AutomationRule{} = rule) do
+  def activate(%AutomationRule{} = rule, opts \\ []) do
     with :ok <- ensure_effects_enabled() do
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
       baseline_ready? = not is_nil(rule.baseline_generation) and not is_nil(rule.baseline_complete_at)
@@ -116,6 +121,7 @@ defmodule SymphonyElixir.Intake.Rules do
           enabled: baseline_ready?,
           activation_status: if(baseline_ready?, do: "idle", else: "activating"),
           activated_at: rule.activated_at || now,
+          priority_ranking: Keyword.get(opts, :priority_ranking, rule.priority_ranking),
           lock_version: rule.lock_version + 1
         })
 
@@ -156,6 +162,7 @@ defmodule SymphonyElixir.Intake.Rules do
       source_type: rule.source_type,
       source_id: rule.source_id,
       priority_ids: rule.priority_ids,
+      priority_ranking: rule.priority_ranking,
       initial_policy: rule.initial_policy,
       linear_team_id: rule.linear_team_id,
       linear_project_id: rule.linear_project_id,
@@ -217,10 +224,11 @@ defmodule SymphonyElixir.Intake.Rules do
           | {:error, :not_found | :stale_version | :immutable_after_activation | Ecto.Changeset.t()}
   def patch_versioned(rule_id, version, attrs), do: with_config_version(rule_id, version, &patch(&1, attrs))
 
-  @spec activate_versioned(binary(), pos_integer()) ::
+  @spec activate_versioned(binary(), pos_integer(), keyword()) ::
           {:ok, AutomationRule.t()}
           | {:error, :not_found | :stale_version | :effects_disabled | :source_conflict | Ecto.Changeset.t()}
-  def activate_versioned(rule_id, version), do: with_config_version(rule_id, version, &activate/1)
+  def activate_versioned(rule_id, version, opts \\ []),
+    do: with_config_version(rule_id, version, &activate(&1, opts))
 
   @spec pause_versioned(binary(), pos_integer()) ::
           {:ok, AutomationRule.t()} | {:error, :not_found | :stale_version | Ecto.Changeset.t()}
