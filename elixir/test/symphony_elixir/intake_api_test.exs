@@ -498,6 +498,63 @@ defmodule SymphonyElixir.IntakeApiTest do
       assert is_binary(list["meta"]["next_cursor"])
     end
 
+    test "the connection list exposes the runtime SMTP allowlist without credentials", _ctx do
+      smtp_connection!()
+      list = json_response(get(build_conn(), "/api/v1/integrations"), 200)
+      fixture = fixture!("integrations_page.fixture.json")
+
+      assert Map.keys(list["meta"]) |> Enum.sort() == Map.keys(fixture["meta"]) |> Enum.sort()
+      assert list["meta"]["smtp_allowed_hosts"] == ["smtp.example.test"]
+      refute Jason.encode!(list) =~ "synthetic-smtp-password"
+
+      paged = json_response(get(build_conn(), "/api/v1/integrations?page_size=1"), 200)
+      assert paged["meta"]["smtp_allowed_hosts"] == ["smtp.example.test"]
+    end
+
+    test "PATCH of settings or secret resets the stored check; a rename or enabled toggle keeps it", ctx do
+      smtp = smtp_connection!()
+      path = "/api/v1/integrations/#{smtp.id}"
+
+      passed = fn ->
+        assert %{"health" => "ok"} = json_response(mutate(ctx, :post, "#{path}/test", %{}), 200)
+        Repo.get!(IntegrationConnection, smtp.id)
+      end
+
+      patch = fn body ->
+        version = Repo.get!(IntegrationConnection, smtp.id).lock_version
+        json_response(mutate(ctx, :patch, path, Map.put(body, "version", version)), 200)["connection"]
+      end
+
+      checked = passed.()
+      renamed = patch.(%{"name" => "Renamed SMTP"})
+      assert %{"health" => "ok", "error_code" => nil} = renamed
+      assert renamed["last_checked_at"]
+
+      assert %{"health" => "ok"} = patch.(%{"settings" => %{"port" => 587}})
+
+      # Enabling or disabling does not change what the check verified.
+      assert %{"health" => "ok", "enabled" => false} = patch.(%{"enabled" => false})
+      assert %{"health" => "ok", "enabled" => true} = patch.(%{"enabled" => true})
+
+      for body <- [
+            %{"settings" => %{"port" => 2525}},
+            %{"secret" => "rotated-smtp-password"}
+          ] do
+        passed.()
+        assert %{"health" => "unchecked", "error_code" => nil} = patch.(body), inspect(body)
+        stored = Repo.get!(IntegrationConnection, smtp.id)
+        assert stored.health == "unchecked"
+        # The time of the last check stays: it guards the Jira site URL against a change after use.
+        assert stored.last_checked_at
+      end
+
+      Repo.update_all(from(c in IntegrationConnection, where: c.id == ^smtp.id),
+        set: [health: "error", error_code: "smtp_auth_failed", last_checked_at: checked.last_checked_at]
+      )
+
+      assert %{"health" => "unchecked", "error_code" => nil, "secret_state" => "unset"} = patch.(%{"clear_secret" => true})
+    end
+
     test "connection tests read identity only and never send a message", ctx do
       smtp = smtp_connection!()
       sms = sms_connection!()

@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "kind": "smtp",
+      "name": "SMTP · przykład",
+      "settings": {
+        "host": "smtp.example.test",
+        "port": 587,
+        "tls_mode": "starttls",
+        "username": "harmony",
+        "from_email": "harmony@example.test",
+        "from_name": "Harmony",
+        "message_id_domain": "example.test"
+      },
+      "secret_state": "set",
+      "secret_version": 1,
+      "enabled": false,
+      "last_checked_at": null,
+      "health": "unchecked",
+      "error_code": null,
+      "lock_version": 1
+    }
+  ],
+  "meta": {
+    "next_cursor": null,
+    "page_size": 25,
+    "smtp_allowed_hosts": ["smtp.example.test"]
+  }
+}

@@ -34,7 +34,7 @@ defmodule SymphonyElixir.Cases.Projection do
   @columns ~w(detected analyzing decision handed_off)
 
   @row_fields ~w(
-    ref kind project_id project_slug project_color title jira_key jira_url linear_identifier linear_url
+    ref kind project_id project_slug project_name project_color title jira_key jira_url linear_identifier linear_url
     priority_id priority_label priority_rank legacy_priority case_column state raw_status run_status run_type
     execution_mode detected_at updated_at paused failure_operation
   )a
@@ -137,7 +137,7 @@ defmodule SymphonyElixir.Cases.Projection do
     %{
       ref: row.ref,
       kind: row.kind,
-      project: %{id: row.project_id, slug: row.project_slug, name: row.project_slug, color: row.project_color},
+      project: %{id: row.project_id, slug: row.project_slug, name: row.project_name, color: row.project_color},
       title: row.title,
       jira: link(:key, row.jira_key, row.jira_url),
       linear: link(:identifier, row.linear_identifier, row.linear_url),
@@ -350,7 +350,7 @@ defmodule SymphonyElixir.Cases.Projection do
 
   defp select_list do
     """
-    x.ref, x.kind, x.project_id::text, p.slug, p.ui_color, x.title, x.jira_key, x.jira_url,
+    x.ref, x.kind, x.project_id::text, p.slug, COALESCE(p.display_name, p.slug), p.ui_color, x.title, x.jira_key, x.jira_url,
     x.linear_identifier, x.linear_url, x.priority_id, x.priority_label, x.priority_rank, x.legacy_priority,
     x.case_column, x.state, x.raw_status, x.run_status, x.run_type, x.execution_mode,
     x.detected_at, x.updated_at, x.paused, x.failure_operation

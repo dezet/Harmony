@@ -1,5 +1,8 @@
 import * as yup from "yup";
-import type { ProjectInput } from "@/types/contract";
+import type { ProjectColor, ProjectInput } from "@/types/contract";
+
+export const PROJECT_COLORS: readonly ProjectColor[] = ["purple", "gold", "teal"];
+export const DISPLAY_NAME_MAX = 100;
 
 // The form holds `config` as a JSON string in a textarea. This schema validates
 // the string parses to a JSON object, and toProjectInput transforms it.
@@ -8,6 +11,16 @@ export const projectFormSchema = yup.object({
   github_owner: yup.string().trim().required("GitHub owner is required"),
   github_repo: yup.string().trim().required("GitHub repo is required"),
   github_base_branch: yup.string().trim().required("Base branch is required"),
+  display_name: yup
+    .string()
+    .trim()
+    .max(DISPLAY_NAME_MAX, `Nazwa może mieć najwyżej ${DISPLAY_NAME_MAX} znaków`)
+    .default(""),
+  ui_color: yup
+    .mixed<ProjectColor>()
+    .oneOf(PROJECT_COLORS, "Wybierz jeden z trzech kolorów")
+    .required("Wybierz kolor projektu")
+    .default("purple"),
   forge_type: yup.string().trim().default("github"),
   forge_base_url: yup.string().trim().default(""),
   linear_project_slug: yup.string().trim().default(""),
@@ -46,6 +59,9 @@ export function toProjectInput(values: ProjectFormValues): ProjectInput {
     github_base_branch: values.github_base_branch,
     forge_type: values.forge_type || "github",
     forge_base_url: values.forge_base_url || null,
+    // A blank name is sent as null: the project is then shown by its slug.
+    display_name: values.display_name || null,
+    ui_color: values.ui_color,
     linear_project_slug: values.linear_project_slug || null,
     linear_team_key: values.linear_team_key || null,
     linear_human_review_state: values.linear_human_review_state || null,

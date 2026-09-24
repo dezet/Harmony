@@ -25,6 +25,7 @@ import type {
   IntegrationConnectionPatch,
   IntegrationTestResult,
   IntegrationTestSend,
+  IntegrationsPage,
   JiraPickerItem,
   LinearHoldLabel,
   LinearOptions,
@@ -223,7 +224,7 @@ export function checkAutomations(body: { project?: string } = {}): Promise<Autom
   return operatorMutation<AutomationBulkCheck>("POST", "/automations/check", body);
 }
 
-export function listIntegrations(params: CursorQuery = {}): Promise<ApiPage<IntegrationConnection>> {
+export function listIntegrations(params: CursorQuery = {}): Promise<IntegrationsPage> {
   return request(`/integrations${query({ cursor: params.cursor, page_size: params.page_size })}`);
 }
 

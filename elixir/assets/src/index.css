@@ -1,13 +1,25 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
+/* Theme A (spec §4.1): shadcn base-nova components, A tokens below. */
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: Inter, "Segoe UI", Arial, sans-serif;
+    --text-title: 29px;
+    --text-title--line-height: 1.2;
+    --text-title--letter-spacing: -1px;
+    --text-title--font-weight: 650;
+    --color-project-purple: var(--project-purple);
+    --color-project-gold: var(--project-gold);
+    --color-project-teal: var(--project-teal);
+    --color-success: var(--success);
+    --color-success-surface: var(--success-surface);
+    --color-warning: var(--warning);
+    --color-warning-surface: var(--warning-surface);
+    --color-destructive-surface: var(--destructive-surface);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,83 +60,114 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Light theme A: the default. */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --background: #f8f9fb;
+    --foreground: #20242f;
+    --card: #ffffff;
+    --card-foreground: #20242f;
+    --popover: #ffffff;
+    --popover-foreground: #20242f;
+    --primary: #6052d5;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f4f7;
+    --secondary-foreground: #20242f;
+    --muted: #f3f4f7;
+    --muted-foreground: #687183;
+    --accent: #efedfc;
+    --accent-foreground: #6052d5;
+    --destructive: #b74551;
+    --destructive-surface: #fcecee;
+    --success: #237655;
+    --success-surface: #eaf5ee;
+    --warning: #936018;
+    --warning-surface: #fcf3df;
+    --border: #e6e8ee;
+    --input: #e6e8ee;
+    --ring: #6052d5;
+    --chart-1: #6052d5;
+    --chart-2: #397e6b;
+    --chart-3: #966d24;
+    --chart-4: #7866b5;
+    --chart-5: #687183;
+    --radius: 7px;
+    --sidebar: #f3f4f7;
+    --sidebar-foreground: #687183;
+    --sidebar-primary: #6052d5;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #efedfc;
+    --sidebar-accent-foreground: #6052d5;
+    --sidebar-border: #e6e8ee;
+    --sidebar-ring: #6052d5;
+    /* Project identity colors: never a health signal. */
+    --project-purple: #7866b5;
+    --project-gold: #966d24;
+    --project-teal: #397e6b;
 }
 
+/* Secondary dark theme: same layout A, contrasting dark surfaces, purple accent. */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --background: #15161b;
+    --foreground: #f1f2f5;
+    --card: #1d1f26;
+    --card-foreground: #f1f2f5;
+    --popover: #1d1f26;
+    --popover-foreground: #f1f2f5;
+    --primary: #6052d5;
+    --primary-foreground: #ffffff;
+    --secondary: #262833;
+    --secondary-foreground: #f1f2f5;
+    --muted: #262833;
+    --muted-foreground: #a3a9b8;
+    --accent: #2c2847;
+    --accent-foreground: #c9c3ff;
+    --destructive: #e8808b;
+    --destructive-surface: #3a1f24;
+    --success: #6fcaa1;
+    --success-surface: #173024;
+    --warning: #e5b567;
+    --warning-surface: #36291a;
+    --border: #2e313c;
+    --input: #3a3d49;
+    --ring: #9d93f2;
+    --chart-1: #9d93f2;
+    --chart-2: #6fbfa8;
+    --chart-3: #d3a85a;
+    --chart-4: #a898e0;
+    --chart-5: #a3a9b8;
+    --sidebar: #1a1c22;
+    --sidebar-foreground: #a3a9b8;
+    --sidebar-primary: #6052d5;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #2c2847;
+    --sidebar-accent-foreground: #c9c3ff;
+    --sidebar-border: #2e313c;
+    --sidebar-ring: #9d93f2;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    }
+    font-synthesis: none;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+  }
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }

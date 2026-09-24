@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import {
+  PROJECT_COLORS,
   projectFormSchema,
   toProjectInput,
   type ProjectFormValues,
@@ -18,6 +19,8 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "@/components/ui/field";
 import {
   Select,
@@ -29,7 +32,13 @@ import {
 import { JsonEditor } from "@/components/JsonEditor";
 import { Combobox } from "@/components/Combobox";
 import { useForgeRepositories, useTrackerProjects } from "@/features/projects/usePickers";
-import type { Project } from "@/types/contract";
+import type { Project, ProjectColor } from "@/types/contract";
+
+const COLOR_LABELS: Record<ProjectColor, string> = {
+  purple: "Fioletowy",
+  gold: "Złoty",
+  teal: "Morski",
+};
 
 const FIELDS = [
   { name: "slug", label: "Slug" },
@@ -88,7 +97,13 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
     formState: { errors, isSubmitting },
   } = useForm<ProjectFormValues>({
     resolver: yupResolver(projectFormSchema),
-    defaultValues: { config_version: 1, config_json: "{}", forge_type: "github" },
+    defaultValues: {
+      config_version: 1,
+      config_json: "{}",
+      forge_type: "github",
+      display_name: "",
+      ui_color: "purple",
+    },
   });
 
   const forgeType = watch("forge_type") ?? "github";
@@ -103,6 +118,8 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
     if (project) {
       reset({
         slug: project.slug,
+        display_name: project.display_name ?? "",
+        ui_color: project.ui_color ?? "purple",
         github_owner: project.github_owner,
         github_repo: project.github_repo,
         github_base_branch: project.github_base_branch,
@@ -146,6 +163,52 @@ export function ProjectConfigForm({ project, onSuccess }: ProjectConfigFormProps
   return (
     <form className="max-w-xl" onSubmit={handleSubmit(onSubmit)}>
       <FieldGroup>
+        <Field data-invalid={errors.display_name ? true : undefined}>
+          <FieldLabel htmlFor="display_name">Nazwa wyświetlana</FieldLabel>
+          <Input
+            id="display_name"
+            aria-invalid={errors.display_name ? true : undefined}
+            aria-describedby={
+              errors.display_name
+                ? `display_name-description ${errorId("display_name")}`
+                : "display_name-description"
+            }
+            {...register("display_name")}
+          />
+          <FieldDescription id="display_name-description">
+            Do 100 znaków. Bez nazwy projekt jest widoczny pod swoim slugiem.
+          </FieldDescription>
+          <FieldError id={errorId("display_name")} errors={[errors.display_name]} />
+        </Field>
+
+        <FieldSet
+          role="radiogroup"
+          aria-labelledby="ui_color-legend"
+          aria-describedby="ui_color-description"
+          data-invalid={errors.ui_color ? true : undefined}
+        >
+          <FieldLegend id="ui_color-legend" variant="label">
+            Kolor projektu
+          </FieldLegend>
+          <div className="flex flex-wrap gap-2">
+            {PROJECT_COLORS.map((color) => (
+              <label
+                key={color}
+                style={{ "--project-color": `var(--project-${color})` } as CSSProperties}
+                className="flex cursor-pointer items-center gap-2 rounded-[7px] border bg-card px-3 py-2 text-xs has-checked:border-(--project-color) has-checked:bg-[color-mix(in_srgb,var(--project-color)_12%,var(--card))] has-focus-visible:outline-3 has-focus-visible:outline-offset-3 has-focus-visible:outline-ring"
+              >
+                <input type="radio" value={color} className="sr-only" {...register("ui_color")} />
+                <span aria-hidden className="size-4 rounded-full bg-(--project-color)" />
+                {COLOR_LABELS[color]}
+              </label>
+            ))}
+          </div>
+          <FieldDescription id="ui_color-description">
+            Kolor rozróżnia projekty w nawigacji i nie oznacza stanu projektu.
+          </FieldDescription>
+          <FieldError id={errorId("ui_color")} errors={[errors.ui_color]} />
+        </FieldSet>
+
         {FIELDS.map((f) => (
           <Field key={f.name} data-invalid={errors[f.name] ? true : undefined}>
             <FieldLabel htmlFor={f.name}>{f.label}</FieldLabel>
