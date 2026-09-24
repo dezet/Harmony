@@ -649,7 +649,7 @@ Pliki: nowe `elixir/assets/e2e/{cases,automations,integrations}.spec.ts`,
 - [x] T27.7 Formularz: 15 min, jeden priorytet, oba kanały, zapisz→preview→potwierdź;
       test backend zapewnia brak efektów przy samym preview.
 - [x] T27.8 401/403/429/timeout/offline/reconnect/empty i konflikt zapisu mają widoczny stan.
-- [ ] T27.9 Screenshoty bazowe zatwierdza człowiek przez porównanie z A.
+- [x] T27.9 Screenshoty bazowe zatwierdza człowiek przez porównanie z A.
       Zabronione automatyczne `--update-snapshots` tylko po to, aby test przeszedł.
 
 Test: `cd elixir && mise exec -- make e2e`.
@@ -679,12 +679,12 @@ Nie dodawać odwołań do prywatnych skilli tej stacji w instrukcjach repo.
 
 Zależność: T00–T28. Nie zaczynać przed akceptacją wyników M0–M5 i G-ISO.
 
-- [ ] T29.1 Wykonaj pełne bramki §10; każda komenda ma prawdziwy exit code.
-- [ ] T29.2 Uruchom scenariusz restart/fault-injection §10.2 na testowej PostgreSQL.
+- [x] T29.1 Wykonaj pełne bramki §10; każda komenda ma prawdziwy exit code.
+- [x] T29.2 Uruchom scenariusz restart/fault-injection §10.2 na testowej PostgreSQL.
 - [ ] T29.3 Przeprowadź G-LIVE wyłącznie po uzyskaniu zgody na konkretne zasoby i adresatów.
-- [ ] T29.4 Koordynator niezależnie powtarza targeted testy i sprawdza screenshoty.
-- [ ] T29.5 Przegląd diff: brak sekretów, fikcyjnych danych runtime, pominiętych AC i martwego UI.
-- [ ] T29.6 Raport zawiera worktree, branch, PR, wszystkie kody wyjścia i otwarte punkty.
+- [x] T29.4 Koordynator niezależnie powtarza targeted testy i sprawdza screenshoty.
+- [x] T29.5 Przegląd diff: brak sekretów, fikcyjnych danych runtime, pominiętych AC i martwego UI.
+- [x] T29.6 Raport zawiera worktree, branch, PR, wszystkie kody wyjścia i otwarte punkty.
 - [ ] T29.7 Produkcyjne enabled=true dopiero decyzją operatora; sam zielony CI nie jest zgodą.
 
 ## 10. Bramki walidacyjne
