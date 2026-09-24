@@ -116,11 +116,14 @@ function ProjectLink({
 }) {
   const name = project.display_name || project.slug;
   const style = { "--project-color": `var(--project-${project.ui_color})` } as CSSProperties;
+  // One label: a name joined from flex items gets a space before the comma.
+  const label = total === undefined ? undefined : `${name}, ${total} ${casesLabel(total)}`;
 
   return (
     <Link
       to={`/?${new URLSearchParams({ project: project.slug })}`}
       aria-current={active ? "page" : undefined}
+      aria-label={label}
       onClick={onNavigate}
       style={style}
       className={projectItem}
@@ -128,12 +131,9 @@ function ProjectLink({
       <span data-slot="project-dot" aria-hidden className={projectDot} />
       <span className="truncate">{name}</span>
       {total === undefined ? null : (
-        <>
-          <span data-slot="project-count" aria-hidden className={projectCount}>
-            {badgeText(total)}
-          </span>
-          <span className="sr-only">{`, ${total} ${casesLabel(total)}`}</span>
-        </>
+        <span data-slot="project-count" aria-hidden className={projectCount}>
+          {badgeText(total)}
+        </span>
       )}
     </Link>
   );

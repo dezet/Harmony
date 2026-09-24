@@ -189,6 +189,16 @@ describe("Sidebar", () => {
     expect(projectLink(/^hr/)).toHaveAccessibleName("hr, 3 sprawy");
   });
 
+  it("names a project link with its case count in one label, independent of the flex layout", async () => {
+    stubApi([{ project_id: "p2", total: 30 }]);
+    renderSidebar();
+
+    // Browsers add a space between flex items when they join an accessible name
+    // from content ("Finanse , 30 spraw"); one aria-label keeps the exact name.
+    await waitFor(() => expect(projectLink(/Finanse/)).toHaveAttribute("aria-label", "Finanse, 30 spraw"));
+    expect(projectLink(/Finanse/)).toHaveAccessibleName("Finanse, 30 spraw");
+  });
+
   it("requests the case projection totals, not live run counts", async () => {
     const fetchMock = stubApi([{ project_id: "p1", total: 1 }]);
     renderSidebar();

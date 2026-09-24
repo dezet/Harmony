@@ -662,14 +662,14 @@ Spec: §12–14. Zależność: T27.
 Pliki: `README.md`, `elixir/README.md`, `elixir/WORKFLOW.md`,
 `docs/harmony-operations.md`, `docs/operations/credential-key.md`.
 
-- [ ] T28.1 Opisz wymagane uprawnienia Jira/Linear, Todo/hold label, SMTP TLS i SMSAPI.
-- [ ] T28.2 Podaj pełny przykład runtime config z wyłączonymi flagami i bez prawdziwych sekretów.
-- [ ] T28.3 Opisz new_matches_only/include_existing, interval, limity, koszty SMS i accepted≠delivered.
-- [ ] T28.4 Osobna procedura unknown: sprawdzenie u dostawcy, decyzja o retry, ostrzeżenie o duplikacie.
-- [ ] T28.5 Opisz backup DB/CLOAK_KEY, rotację sekretów i zakaz rollbacku binarium bez guard.
-- [ ] T28.6 Usuń nieaktualne instrukcje wyglądu/aktywacji dotyczące zastąpionych ekranów,
+- [x] T28.1 Opisz wymagane uprawnienia Jira/Linear, Todo/hold label, SMTP TLS i SMSAPI.
+- [x] T28.2 Podaj pełny przykład runtime config z wyłączonymi flagami i bez prawdziwych sekretów.
+- [x] T28.3 Opisz new_matches_only/include_existing, interval, limity, koszty SMS i accepted≠delivered.
+- [x] T28.4 Osobna procedura unknown: sprawdzenie u dostawcy, decyzja o retry, ostrzeżenie o duplikacie.
+- [x] T28.5 Opisz backup DB/CLOAK_KEY, rotację sekretów i zakaz rollbacku binarium bez guard.
+- [x] T28.6 Usuń nieaktualne instrukcje wyglądu/aktywacji dotyczące zastąpionych ekranów,
       nie zmieniaj dokumentów historycznych udających aktualny opis.
-- [ ] T28.7 Dokumenty edytowane mają prawidłowy frontmatter i przechodzą markdownlint.
+- [x] T28.7 Dokumenty edytowane mają prawidłowy frontmatter i przechodzą markdownlint.
 
 Test: `npx --yes markdownlint-cli2 README.md elixir/README.md elixir/WORKFLOW.md docs/harmony-operations.md docs/operations/credential-key.md`.
 Odbiór: AC19, kompletna instrukcja bez produkcyjnych tokenów/adresatów.

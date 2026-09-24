@@ -26,9 +26,9 @@ test.describe("desktop 1440×1050", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Centrum spraw" })).toBeVisible();
 
     const projects = sidebarProjects(page);
-    await expect(projects.getByRole("link", { name: /^Finanse ?, 30 spraw$/ })).toBeVisible();
-    await expect(projects.getByRole("link", { name: /^HR ?, 2 sprawy$/ })).toBeVisible();
-    await expect(projects.getByRole("link", { name: /^Portal klienta ?, 3 sprawy$/ })).toBeVisible();
+    await expect(projects.getByRole("link", { name: "Finanse, 30 spraw", exact: true })).toBeVisible();
+    await expect(projects.getByRole("link", { name: "HR, 2 sprawy", exact: true })).toBeVisible();
+    await expect(projects.getByRole("link", { name: "Portal klienta, 3 sprawy", exact: true })).toBeVisible();
     await expect(caseList(page).getByText("35 spraw")).toBeVisible();
 
     const finanse = projects.getByRole("link", { name: /^Finanse/ });
@@ -218,7 +218,7 @@ test.describe("mobile 390×844", () => {
     await hamburger.click();
     const menu = page.getByRole("dialog", { name: "Menu nawigacji" });
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("link", { name: /^HR ?, 2 sprawy$/ })).toBeVisible();
+    await expect(menu.getByRole("link", { name: "HR, 2 sprawy", exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     // Escape closes the menu and returns focus to the hamburger.
