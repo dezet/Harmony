@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/useNow";
 import { CaseListItem } from "@/features/cases/CaseListItem";
 import type { CaseSummary } from "@/types/contract";
@@ -32,6 +33,7 @@ interface CaseListProps {
   onSelect: (ref: string) => void;
   onLoadMore: () => void;
   onRetry: () => void;
+  className?: string;
 }
 
 function LoadingRows() {
@@ -71,7 +73,7 @@ export function CaseList(props: CaseListProps) {
     <section
       aria-label="Lista spraw"
       aria-busy={status === "pending"}
-      className="overflow-hidden rounded-[11px] border bg-card shadow-[0_1px_2px_#20242f0a]"
+      className={cn("overflow-hidden rounded-[11px] border bg-card shadow-[0_1px_2px_#20242f0a]", props.className)}
     >
       <div className="flex items-center justify-between border-b px-[18px] py-[15px] text-[10px] text-muted-foreground">
         <h2 className="text-[10px] font-normal uppercase">Ostatnie zgłoszenia</h2>

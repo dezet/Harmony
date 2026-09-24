@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AppRoutes } from "@/App";
 import { DashboardConnectionProvider } from "@/lib/dashboardConnection";
 import { makeFakeSocket, type FakeSocket } from "@/test/fakeSocket";
+import caseDetailFixture from "@/test/fixtures/case_detail.fixture.json";
 
 let fakeSocket: FakeSocket = makeFakeSocket();
 
@@ -50,6 +51,10 @@ beforeEach(() => {
       const url = String(input);
       if (url.includes("/api/v1/projects")) return json({ projects: PROJECTS });
       if (url.includes("/api/v1/automations")) return json({ items: [], meta: { next_cursor: null, page_size: 100 } });
+      if (url.endsWith(`/api/v1/cases/${caseDetailFixture.case.ref}`)) return json(caseDetailFixture);
+      if (url.includes(`/api/v1/cases/${caseDetailFixture.case.ref}/events`)) {
+        return json({ items: [], meta: { next_cursor: null, page_size: 50 } });
+      }
       if (url.includes("/api/v1/cases")) {
         return json({
           items: [],
@@ -146,6 +151,13 @@ describe("AppRoutes", () => {
     const trail = screen.getByRole("navigation", { name: "Ścieżka" });
     expect(within(trail).getByText("COD-1")).toHaveAttribute("aria-current", "page");
     expect(within(screen.getByRole("main")).queryByText(/Nie znaleziono/)).not.toBeInTheDocument();
+  });
+
+  it("serves the standalone case deep link at /cases/:ref", async () => {
+    renderAt(`/cases/${caseDetailFixture.case.ref}`);
+    await waitFor(() => expect(heading()).toHaveTextContent("Eksport raportu kończy się błędem 504"));
+    const trail = screen.getByRole("navigation", { name: "Ścieżka" });
+    expect(within(trail).getByText("Szczegóły sprawy")).toHaveAttribute("aria-current", "page");
   });
 
   it("shows the projects page at /projects", () => {

@@ -16,6 +16,9 @@ export function crumbsFor(pathname: string): Crumb[] {
   const [first, second, third, fourth, fifth] = pathname.split("/").filter(Boolean);
 
   if (!first) return [TEAM_SPACE, { label: "Centrum spraw", to: "/" }];
+  if (first === "cases" && second && !third) {
+    return [TEAM_SPACE, { label: "Centrum spraw", to: "/" }, { label: "Szczegóły sprawy", to: pathname }];
+  }
   if (first === "automations" && !second) {
     return [TEAM_SPACE, { label: "Automatyzacje", to: "/automations" }];
   }

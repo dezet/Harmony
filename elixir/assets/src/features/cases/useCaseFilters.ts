@@ -176,6 +176,15 @@ export function useCaseFilters() {
     [update],
   );
 
+  const setTab = useCallback(
+    (next: CaseTab) =>
+      update((search) => {
+        if (next === "analysis") search.delete("tab");
+        else search.set("tab", next);
+      }, true),
+    [update],
+  );
+
   const clearFilters = useCallback(
     () =>
       update((search) => {
@@ -188,7 +197,7 @@ export function useCaseFilters() {
 
   const state: CaseUrlState = { project, view, filter, q, caseRef, tab };
 
-  return { state, listFilters, statsFilters, setFilter, setQuery, setView, selectCase, clearFilters };
+  return { state, listFilters, statsFilters, setFilter, setQuery, setView, selectCase, setTab, clearFilters };
 }
 
 /**

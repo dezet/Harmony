@@ -26,7 +26,7 @@ function caseAge(detectedAt: string, now: number): string {
   return days === 1 ? "1 dzień" : `${days} dni`;
 }
 
-function PriorityBadge({ priority }: { priority: CasePriority }) {
+export function PriorityBadge({ priority }: { priority: CasePriority }) {
   const critical = priority.tone === "critical";
   const marker = critical ? "!!" : priority.tone === "high" ? "↑" : null;
 
@@ -36,6 +36,10 @@ function PriorityBadge({ priority }: { priority: CasePriority }) {
       {priority.label}
     </span>
   );
+}
+
+export function CaseStatusBadge({ column, label }: { column: CaseColumn; label: string }) {
+  return <span className={cn(badge, columnTone[column])}>{label}</span>;
 }
 
 function SourceKey({ item }: { item: CaseSummary }) {
@@ -98,7 +102,7 @@ export function CaseListItem({ item, selected, now, onSelect }: CaseListItemProp
           </span>
         ) : null}
         <span className="flex items-center gap-[7px] text-[10px] text-muted-foreground">
-          <span className={cn(badge, columnTone[item.column])}>{item.status_label}</span>
+          <CaseStatusBadge column={item.column} label={item.status_label} />
           <span className="ml-auto truncate">{item.project.name}</span>
         </span>
       </button>

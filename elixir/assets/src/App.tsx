@@ -6,6 +6,7 @@ import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
 import { SectionPlaceholder } from "@/routes/SectionPlaceholder";
+import { CaseDetailPage } from "@/features/cases/CaseDetailPage";
 import { CasesPage } from "@/features/cases/CasesPage";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import { RunDetailPage } from "@/features/run/RunDetailPage";
@@ -15,6 +16,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<CasesPage />} />
+        <Route path="cases/:ref" element={<CaseDetailPage />} />
         <Route
           path="automations"
           element={

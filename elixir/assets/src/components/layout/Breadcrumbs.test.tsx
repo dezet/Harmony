@@ -20,6 +20,11 @@ describe("crumbsFor", () => {
     expect(crumbsFor("/")[0].to).toBeUndefined();
   });
 
+  it("names the standalone case detail under the Case Center", () => {
+    expect(labels("/cases/jira_1")).toEqual(["Przestrzeń zespołu", "Centrum spraw", "Szczegóły sprawy"]);
+    expect(crumbsFor("/cases/jira_1").find((c) => c.label === "Centrum spraw")?.to).toBe("/");
+  });
+
   it("keeps project and run deep-link trails", () => {
     expect(labels("/projects")).toEqual(["Przestrzeń zespołu", "Projekty"]);
     expect(labels("/projects/new")).toEqual(["Przestrzeń zespołu", "Projekty", "Nowy projekt"]);

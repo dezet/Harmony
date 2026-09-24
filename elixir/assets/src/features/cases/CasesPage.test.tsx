@@ -147,7 +147,21 @@ beforeEach(() => {
   );
 });
 
+const originalMatchMedia = window.matchMedia;
+
+// Desktop layout (≥ 601 px): the list stays interactive next to the detail
+// panel. jsdom's default matchMedia reports the phone layout, where a
+// selected case opens as a modal dialog over the list.
+function setDesktopViewport() {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({ ...originalMatchMedia(query), matches: query === "(min-width: 601px)" }),
+  });
+}
+
 afterEach(() => {
+  Object.defineProperty(window, "matchMedia", { writable: true, configurable: true, value: originalMatchMedia });
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -237,6 +251,7 @@ describe("T21.1 URL state", () => {
   });
 
   it("selects a case in the URL and drops a selection that left the result", async () => {
+    setDesktopViewport();
     const user = userEvent.setup();
     const { search } = renderPage("/?project=portal-klienta");
     await waitForList();

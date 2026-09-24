@@ -548,14 +548,14 @@ Nowe pliki pod `FE/features/cases/`: `CaseDetail.tsx`, `CaseDetailPage.tsx`,
 `CaseAnalysis.tsx`, `CaseHistory.tsx`, `CaseActions.tsx`, `ExternalIssueLink.tsx`,
 `useCaseActions.ts`, `CaseDetail.test.tsx`, `CaseActions.test.tsx`.
 
-- [ ] T22.1 RED: Jira/Linear linki mają ten sam variant/size, brak URL wyłącza przycisk.
-- [ ] T22.2 Zakładki mają osobne empty/loading/error; nie mieszaj historii dwóch case.
-- [ ] T22.3 Fakty/hipotezy/braki i wersja/model/SHA wyświetlone bez raw HTML i fałszywej pewności.
-- [ ] T22.4 Acknowledge i approve-repair to dwie różne mutacje; druga ma opisany dialog.
-- [ ] T22.5 Stale version i błąd publikacji pokazane przy akcji; backend actions sterują dostępnością.
-- [ ] T22.6 Reanaliza ostrzega o koszcie; retry dotyczy delivery, nie całego workflow.
-- [ ] T22.7 Mobile detail jako dialog, desktop lista z panelem; deep-link działa samodzielnie.
-- [ ] T22.8 Dla legacy agent_work brak fikcyjnej analizy, link do istniejącej historii/dowodów.
+- [x] T22.1 RED: Jira/Linear linki mają ten sam variant/size, brak URL wyłącza przycisk.
+- [x] T22.2 Zakładki mają osobne empty/loading/error; nie mieszaj historii dwóch case.
+- [x] T22.3 Fakty/hipotezy/braki i wersja/model/SHA wyświetlone bez raw HTML i fałszywej pewności.
+- [x] T22.4 Acknowledge i approve-repair to dwie różne mutacje; druga ma opisany dialog.
+- [x] T22.5 Stale version i błąd publikacji pokazane przy akcji; backend actions sterują dostępnością.
+- [x] T22.6 Reanaliza ostrzega o koszcie; retry dotyczy delivery, nie całego workflow.
+- [x] T22.7 Mobile detail jako dialog, desktop lista z panelem; deep-link działa samodzielnie.
+- [x] T22.8 Dla legacy agent_work brak fikcyjnej analizy, link do istniejącej historii/dowodów.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CaseDetail.test.tsx src/features/cases/CaseActions.test.tsx`.
 Odbiór: AC04/AC11/AC12/AC15/AC17.
