@@ -1,11 +1,15 @@
 defmodule SymphonyElixir.Intake.Matcher do
-  @moduledoc "Persists Jira match observations and atomically creates intake cases."
+  @moduledoc """
+  Persists Jira match observations and atomically creates intake cases. New
+  cases are announced on `intake:workspace` after the page commits.
+  """
 
   import Ecto.Query
 
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Jira.Issue
   alias SymphonyElixir.Repo
+  alias SymphonyElixirWeb.IntakePubSub
 
   alias SymphonyElixir.Storage.{
     AutomationRule,
@@ -33,7 +37,7 @@ defmodule SymphonyElixir.Intake.Matcher do
     now = current_time(opts)
     lease_token = Keyword.get(opts, :lease_token)
 
-    case Repo.transaction(fn -> persist_page_transaction(scan, issues, now, opts, lease_token) end) do
+    case IntakePubSub.transaction(fn -> persist_page_transaction(scan, issues, now, opts, lease_token) end) do
       {:ok, counts} -> {:ok, counts}
       {:error, reason} -> {:error, reason}
     end
@@ -194,6 +198,7 @@ defmodule SymphonyElixir.Intake.Matcher do
          {:ok, _deliveries} <- insert_deliveries(intake_case, rule, issue, now),
          {:ok, _event} <- record_event(intake_case, rule, "case_detected", event_payload(issue), now),
          {:ok, _event} <- record_event(intake_case, rule, "analysis_queued", %{version: 1}, now) do
+      :ok = IntakePubSub.track_case(intake_case)
       {:ok, :created}
     end
   end

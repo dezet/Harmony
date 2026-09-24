@@ -1,5 +1,8 @@
 defmodule SymphonyElixir.Intake.Actions do
-  @moduledoc "Transactional operator actions for Jira intake cases."
+  @moduledoc """
+  Transactional operator actions for Jira intake cases. A changed case is
+  announced on `intake:workspace` after the action's transaction commits.
+  """
 
   import Ecto.Query
 
@@ -12,6 +15,7 @@ defmodule SymphonyElixir.Intake.Actions do
   alias SymphonyElixir.Storage.IntakeCase
   alias SymphonyElixir.Storage.IntakeEvent
   alias SymphonyElixir.Storage.IntegrationDelivery
+  alias SymphonyElixirWeb.IntakePubSub
 
   @type action_error ::
           :analysis_not_published
@@ -87,6 +91,59 @@ defmodule SymphonyElixir.Intake.Actions do
   end
 
   def reanalyze(_case_id, _expected_version, _confirmed?, _opts), do: {:error, :invalid_action}
+
+  @type availability :: %{allowed: boolean(), reason: String.t() | nil}
+
+  @doc """
+  Which operator actions the backend would accept for the case now, each with
+  the code of the first refusing rule. Uses the same checks as `acknowledge/3`,
+  `approve_repair/5` and `reanalyze/4`, plus the effects switch that the API
+  applies before a reanalysis. An acknowledgement is idempotent, so an
+  acknowledged case reports `already_acknowledged`.
+  """
+  @spec availability(IntakeCase.t(), keyword()) :: %{
+          acknowledge: availability(),
+          reanalyze: availability(),
+          approve_repair: availability()
+        }
+  def availability(%IntakeCase{} = intake_case, opts \\ []) do
+    repo = Keyword.get(opts, :repo, Repo)
+
+    %{
+      acknowledge: acknowledge_availability(intake_case),
+      reanalyze: reanalyze_availability(intake_case, opts),
+      approve_repair: approve_availability(repo, intake_case)
+    }
+  end
+
+  defp acknowledge_availability(%IntakeCase{acknowledged_at: nil}), do: allowed()
+  defp acknowledge_availability(%IntakeCase{}), do: denied(:already_acknowledged)
+
+  defp reanalyze_availability(intake_case, opts) do
+    with :ok <- effects_enabled(),
+         :ok <- approval_absent(intake_case),
+         {:ok, _profile} <- analysis_profile(opts) do
+      allowed()
+    else
+      {:error, reason} -> denied(reason)
+    end
+  end
+
+  defp approve_availability(repo, %IntakeCase{analysis_version: version} = intake_case) do
+    with :ok <- approval_absent(intake_case),
+         :ok <- require_ready_analysis(repo, intake_case, version),
+         :ok <- require_confirmed_linear(intake_case),
+         :ok <- require_published_comment(repo, intake_case.id, version) do
+      allowed()
+    else
+      {:error, reason} -> denied(reason)
+    end
+  end
+
+  defp effects_enabled, do: if(Intake.effects_enabled?(), do: :ok, else: {:error, :effects_disabled})
+
+  defp allowed, do: %{allowed: true, reason: nil}
+  defp denied(reason), do: %{allowed: false, reason: Atom.to_string(reason)}
 
   defp acknowledge_in_transaction(repo, case_id, expected_version, now) do
     case lock_case(repo, case_id) do
@@ -330,6 +387,8 @@ defmodule SymphonyElixir.Intake.Actions do
   end
 
   defp record_event!(repo, %IntakeCase{} = intake_case, type, payload, now) do
+    :ok = IntakePubSub.track_case(intake_case)
+
     %IntakeEvent{}
     |> IntakeEvent.changeset(%{
       case_id: intake_case.id,
@@ -343,7 +402,7 @@ defmodule SymphonyElixir.Intake.Actions do
   end
 
   defp transact(repo, fun) do
-    case repo.transaction(fun) do
+    case IntakePubSub.transaction(fun, repo: repo) do
       {:ok, result} -> result
       {:error, reason} -> {:error, normalize_error(reason)}
     end

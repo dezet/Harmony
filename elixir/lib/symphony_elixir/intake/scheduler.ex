@@ -44,7 +44,13 @@ defmodule SymphonyElixir.Intake.Scheduler do
     GenServer.call(server, {:tick, opts})
   end
 
-  @spec check_now(server(), binary()) :: :accepted | {:error, atom()}
+  @doc """
+  Starts a manual scan. With the default `Poller` the scan is claimed
+  synchronously (rule lease plus a running scan record) and its ID returned;
+  Jira is read afterwards in a supervised task. A custom poller function
+  cannot claim ahead, so its scan ID is `nil`.
+  """
+  @spec check_now(server(), binary()) :: {:accepted, binary() | nil} | {:error, atom()}
   def check_now(server \\ __MODULE__, rule_id) when is_binary(rule_id) do
     GenServer.call(server, {:check_now, rule_id})
   end
@@ -107,9 +113,36 @@ defmodule SymphonyElixir.Intake.Scheduler do
     cond do
       not active?(rule) -> {:reply, {:error, :rule_not_active}, state}
       lease_active?(rule, now) -> {:reply, {:error, :scan_in_progress}, state}
-      true -> {:reply, :accepted, start_scan_task(state, rule.id)}
+      claims_ahead?(state.poller) -> claim_and_start(state, rule.id)
+      true -> {:reply, {:accepted, nil}, start_scan_task(state, rule.id)}
     end
   end
+
+  defp claim_and_start(state, rule_id) do
+    case state.poller.start(rule_id, state.run_opts) do
+      {:ok, context} ->
+        task = supervised_task(fn -> resume_safely(state.poller, context, state.run_opts) end)
+        {:reply, {:accepted, context.scan.id}, put_in(state, [:running, task.ref], %{rule_id: rule_id, pid: task.pid})}
+
+      {:error, reason} ->
+        {:reply, {:error, claim_error(reason)}, state}
+    end
+  rescue
+    _exception -> {:reply, {:error, :scan_failed}, state}
+  catch
+    :exit, _reason -> {:reply, {:error, :scan_failed}, state}
+  end
+
+  defp claims_ahead?(poller) when is_atom(poller) do
+    Code.ensure_loaded?(poller) and function_exported?(poller, :start, 2) and function_exported?(poller, :resume, 2)
+  end
+
+  defp claims_ahead?(_poller), do: false
+
+  defp claim_error(reason) when reason in [:scan_in_progress, :scan_capacity, :rule_not_active, :not_found, :effects_disabled],
+    do: reason
+
+  defp claim_error(_reason), do: :scan_failed
 
   @impl GenServer
   def handle_info(:tick, state) do
@@ -186,20 +219,20 @@ defmodule SymphonyElixir.Intake.Scheduler do
   end
 
   defp start_scan_task(state, rule_id) do
-    task =
-      Task.Supervisor.async_nolink(SymphonyElixir.TaskSupervisor, fn ->
-        run_poller_safely(state.poller, rule_id, state.run_opts)
-      end)
-
+    task = supervised_task(fn -> run_safely(fn -> run_poller(state.poller, rule_id, state.run_opts) end) end)
     put_in(state, [:running, task.ref], %{rule_id: rule_id, pid: task.pid})
   end
+
+  defp supervised_task(fun), do: Task.Supervisor.async_nolink(SymphonyElixir.TaskSupervisor, fun)
 
   defp run_poller(poller, rule_id, opts) when is_function(poller, 2), do: poller.(rule_id, opts)
   defp run_poller(poller, rule_id, _opts) when is_function(poller, 1), do: poller.(rule_id)
   defp run_poller(poller, rule_id, opts), do: poller.run(rule_id, opts)
 
-  defp run_poller_safely(poller, rule_id, opts) do
-    run_poller(poller, rule_id, opts)
+  defp resume_safely(poller, context, opts), do: run_safely(fn -> poller.resume(context, opts) end)
+
+  defp run_safely(fun) do
+    fun.()
   rescue
     _error -> {:error, :scan_failed}
   catch

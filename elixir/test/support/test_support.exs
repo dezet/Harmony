@@ -33,7 +33,13 @@ defmodule SymphonyElixir.TestSupport do
           checkout_repo: 1
         ]
 
-      setup do
+      setup context do
+        # The application's global Orchestrator polls on its own timer and would read
+        # this test's WORKFLOW.md, work-source fetchers and tracker stubs mid-test.
+        # Tests drive their own named Orchestrators; tag `:global_orchestrator` only
+        # when a test asserts on the application's instance itself.
+        SymphonyElixir.TestSupport.set_global_orchestrator(Map.get(context, :global_orchestrator, false))
+
         workflow_root =
           Path.join(
             System.tmp_dir!(),
@@ -103,6 +109,23 @@ defmodule SymphonyElixir.TestSupport do
     :ok = Sandbox.checkout(Repo)
   end
 
+  @doc false
+  def set_global_orchestrator(true) do
+    case Supervisor.restart_child(SymphonyElixir.Supervisor, SymphonyElixir.Orchestrator) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      {:error, :running} -> :ok
+    end
+  end
+
+  def set_global_orchestrator(false) do
+    if Process.whereis(SymphonyElixir.Orchestrator) do
+      :ok = Supervisor.terminate_child(SymphonyElixir.Supervisor, SymphonyElixir.Orchestrator)
+    end
+
+    :ok
+  end
+
   def stop_default_http_server do
     case Enum.find(Supervisor.which_children(SymphonyElixir.Supervisor), fn
            {SymphonyElixir.HttpServer, _pid, _type, _modules} -> true
@@ -160,6 +183,7 @@ defmodule SymphonyElixir.TestSupport do
           intake_enabled: nil,
           intake_effects_enabled: nil,
           intake_public_url: nil,
+          intake_smtp_allowed_hosts: nil,
           server_port: nil,
           server_host: nil,
           prompt: @workflow_prompt
@@ -202,6 +226,7 @@ defmodule SymphonyElixir.TestSupport do
     intake_enabled = Keyword.get(config, :intake_enabled)
     intake_effects_enabled = Keyword.get(config, :intake_effects_enabled)
     intake_public_url = Keyword.get(config, :intake_public_url)
+    intake_smtp_allowed_hosts = Keyword.get(config, :intake_smtp_allowed_hosts)
     server_port = Keyword.get(config, :server_port)
     server_host = Keyword.get(config, :server_host)
     prompt = Keyword.get(config, :prompt)
@@ -239,7 +264,7 @@ defmodule SymphonyElixir.TestSupport do
         "  stall_timeout_ms: #{yaml_value(codex_stall_timeout_ms)}",
         hooks_yaml(hook_after_create, hook_before_run, hook_after_run, hook_before_remove, hook_timeout_ms),
         observability_yaml(observability_enabled, observability_refresh_ms, observability_render_interval_ms),
-        intake_yaml(intake_enabled, intake_effects_enabled, intake_public_url),
+        intake_yaml(intake_enabled, intake_effects_enabled, intake_public_url, intake_smtp_allowed_hosts),
         server_yaml(server_port, server_host),
         "---",
         prompt
@@ -323,18 +348,20 @@ defmodule SymphonyElixir.TestSupport do
     |> Enum.join("\n")
   end
 
-  defp intake_yaml(nil, nil, nil), do: nil
+  defp intake_yaml(nil, nil, nil, nil), do: nil
 
-  defp intake_yaml(enabled, effects_enabled, public_url) do
+  defp intake_yaml(enabled, effects_enabled, public_url, smtp_allowed_hosts) do
     enabled_line = if is_boolean(enabled), do: "  enabled: #{yaml_value(enabled)}"
     effects_enabled_line = if is_boolean(effects_enabled), do: "  effects_enabled: #{yaml_value(effects_enabled)}"
     public_url_line = if is_binary(public_url), do: "  public_url: #{yaml_value(public_url)}"
+    smtp_hosts_line = if is_list(smtp_allowed_hosts), do: "  smtp_allowed_hosts: #{yaml_value(smtp_allowed_hosts)}"
 
     [
       "intake:",
       enabled_line,
       effects_enabled_line,
-      public_url_line
+      public_url_line,
+      smtp_hosts_line
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")

@@ -1,12 +1,16 @@
 defmodule SymphonyElixir.Storage do
   @moduledoc """
   Durable storage context for Harmony work orchestration.
+
+  A work run that is new or changes status is announced on `intake:workspace`
+  as the Case Center card `run_<id>` (spec §11.4).
   """
 
   import Ecto.Query
 
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{Artifact, Blocker, DedupeKey, Project, PullRequestLink, WorkEvent, WorkRun}
+  alias SymphonyElixirWeb.IntakePubSub
 
   @spec upsert_project(map()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def upsert_project(attrs) when is_map(attrs) do
@@ -196,11 +200,13 @@ defmodule SymphonyElixir.Storage do
     %WorkRun{}
     |> WorkRun.changeset(stringify_keys(attrs))
     |> Repo.insert()
+    |> announce_run(nil)
   end
 
   @spec upsert_work_run(map()) :: {:ok, WorkRun.t()} | {:error, Ecto.Changeset.t()}
   def upsert_work_run(attrs) when is_map(attrs) do
     attrs = stringify_keys(attrs)
+    previous_status = stored_run_status(attrs)
 
     %WorkRun{}
     |> WorkRun.changeset(attrs)
@@ -226,7 +232,32 @@ defmodule SymphonyElixir.Storage do
       conflict_target: {:unsafe_fragment, "(project_id, dedupe_key) WHERE dedupe_key IS NOT NULL"},
       returning: true
     )
+    |> announce_run(previous_status)
   end
+
+  # Status of the run an upsert would replace, so an unchanged poll result is not
+  # announced again; nil when the upsert creates the run.
+  defp stored_run_status(%{"project_id" => project_id, "dedupe_key" => dedupe_key})
+       when is_binary(project_id) and is_binary(dedupe_key) do
+    case Ecto.UUID.cast(project_id) do
+      {:ok, uuid} ->
+        Repo.one(from(run in WorkRun, where: run.project_id == ^uuid and run.dedupe_key == ^dedupe_key, select: run.status))
+
+      :error ->
+        nil
+    end
+  end
+
+  defp stored_run_status(_attrs), do: nil
+
+  defp announce_run({:ok, %WorkRun{status: status}} = result, status), do: result
+
+  defp announce_run({:ok, %WorkRun{} = run} = result, _previous_status) do
+    :ok = IntakePubSub.run_changed(run)
+    result
+  end
+
+  defp announce_run(result, _previous_status), do: result
 
   @spec append_event(map()) :: {:ok, WorkEvent.t()} | {:error, Ecto.Changeset.t()}
   def append_event(attrs) when is_map(attrs) do
@@ -464,10 +495,10 @@ defmodule SymphonyElixir.Storage do
     now = DateTime.utc_now()
 
     case Repo.update_all(
-           from(r in WorkRun, where: r.id == ^work_run_id),
+           from(r in WorkRun, where: r.id == ^work_run_id, select: r.project_id),
            set: [status: status, updated_at: now]
          ) do
-      {1, _} -> :ok
+      {1, [project_id]} -> IntakePubSub.track(%{project_id: project_id, case_ref: "run_" <> work_run_id})
       {0, _} -> {:error, :not_found}
     end
   end

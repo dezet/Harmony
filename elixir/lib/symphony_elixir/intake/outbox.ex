@@ -4,12 +4,15 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   Claims and state transitions are short PostgreSQL transactions. Callers perform
   network I/O only after `claim/1` returns and persist results with the lease token.
+  Every transition records an intake event; its case is announced on
+  `intake:workspace` once the transaction has committed (`IntakePubSub`).
   """
 
   import Ecto.Query
 
   alias SymphonyElixir.Intake
   alias SymphonyElixir.Repo
+  alias SymphonyElixirWeb.IntakePubSub
 
   alias SymphonyElixir.Storage.{
     IntakeAnalysis,
@@ -42,7 +45,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     now = current_time(opts)
     switches = switches(opts)
 
-    case Repo.transaction(fn -> claim_in_transaction(opts, now, switches) end) do
+    case IntakePubSub.transaction(fn -> claim_in_transaction(opts, now, switches) end) do
       {:ok, {result, _expired}} -> result
       {:error, reason} -> {:error, reason}
     end
@@ -77,7 +80,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def complete(delivery_id, lease_token, attrs \\ %{}, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "succeeded",
@@ -102,7 +105,8 @@ defmodule SymphonyElixir.Intake.Outbox do
   def retry(delivery_id, lease_token, error_code, retry_after \\ nil, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn -> retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) end)
+    fn -> retry_in_transaction(delivery_id, lease_token, error_code, retry_after, now, opts) end
+    |> IntakePubSub.transaction()
     |> flatten_transaction_result()
   end
 
@@ -146,7 +150,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def fail(delivery_id, lease_token, error_code, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "failed",
@@ -167,7 +171,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   def mark_unknown(delivery_id, lease_token, error_code, opts \\ []) do
     now = current_time(opts)
 
-    Repo.transaction(fn ->
+    IntakePubSub.transaction(fn ->
       with {:ok, delivery} <-
              update_leased(delivery_id, lease_token, now,
                status: "unknown",
@@ -187,7 +191,7 @@ defmodule SymphonyElixir.Intake.Outbox do
   @spec recover_expired(DateTime.t(), keyword()) ::
           %{unknown: non_neg_integer(), analyses: non_neg_integer()} | {:error, term()}
   def recover_expired(now \\ current_time([]), opts \\ []) do
-    case Repo.transaction(fn -> recover_expired_in_transaction(now, opts) end) do
+    case IntakePubSub.transaction(fn -> recover_expired_in_transaction(now, opts) end) do
       {:ok, counts} -> counts
       {:error, reason} -> {:error, reason}
     end
@@ -195,7 +199,7 @@ defmodule SymphonyElixir.Intake.Outbox do
 
   @spec recover_expired_analyses(DateTime.t(), keyword()) :: non_neg_integer() | {:error, term()}
   def recover_expired_analyses(now, opts \\ []) do
-    case Repo.transaction(fn -> recover_expired_analysis_rows(now, opts) end) do
+    case IntakePubSub.transaction(fn -> recover_expired_analysis_rows(now, opts) end) do
       {:ok, count} -> count
       {:error, reason} -> {:error, reason}
     end
@@ -208,7 +212,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     with %IntegrationDelivery{} = initial <- Repo.get(IntegrationDelivery, delivery_id),
          :ok <- check_manual_retry(initial, opts),
          :ok <- reconcile_unknown(initial, opts) do
-      Repo.transaction(fn -> manual_retry_in_transaction(delivery_id, now) end)
+      IntakePubSub.transaction(fn -> manual_retry_in_transaction(delivery_id, now) end)
       |> flatten_transaction_result()
     else
       nil -> {:error, :not_found}
@@ -240,6 +244,84 @@ defmodule SymphonyElixir.Intake.Outbox do
       updated = delivery |> IntegrationDelivery.changeset(changes) |> Repo.update!()
       record_event(updated, "delivery_manual_retry", %{attempts: updated.attempts}, now, "operator")
       {:ok, updated}
+    end
+  end
+
+  @spec fetch(term()) :: {:ok, IntegrationDelivery.t()} | {:error, :not_found}
+  def fetch(delivery_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(delivery_id),
+         %IntegrationDelivery{} = delivery <- Repo.get(IntegrationDelivery, uuid) do
+      {:ok, delivery}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Queues an operator test-send as a case-less e-mail or SMS delivery.
+
+  The idempotency key is part of the unique `dedupe_key`, so repeating the
+  request returns the same delivery. A key reused for another recipient is a
+  conflict. The delivery is sent by the dispatcher and counts toward the
+  hourly limit of its connection.
+  """
+  @spec enqueue_test_send(IntegrationConnection.t(), String.t(), String.t(), keyword()) ::
+          delivery_result() | {:error, :idempotency_key_conflict | :test_send_unsupported}
+  def enqueue_test_send(%IntegrationConnection{} = connection, recipient, idempotency_key, opts \\ [])
+      when is_binary(recipient) and is_binary(idempotency_key) do
+    with {:ok, operation} <- test_send_operation(connection.kind) do
+      dedupe_key = "test-send:#{connection.id}:#{String.downcase(idempotency_key)}"
+      now = current_time(opts)
+
+      fn -> insert_test_send(connection, operation, dedupe_key, recipient, now) end
+      |> IntakePubSub.transaction()
+      |> test_send_result(connection, dedupe_key, recipient)
+    end
+  end
+
+  defp test_send_result({:ok, delivery}, _connection, _dedupe_key, _recipient), do: {:ok, delivery}
+
+  defp test_send_result({:error, :duplicate}, connection, dedupe_key, recipient),
+    do: existing_test_send(connection, dedupe_key, recipient)
+
+  defp test_send_result({:error, reason}, _connection, _dedupe_key, _recipient), do: {:error, reason}
+
+  defp test_send_operation("smtp"), do: {:ok, "email"}
+  defp test_send_operation("smsapi"), do: {:ok, "sms"}
+  defp test_send_operation(_kind), do: {:error, :test_send_unsupported}
+
+  defp insert_test_send(connection, operation, dedupe_key, recipient, now) do
+    changeset =
+      IntegrationDelivery.changeset(%IntegrationDelivery{}, %{
+        case_id: nil,
+        connection_id: connection.id,
+        operation: operation,
+        dedupe_key: dedupe_key,
+        payload: %{"recipient" => recipient, "test_send" => true},
+        status: "pending",
+        attempts: 0,
+        next_attempt_at: now,
+        lock_version: 1
+      })
+
+    case Repo.insert(changeset) do
+      {:ok, delivery} ->
+        record_event(delivery, "test_send_queued", %{connection_id: connection.id, operation: operation}, now, "operator")
+        delivery
+
+      {:error, %Ecto.Changeset{errors: errors} = failed} ->
+        if Keyword.has_key?(errors, :dedupe_key), do: Repo.rollback(:duplicate), else: Repo.rollback(failed)
+    end
+  end
+
+  defp existing_test_send(connection, dedupe_key, recipient) do
+    case Repo.get_by(IntegrationDelivery, dedupe_key: dedupe_key) do
+      %IntegrationDelivery{connection_id: connection_id, case_id: nil, payload: %{"recipient" => ^recipient}} = delivery
+      when connection_id == connection.id ->
+        {:ok, delivery}
+
+      _other ->
+        {:error, :idempotency_key_conflict}
     end
   end
 
@@ -367,10 +449,7 @@ defmodule SymphonyElixir.Intake.Outbox do
     where(query, [d], d.operation != "analysis")
   end
 
-  defp filter_switches(query, %{effects_enabled: false, analysis_enabled: true}) do
-    where(query, [d], d.operation == "analysis")
-  end
-
+  # Spec §13: disabled effects also block new analyses, whatever analysis.enabled says.
   defp filter_switches(query, _switches), do: where(query, [d], false)
 
   @spec exclude_delivery_ids(Ecto.Query.t(), [binary()]) :: Ecto.Query.t()
@@ -835,7 +914,9 @@ defmodule SymphonyElixir.Intake.Outbox do
   defp flatten_transaction_result({:ok, {:error, reason}}), do: {:error, reason}
   defp flatten_transaction_result({:error, reason}), do: {:error, reason}
 
-  defp record_event(%IntegrationDelivery{case_id: case_id, id: delivery_id}, type, payload, now, actor \\ "system") do
+  defp record_event(%IntegrationDelivery{case_id: case_id, id: delivery_id} = delivery, type, payload, now, actor \\ "system") do
+    :ok = IntakePubSub.delivery_changed(delivery)
+
     %IntakeEvent{}
     |> IntakeEvent.changeset(%{
       case_id: case_id,

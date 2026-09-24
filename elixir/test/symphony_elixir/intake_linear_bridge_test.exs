@@ -442,7 +442,7 @@ defmodule SymphonyElixir.IntakeLinearBridgeTest do
     claim_opts = [
       operation: "analysis",
       intake_enabled: true,
-      effects_enabled: false,
+      effects_enabled: true,
       analysis_enabled: true,
       now: DateTime.utc_now()
     ]

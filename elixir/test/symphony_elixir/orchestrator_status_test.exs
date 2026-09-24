@@ -900,6 +900,56 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
     assert next_poll_in_ms <= 50
   end
 
+  test "orchestrator keeps the last known good runtime config when a WORKFLOW.md reload is invalid" do
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      poll_interval_ms: 5_000,
+      max_concurrent_agents: 4
+    )
+
+    Application.put_env(:symphony_elixir, :memory_tracker_issues, [])
+    Application.put_env(:symphony_elixir, :work_source_fetchers, [fn -> {:ok, []} end])
+
+    orchestrator_name = Module.concat(__MODULE__, :InvalidReloadOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll_delay_ms: 60_000)
+    Process.unlink(pid)
+    monitor_ref = Process.monitor(pid)
+
+    on_exit(fn ->
+      if Process.alive?(pid) do
+        Process.exit(pid, :normal)
+      end
+    end)
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      poll_interval_ms: 5_000,
+      max_concurrent_agents: 4,
+      max_turns: 0
+    )
+
+    log =
+      capture_log(fn ->
+        send(pid, :tick)
+        send(pid, :run_poll_cycle)
+        _ = :sys.get_state(pid)
+      end)
+
+    refute_received {:DOWN, ^monitor_ref, :process, ^pid, _reason}
+    assert Process.alive?(pid)
+    assert %{poll_interval_ms: 5_000, max_concurrent_agents: 4} = :sys.get_state(pid)
+    assert log =~ "agent.max_turns"
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      poll_interval_ms: 7_000,
+      max_concurrent_agents: 6
+    )
+
+    send(pid, :run_poll_cycle)
+    assert %{poll_interval_ms: 7_000, max_concurrent_agents: 6} = :sys.get_state(pid)
+  end
+
   test "orchestrator restarts stalled workers with retry backoff" do
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_api_token: nil,

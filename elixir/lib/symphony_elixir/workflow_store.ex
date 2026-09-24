@@ -128,24 +128,32 @@ defmodule SymphonyElixir.WorkflowStore do
     end
   end
 
+  # The stamp must fingerprint the same bytes that were parsed. Re-reading the file
+  # for the stamp could pair a workflow parsed mid-write with the stamp of the
+  # finished file, and the store would then never pick up the finished file.
   defp load_state(path) do
-    with {:ok, workflow} <- Workflow.load(path),
-         {:ok, stamp} <- current_stamp(path) do
-      {:ok, %State{path: path, stamp: stamp, workflow: workflow}}
-    else
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, content} <- read_workflow_file(path),
+         {:ok, workflow} <- Workflow.parse(content),
+         {:ok, stat} <- File.stat(path, time: :posix) do
+      {:ok, %State{path: path, stamp: stamp(stat, content), workflow: workflow}}
+    end
+  end
+
+  defp read_workflow_file(path) do
+    case File.read(path) do
+      {:ok, content} -> {:ok, content}
+      {:error, reason} -> {:error, {:missing_workflow_file, path, reason}}
     end
   end
 
   defp current_stamp(path) when is_binary(path) do
     with {:ok, stat} <- File.stat(path, time: :posix),
          {:ok, content} <- File.read(path) do
-      {:ok, {stat.mtime, stat.size, :erlang.phash2(content)}}
-    else
-      {:error, reason} -> {:error, reason}
+      {:ok, stamp(stat, content)}
     end
   end
+
+  defp stamp(%File.Stat{mtime: mtime, size: size}, content), do: {mtime, size, :erlang.phash2(content)}
 
   defp log_reload_error(path, reason) do
     Logger.error("Failed to reload workflow path=#{path} reason=#{inspect(reason)}; keeping last known good configuration")

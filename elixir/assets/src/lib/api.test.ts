@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getState, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, stopRun, retryRun, ApiError } from "@/lib/api";
+import { getState, getCase, listCaseEvents, listCases, getProjectSummary, getWorkRuns, getRunDetail, getRunStream, getProjectArtifacts, getProjectActivity, getArtifactUrl, stopRun, retryRun, ApiError } from "@/lib/api";
 import projectSummaryFixture from "@/test/fixtures/project_summary.fixture.json";
 import workRunsPageFixture from "@/test/fixtures/work_runs_page.fixture.json";
 import runDetailFixture from "@/test/fixtures/run_detail.fixture.json";
@@ -582,5 +582,268 @@ describe("retryRun", () => {
       code: "not_retrying",
       status: 409,
     });
+  });
+});
+
+// ─── Intake API: CSRF bootstrap and operator mutations ─────────────────────
+
+type ApiModule = typeof import("@/lib/api");
+
+interface Call {
+  url: string;
+  init: RequestInit;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function header(init: RequestInit, name: string): string | null {
+  return new Headers(init.headers).get(name);
+}
+
+function scriptedFetch(responses: Array<(call: Call) => Response>) {
+  const calls: Call[] = [];
+  const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
+    const call = { url, init };
+    calls.push(call);
+    const next = responses.shift();
+    if (!next) throw new Error(`unexpected request ${url}`);
+    return next(call);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return calls;
+}
+
+async function freshApi(): Promise<ApiModule> {
+  vi.resetModules();
+  return import("@/lib/api");
+}
+
+const RULE_ID = "55555555-5555-4555-8555-555555555555";
+const CONNECTION_ID = "44444444-4444-4444-8444-444444444444";
+
+describe("intake operator mutations", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("bootstraps the CSRF token once and sends it only in the X-CSRF-Token header", async () => {
+    const api = await freshApi();
+    const calls = scriptedFetch([
+      () => jsonResponse({ csrf_token: "token-1" }),
+      () => jsonResponse({ rule: { id: RULE_ID } }, 202),
+      () => jsonResponse({ rule: { id: RULE_ID } }),
+    ]);
+
+    await api.activateAutomation(RULE_ID, { version: 3, confirmed: true });
+    await api.pauseAutomation(RULE_ID, { version: 3 });
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/csrf",
+      `/api/v1/automations/${RULE_ID}/activate`,
+      `/api/v1/automations/${RULE_ID}/pause`,
+    ]);
+    expect(calls[0].init.credentials).toBe("same-origin");
+    expect(calls[0].init.cache).toBe("no-store");
+
+    const activate = calls[1];
+    expect(activate.init.method).toBe("POST");
+    expect(activate.init.credentials).toBe("same-origin");
+    expect(header(activate.init, "x-csrf-token")).toBe("token-1");
+    expect(header(activate.init, "content-type")).toBe("application/json");
+    expect(JSON.parse(activate.init.body as string)).toEqual({ version: 3, confirmed: true });
+    expect(activate.url).not.toContain("token-1");
+    expect(header(calls[2].init, "x-csrf-token")).toBe("token-1");
+
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+    expect(document.cookie).not.toContain("token-1");
+  });
+
+  it("reads never fetch or send the CSRF token", async () => {
+    const api = await freshApi();
+    const calls = scriptedFetch([() => jsonResponse({ items: [], meta: { next_cursor: null, page_size: 25 } })]);
+
+    await api.listAutomations({ project: "11111111-1111-4111-8111-111111111111", cursor: "abc" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/v1/automations?project=11111111-1111-4111-8111-111111111111&cursor=abc");
+    expect(header(calls[0].init, "x-csrf-token")).toBeNull();
+  });
+
+  it("after a session restart a 403 refreshes the token but never repeats the mutation", async () => {
+    const api = await freshApi();
+    const calls = scriptedFetch([
+      () => jsonResponse({ csrf_token: "stale-token" }),
+      () => jsonResponse({ error: { code: "csrf_invalid", message: "Missing or invalid CSRF token", fields: {} } }, 403),
+      () => jsonResponse({ csrf_token: "fresh-token" }),
+      () => jsonResponse({ rule: { id: RULE_ID } }),
+    ]);
+
+    await expect(api.pauseAutomation(RULE_ID, { version: 2 })).rejects.toMatchObject({
+      status: 403,
+      code: "csrf_invalid",
+    });
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/csrf",
+      `/api/v1/automations/${RULE_ID}/pause`,
+      "/api/v1/csrf",
+    ]);
+
+    await api.pauseAutomation(RULE_ID, { version: 2 });
+    expect(calls).toHaveLength(4);
+    expect(header(calls[3].init, "x-csrf-token")).toBe("fresh-token");
+  });
+
+  it("does not send the mutation when the token cannot be obtained", async () => {
+    const api = await freshApi();
+    const calls = scriptedFetch([() => jsonResponse({ error: { code: "not_found" } }, 404)]);
+
+    await expect(api.acknowledgeCase("jira_1", { expected_version: 1 })).rejects.toBeInstanceOf(api.ApiError);
+    expect(calls.map((c) => c.url)).toEqual(["/api/v1/csrf"]);
+  });
+
+  it("test-send carries the form Idempotency-Key and an explicit confirmation", async () => {
+    const api = await freshApi();
+    const key = "0b9d6f5e-3c1a-4a51-9d7e-6f1c2b3a4d5e";
+    const calls = scriptedFetch([
+      () => jsonResponse({ csrf_token: "token-1" }),
+      () => jsonResponse({ test_delivery: { id: "d1", status: "pending" } }, 202),
+    ]);
+
+    const result = await api.testSendIntegration(CONNECTION_ID, {
+      recipient: "+48600100200",
+      confirmed: true,
+      idempotencyKey: key,
+    });
+
+    expect(result.test_delivery.id).toBe("d1");
+    const send = calls[1];
+    expect(send.url).toBe(`/api/v1/integrations/${CONNECTION_ID}/test-send`);
+    expect(header(send.init, "idempotency-key")).toBe(key);
+    expect(JSON.parse(send.init.body as string)).toEqual({ recipient: "+48600100200", confirmed: true });
+  });
+
+  it("maps the remaining intake endpoints to their contract paths", async () => {
+    const api = await freshApi();
+    const calls = scriptedFetch([
+      () => jsonResponse({ csrf_token: "token-1" }),
+      () => jsonResponse({ rule: {} }, 201),
+      () => jsonResponse({ rule: {} }),
+      () => jsonResponse({ sample: [] }),
+      () => jsonResponse({ status: "accepted" }, 202),
+      () => jsonResponse({ accepted_rule_ids: [], skipped: [] }, 202),
+      () => jsonResponse({ connection: {} }, 201),
+      () => jsonResponse({ connection: {} }),
+      () => jsonResponse({ health: "ok" }),
+      () => jsonResponse({ label_id: "l1", created: false }),
+      () => jsonResponse({ status: "approved" }),
+      () => jsonResponse({ analysis_version: 2 }, 202),
+      () => jsonResponse({ delivery: {} }, 202),
+      () => jsonResponse({ items: [], meta: { next_cursor: null } }),
+      () => jsonResponse({ items: [] }),
+      () => jsonResponse({ teams: [] }),
+    ]);
+
+    await api.createAutomation({ name: "Rule" } as never);
+    await api.updateAutomation(RULE_ID, { version: 1, interval_seconds: 600 });
+    await api.previewAutomation(RULE_ID);
+    await api.checkAutomation(RULE_ID);
+    await api.checkAutomations();
+    await api.createIntegration({ kind: "smsapi", name: "SMS", settings: { sender: "Harmony" }, secret: "s" });
+    await api.updateIntegration(CONNECTION_ID, { version: 1, clear_secret: true });
+    await api.testIntegration(CONNECTION_ID);
+    await api.createLinearHoldLabel("p/1", { team_id: "t1", confirmed: true });
+    await api.approveRepair("jira_1", { expected_version: 2, analysis_version: 1, confirmed: true });
+    await api.reanalyzeCase("jira_1", { expected_version: 2, confirmed: true });
+    await api.retryDelivery("d/1", { expected_status: "unknown", confirm_duplicate_risk: true });
+    await api.listJiraBoards(CONNECTION_ID, { q: "ops board", cursor: "c1" });
+    await api.listJiraPriorities(CONNECTION_ID);
+    await api.getLinearOptions("p/1");
+
+    expect(calls.map((c) => `${c.init.method ?? "GET"} ${c.url}`)).toEqual([
+      "GET /api/v1/csrf",
+      "POST /api/v1/automations",
+      `PATCH /api/v1/automations/${RULE_ID}`,
+      `POST /api/v1/automations/${RULE_ID}/preview`,
+      `POST /api/v1/automations/${RULE_ID}/check`,
+      "POST /api/v1/automations/check",
+      "POST /api/v1/integrations",
+      `PATCH /api/v1/integrations/${CONNECTION_ID}`,
+      `POST /api/v1/integrations/${CONNECTION_ID}/test`,
+      "POST /api/v1/projects/p%2F1/linear-hold-label",
+      "POST /api/v1/cases/jira_1/approve-repair",
+      "POST /api/v1/cases/jira_1/reanalyze",
+      "POST /api/v1/deliveries/d%2F1/retry",
+      `GET /api/v1/integrations/${CONNECTION_ID}/jira/boards?q=ops+board&cursor=c1`,
+      `GET /api/v1/integrations/${CONNECTION_ID}/jira/priorities`,
+      "GET /api/v1/projects/p%2F1/linear-options",
+    ]);
+
+    const mutations = calls.slice(1, 13);
+    expect(mutations.every((c) => header(c.init, "x-csrf-token") === "token-1")).toBe(true);
+    expect(calls.slice(13).every((c) => header(c.init, "x-csrf-token") === null)).toBe(true);
+  });
+});
+
+describe("case center reads", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function recordFetch() {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), init });
+        return new Response(JSON.stringify({ items: [], meta: { next_cursor: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  it("builds the list query from filters and cursor, skipping empty values", async () => {
+    const calls = recordFetch();
+
+    await listCases({ project: "alpha beta", filter: "decision", column: "detected", q: "OPS-1", page_size: 50 }, "c/1");
+    await listCases({ project: "", q: undefined });
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/cases?project=alpha+beta&filter=decision&column=detected&q=OPS-1&page_size=50&cursor=c%2F1",
+      "/api/v1/cases",
+    ]);
+  });
+
+  it("encodes the ref of the detail and history and pages the history", async () => {
+    const calls = recordFetch();
+
+    await getCase("jira_a/b");
+    await listCaseEvents("jira_a/b");
+    await listCaseEvents("jira_a/b", "c2");
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/cases/jira_a%2Fb",
+      "/api/v1/cases/jira_a%2Fb/events",
+      "/api/v1/cases/jira_a%2Fb/events?cursor=c2",
+    ]);
+  });
+
+  it("passes the abort signal of the query to fetch", async () => {
+    const calls = recordFetch();
+    const controller = new AbortController();
+
+    await listCases({}, undefined, controller.signal);
+    await getCase("jira_1", controller.signal);
+    await listCaseEvents("jira_1", undefined, controller.signal);
+
+    expect(calls.every((c) => c.init?.signal === controller.signal)).toBe(true);
   });
 });

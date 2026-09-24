@@ -178,8 +178,27 @@ Postgres on application startup. `WORKFLOW.md` remains the global runtime contra
 The Jira intake runtime reads rules from Postgres and scans each rule independently. It is disabled
 by default: `intake.enabled` controls scheduled scans, while `intake.effects_enabled` separately
 guards rule activation and external effects. A matched issue reserves its Linear UUID before any
-create request; analysis remains blocked until the matching Linear issue is confirmed. Keep both
-switches disabled until the intake rollout is explicitly approved.
+create request; analysis remains blocked until the matching Linear issue is confirmed. With
+`intake.enabled`, a dispatcher claims due outbox effects every second, at most four I/O effects and
+one analysis at a time; new effects also require `intake.effects_enabled`, and analyses additionally
+`analysis.enabled`. Keep both switches disabled until the intake rollout is explicitly approved.
+
+The intake configuration API lives under `/api/v1/automations`, `/api/v1/integrations`,
+`/api/v1/cases/:ref/{acknowledge,approve-repair,reanalyze}`, `/api/v1/deliveries/:id/retry` and
+`/api/v1/projects/:id/{linear-options,linear-hold-label}`. Every mutation there needs a JSON body,
+a same-origin `Origin` and the session token from `GET /api/v1/csrf` in `X-CSRF-Token`; otherwise
+it returns 403 without running. This is not authentication: keep the API behind a trusted network
+or proxy. Forge webhooks keep their own signature checks. Secrets are write-only (`secret_state`
+only). While `intake.effects_enabled` is false, rule activation, reanalysis, delivery retry, Linear
+hold-label creation and test-send return 409 `effects_disabled`; test-send also needs
+`intake.enabled`. A connection test only reads identity (Jira `myself`, SMTP EHLO/TLS/AUTH without
+DATA, SMSAPI profile); test-send queues one case-less outbox delivery per `Idempotency-Key` that
+counts toward the hourly limit. SMTP hosts must be listed in `intake.smtp_allowed_hosts`.
+Activation first verifies with reads only: the Jira connection, identity, source and priorities;
+the Linear team, project, the state named exactly `Todo` and the hold label; the configured analysis
+profile; and every selected channel. An unmet requirement returns 422 with its code (for example
+`linear_todo_state_missing`), an unavailable provider 503. A manual check claims the scan
+synchronously and returns its `scan_id`; a scan already running returns 409.
 
 Minimal project config:
 

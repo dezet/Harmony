@@ -6,6 +6,7 @@
   "source_type": "board",
   "source_id": "42",
   "priority_ids": ["1", "2"],
+  "priority_ranking": null,
   "interval_seconds": 300,
   "initial_policy": "new_matches_only",
   "linear_team_id": "33333333-3333-4333-8333-333333333333",

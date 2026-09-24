@@ -2,10 +2,21 @@ defmodule SymphonyElixir.Intake.Dispatcher do
   @moduledoc """
   Claims one outbox effect, performs its adapter call after the claim transaction
   commits, then persists the result through the delivery's lease token.
+
+  E-mail and SMS alerts are rendered per delivery from the case, its rule
+  snapshot and the configured Harmony `intake.public_url`, then handed to
+  `Notifications.Smtp` or `Notifications.Smsapi`. A missing public URL or
+  connection is an explicit failure; no link or credential is invented.
+  An operator test-send (e-mail or SMS) is a case-less delivery with
+  `payload.test_send == true`; it renders a fixed test text instead of an alert
+  and is subject to the same per-connection hourly limit.
   """
 
+  alias SymphonyElixir.Config
   alias SymphonyElixir.Intake.{AnalysisRunner, CommentPublisher, LinearBridge, Outbox}
-  alias SymphonyElixir.Storage.IntegrationDelivery
+  alias SymphonyElixir.Notifications.{Smsapi, Smtp, Templates}
+  alias SymphonyElixir.Repo
+  alias SymphonyElixir.Storage.{IntakeCase, IntegrationConnection, IntegrationDelivery}
 
   @type adapter :: (IntegrationDelivery.t() -> term()) | module()
   @type dispatch_result ::
@@ -85,6 +96,28 @@ defmodule SymphonyElixir.Intake.Dispatcher do
     CommentPublisher.perform(delivery, Keyword.get(opts, :jira_comment_opts, []))
   end
 
+  defp default_adapter(%IntegrationDelivery{operation: "email"} = delivery, opts) do
+    case email_message(delivery) do
+      {:ok, email, connection} -> Smtp.deliver_email(email, connection, Keyword.get(opts, :smtp_opts, []))
+      {:retry, code} -> {:retry, code, nil}
+      {:error, code} -> {:error, code}
+    end
+  end
+
+  defp default_adapter(%IntegrationDelivery{operation: "sms"} = delivery, opts) do
+    case sms_message(delivery) do
+      {:ok, message, connection} ->
+        sms = %{delivery_id: delivery.id, recipient: payload_value(delivery.payload, "recipient"), message: message}
+        Smsapi.deliver_sms(sms, connection, Keyword.get(opts, :sms_opts, []))
+
+      {:retry, code} ->
+        {:retry, code, nil}
+
+      {:error, code} ->
+        {:error, code}
+    end
+  end
+
   defp default_adapter(%IntegrationDelivery{} = delivery, opts) do
     case Keyword.get(opts, :io_adapter) do
       fun when is_function(fun, 1) -> fun.(delivery)
@@ -92,4 +125,138 @@ defmodule SymphonyElixir.Intake.Dispatcher do
       _missing -> {:error, "unsupported_delivery_operation"}
     end
   end
+
+  # Everything below runs before any message is handed to a transport, so a
+  # local failure (database, configuration) is safe to retry.
+  defp email_message(%IntegrationDelivery{case_id: nil} = delivery) do
+    if payload_value(delivery.payload, "test_send") == true do
+      with {:ok, connection} <- notification_connection(delivery, "smtp"),
+           attrs = test_email_attrs(delivery, connection),
+           {:ok, email} <- attrs |> Templates.render_test_email() |> template_result() do
+        {:ok, email, connection}
+      end
+    else
+      {:error, "notification_case_required"}
+    end
+  rescue
+    _exception -> {:retry, "notification_local_state_unavailable"}
+  catch
+    :exit, _reason -> {:retry, "notification_local_state_unavailable"}
+  end
+
+  defp email_message(%IntegrationDelivery{} = delivery) do
+    with {:ok, connection} <- notification_connection(delivery, "smtp"),
+         {:ok, intake_case} <- notification_case(delivery),
+         {:ok, harmony_url} <- case_link(intake_case),
+         attrs = email_attrs(delivery, connection, intake_case, harmony_url),
+         {:ok, email} <- attrs |> Templates.render_email() |> template_result() do
+      {:ok, email, connection}
+    end
+  rescue
+    _exception -> {:retry, "notification_local_state_unavailable"}
+  catch
+    :exit, _reason -> {:retry, "notification_local_state_unavailable"}
+  end
+
+  defp sms_message(%IntegrationDelivery{case_id: nil} = delivery) do
+    if payload_value(delivery.payload, "test_send") == true do
+      with {:ok, connection} <- notification_connection(delivery, "smsapi") do
+        {:ok, Templates.render_test_sms(), connection}
+      end
+    else
+      {:error, "notification_case_required"}
+    end
+  rescue
+    _exception -> {:retry, "notification_local_state_unavailable"}
+  catch
+    :exit, _reason -> {:retry, "notification_local_state_unavailable"}
+  end
+
+  defp sms_message(%IntegrationDelivery{} = delivery) do
+    with {:ok, connection} <- notification_connection(delivery, "smsapi"),
+         {:ok, intake_case} <- notification_case(delivery),
+         {:ok, case_url} <- case_link(intake_case),
+         {:ok, message} <-
+           %{jira_key: intake_case.jira_key, priority_name: intake_case.priority_name, case_url: case_url}
+           |> Templates.render_sms()
+           |> template_result() do
+      {:ok, message, connection}
+    end
+  rescue
+    _exception -> {:retry, "notification_local_state_unavailable"}
+  catch
+    :exit, _reason -> {:retry, "notification_local_state_unavailable"}
+  end
+
+  defp notification_connection(%IntegrationDelivery{connection_id: nil}, _kind), do: {:error, "connection_required"}
+
+  defp notification_connection(%IntegrationDelivery{connection_id: connection_id}, kind) do
+    case Repo.get(IntegrationConnection, connection_id) do
+      %IntegrationConnection{kind: ^kind, enabled: true} = connection -> {:ok, connection}
+      %IntegrationConnection{kind: ^kind} -> {:retry, "connection_disabled"}
+      _other -> {:error, "notification_connection_unavailable"}
+    end
+  end
+
+  defp notification_case(%IntegrationDelivery{case_id: nil}), do: {:error, "notification_case_required"}
+
+  defp notification_case(%IntegrationDelivery{case_id: case_id}) do
+    case Repo.get(IntakeCase, case_id) do
+      %IntakeCase{} = intake_case -> {:ok, intake_case}
+      nil -> {:error, "notification_case_not_found"}
+    end
+  end
+
+  defp case_link(%IntakeCase{id: case_id}) do
+    case Config.intake_settings().public_url do
+      url when is_binary(url) and url != "" ->
+        case Templates.case_url(url, case_id) do
+          {:ok, case_url} -> {:ok, case_url}
+          {:error, :invalid_link} -> {:error, "invalid_intake_public_url"}
+        end
+
+      _missing ->
+        {:error, "missing_intake_public_url"}
+    end
+  end
+
+  defp email_attrs(delivery, connection, intake_case, harmony_url) do
+    settings = connection.settings || %{}
+
+    %{
+      delivery_id: delivery.id,
+      recipient: payload_value(delivery.payload, "recipient"),
+      from_email: payload_value(settings, "from_email"),
+      from_name: payload_value(settings, "from_name"),
+      message_id_domain: payload_value(settings, "message_id_domain"),
+      priority_name: intake_case.priority_name,
+      jira_key: intake_case.jira_key,
+      project_name: payload_value(intake_case.rule_snapshot || %{}, "project_name"),
+      title: intake_case.title,
+      jira_url: intake_case.jira_url,
+      harmony_url: harmony_url,
+      detected_at: intake_case.detected_at
+    }
+  end
+
+  defp test_email_attrs(delivery, connection) do
+    settings = connection.settings || %{}
+
+    %{
+      delivery_id: delivery.id,
+      recipient: payload_value(delivery.payload, "recipient"),
+      from_email: payload_value(settings, "from_email"),
+      from_name: payload_value(settings, "from_name"),
+      message_id_domain: payload_value(settings, "message_id_domain")
+    }
+  end
+
+  defp template_result({:ok, rendered}), do: {:ok, rendered}
+  defp template_result({:error, :message_too_long}), do: {:error, "sms_message_too_long"}
+  defp template_result({:error, {:missing_field, field}}), do: {:error, "notification_missing_#{field}"}
+  defp template_result({:error, reason}), do: {:error, "notification_#{reason}"}
+
+  # Payloads, settings and snapshots are reloaded from jsonb, so keys are strings.
+  defp payload_value(map, key) when is_map(map), do: Map.get(map, key)
+  defp payload_value(_map, _key), do: nil
 end

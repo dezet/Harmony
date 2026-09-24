@@ -416,13 +416,13 @@ Pliki: nowe `BE/notifications/smtp.ex`, `BE/notifications/templates.ex`,
 `BT/notification_smtp_test.exs`, `BT/notification_smtp_integration_test.exs`;
 `elixir/mix.exs`, `elixir/mix.lock`, `elixir/test/test_helper.exs`.
 
-- [ ] T15.1 RED: timeout po DATA to unknown, a nie kolejna automatyczna wysyłka.
-- [ ] T15.2 Dodaj tylko Swoosh i gen_smtp zgodne z zainstalowanym Elixir; przypnij lockfile.
-- [ ] T15.3 TLS verify peer, Message-ID stały per delivery, jeden odbiorca bez ujawniania listy.
-- [ ] T15.4 Szablon nie zawiera pełnego opisu, sekretów, fikcyjnego Linear URL; HTML escapowany.
-- [ ] T15.5 Test EHLO/STARTTLS/AUTH nie wykonuje DATA; test-send wymaga odrębnej zgody.
-- [ ] T15.6 CR/LF w subject/from/recipient odrzucone, nie header injection.
-- [ ] T15.7 Przygotuj test Mailpit opisany w §10.5, oznacz smtp_integration;
+- [x] T15.1 RED: timeout po DATA to unknown, a nie kolejna automatyczna wysyłka.
+- [x] T15.2 Dodaj tylko Swoosh i gen_smtp zgodne z zainstalowanym Elixir; przypnij lockfile.
+- [x] T15.3 TLS verify peer, Message-ID stały per delivery, jeden odbiorca bez ujawniania listy.
+- [x] T15.4 Szablon nie zawiera pełnego opisu, sekretów, fikcyjnego Linear URL; HTML escapowany.
+- [x] T15.5 Test EHLO/STARTTLS/AUTH nie wykonuje DATA; test-send wymaga odrębnej zgody.
+- [x] T15.6 CR/LF w subject/from/recipient odrzucone, nie header injection.
+- [x] T15.7 Przygotuj test Mailpit opisany w §10.5, oznacz smtp_integration;
       domyślnie wyklucz ten tag w test_helper, a jawne --include go uruchamia.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/notification_smtp_test.exs`.
@@ -434,12 +434,12 @@ Spec: §10.1, §10.3–10.4. Zależność: T15.
 Pliki: nowe `BE/notifications/smsapi.ex`, `BT/notification_smsapi_test.exs`;
 `BE/intake/dispatcher.ex`, `BE/notifications/templates.ex`.
 
-- [ ] T16.1 RED: 200 z błędem dostawcy nie jest succeeded; duplicate idx nie tworzy nowego idx.
-- [ ] T16.2 POST form z Bearer, pola i endpoint zgodne ze spec, bez SDK i parametrów w URL.
-- [ ] T16.3 Normalizacja E.164, Unicode/134 jednostki UTF-16, nie ucinać URL.
-- [ ] T16.4 Limit 20/h w dwóch równoległych dispatcherach; test-send wliczany do limitu.
-- [ ] T16.5 Awaria SMS nie blokuje maila/Linear/analizy; niepewna odpowiedź → unknown.
-- [ ] T16.6 Wspólny test: dwa skany, dwa kanały, każdy odbiorca otrzymuje po jednym logicznym delivery.
+- [x] T16.1 RED: 200 z błędem dostawcy nie jest succeeded; duplicate idx nie tworzy nowego idx.
+- [x] T16.2 POST form z Bearer, pola i endpoint zgodne ze spec, bez SDK i parametrów w URL.
+- [x] T16.3 Normalizacja E.164, Unicode/134 jednostki UTF-16, nie ucinać URL.
+- [x] T16.4 Limit 20/h w dwóch równoległych dispatcherach; test-send wliczany do limitu.
+- [x] T16.5 Awaria SMS nie blokuje maila/Linear/analizy; niepewna odpowiedź → unknown.
+- [x] T16.6 Wspólny test: dwa skany, dwa kanały, każdy odbiorca otrzymuje po jednym logicznym delivery.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/notification_smsapi_test.exs test/symphony_elixir/intake_outbox_test.exs`.
 Odbiór: AC13/AC14, zero realnych SMS.
@@ -452,15 +452,15 @@ Pliki: nowe `WEB/controllers/{automation,integration,case_action,delivery,linear
 `WEB/router.ex`, `WEB/endpoint.ex`, `FE/lib/api.ts`, nowe `FE/lib/api.test.ts`;
 nowe `BT/intake_api_test.exs`, `BT/intake_api_security_test.exs`.
 
-- [ ] T17.1 RED: brak CSRF/obcy Origin/body secret w response → test odmawia przejścia.
-- [ ] T17.2 Zaimplementuj endpointy i whitelist params; routes przed catch-all.
-- [ ] T17.3 GET /api/v1/csrf, fetch_session/get_csrf_token i no-store zgodnie z §11.1;
+- [x] T17.1 RED: brak CSRF/obcy Origin/body secret w response → test odmawia przejścia.
+- [x] T17.2 Zaimplementuj endpointy i whitelist params; routes przed catch-all.
+- [x] T17.3 GET /api/v1/csrf, fetch_session/get_csrf_token i no-store zgodnie z §11.1;
       api.ts bootstrapuje token i wysyła wyłącznie do same-origin API. Nie zmieniaj statycznego HTML.
       Test restartu sesji: 403 nie ponawia mutacji, odświeża token i wymaga ponownego działania użytkownika.
-- [ ] T17.4 Test formularza PATCH, optimistic lock, 404/409/422/405 oraz brak surowych wyjątków.
-- [ ] T17.5 Preview ma zero mutacji zewnętrznych i pokazuje limit/truncated; aktywacja osobna.
-- [ ] T17.6 Test-send idempotentny, potwierdzony, limitowany; read-only test nie wysyła wiadomości.
-- [ ] T17.7 Nowy guard nie blokuje istniejących webhooków forge wymagających własnej weryfikacji.
+- [x] T17.4 Test formularza PATCH, optimistic lock, 404/409/422/405 oraz brak surowych wyjątków.
+- [x] T17.5 Preview ma zero mutacji zewnętrznych i pokazuje limit/truncated; aktywacja osobna.
+- [x] T17.6 Test-send idempotentny, potwierdzony, limitowany; read-only test nie wysyła wiadomości.
+- [x] T17.7 Nowy guard nie blokuje istniejących webhooków forge wymagających własnej weryfikacji.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_api_test.exs test/symphony_elixir/intake_api_security_test.exs`;
 `cd elixir/assets && npm run test -- --run src/lib/api.test.ts`.
@@ -472,12 +472,12 @@ Spec: §11.3. Zależność: T17.
 Pliki: nowe `BE/cases.ex`, `BE/cases/projection.ex`, `WEB/controllers/case_controller.ex`,
 `BT/cases_projection_test.exs`, `BT/cases_api_test.exs`; `WEB/intake_presenter.ex`.
 
-- [ ] T18.1 RED: 60 spraw w jednej kolumnie, po 25 na stronę, total=60 i kompletna suma projektów.
-- [ ] T18.2 PostgreSQL UNION i latest-per-source; nie wczytuj całej historii do Enum.
-- [ ] T18.3 Ref jira_/run_, stabilne cursory związane z filtrem, wyszukiwanie po tytule/ID.
-- [ ] T18.4 Poprawna kolejność precedence statusów i ukrycie implementation zduplikowanej z case.
-- [ ] T18.5 Legacy bez Linear, brak opisu, unknown status i błąd publikacji pozostają widoczne.
-- [ ] T18.6 Detail events stronicowane, actions obliczane przez backend; fixture T01 aktualna.
+- [x] T18.1 RED: 60 spraw w jednej kolumnie, po 25 na stronę, total=60 i kompletna suma projektów.
+- [x] T18.2 PostgreSQL UNION i latest-per-source; nie wczytuj całej historii do Enum.
+- [x] T18.3 Ref jira_/run_, stabilne cursory związane z filtrem, wyszukiwanie po tytule/ID.
+- [x] T18.4 Poprawna kolejność precedence statusów i ukrycie implementation zduplikowanej z case.
+- [x] T18.5 Legacy bez Linear, brak opisu, unknown status i błąd publikacji pozostają widoczne.
+- [x] T18.6 Detail events stronicowane, actions obliczane przez backend; fixture T01 aktualna.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/cases_projection_test.exs test/symphony_elixir/cases_api_test.exs test/symphony_elixir/intake_contract_test.exs`.
 Odbiór: AC02/AC04/AC16. Zapytania list/count stała liczba, brak N+1 na karty.
@@ -489,10 +489,10 @@ Pliki: nowy `WEB/channels/intake_channel.ex`, `WEB/intake_pubsub.ex`, `BT/intake
 `WEB/channels/user_socket.ex`, `FE/lib/api.ts`, `FE/types/contract.ts`;
 nowe `FE/features/cases/{useCases,useCase,useCaseEvents,useIntakeChannel}.ts` i testy obok.
 
-- [ ] T19.1 RED: reconnect musi odświeżyć aktywną listę, a channel payload nie zawierać treści/sekretu.
-- [ ] T19.2 Event dopiero po commit; transakcja rollback nie wywołuje invalidacji.
-- [ ] T19.3 Jeden Socket, subskrypcja sprzątana po unmount, debounce 250 ms i fallback 30 s offline.
-- [ ] T19.4 Stare topics/cache bez regresji; zmiana projektu nie pokazuje danych poprzedniego requestu.
+- [x] T19.1 RED: reconnect musi odświeżyć aktywną listę, a channel payload nie zawierać treści/sekretu.
+- [x] T19.2 Event dopiero po commit; transakcja rollback nie wywołuje invalidacji.
+- [x] T19.3 Jeden Socket, subskrypcja sprzątana po unmount, debounce 250 ms i fallback 30 s offline.
+- [x] T19.4 Stare topics/cache bez regresji; zmiana projektu nie pokazuje danych poprzedniego requestu.
 
 Test: `cd elixir && mise exec -- mix test test/symphony_elixir/intake_channel_test.exs`;
 `cd elixir/assets && npm run test -- --run src/features/cases src/lib/socket.test.ts src/lib/api.test.ts`.

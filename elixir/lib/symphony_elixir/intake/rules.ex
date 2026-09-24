@@ -4,14 +4,18 @@ defmodule SymphonyElixir.Intake.Rules do
 
   Rule edits are versioned. Activation is the only operation that enables a
   rule; changing the source or priorities of an active rule disables it and
-  requires a new baseline.
+  requires a new baseline. A saved rule is announced on `intake:workspace`
+  after commit.
   """
 
   import Ecto.Changeset
+  import Ecto.Query, only: [from: 2, where: 3]
 
   alias SymphonyElixir.Intake
+  alias SymphonyElixir.Notifications.Smsapi
   alias SymphonyElixir.Repo
   alias SymphonyElixir.Storage.{AutomationRule, IntegrationConnection, Project}
+  alias SymphonyElixirWeb.IntakePubSub
 
   @immutable_after_activation ~w(
     project_id
@@ -59,8 +63,10 @@ defmodule SymphonyElixir.Intake.Rules do
     rule
     |> AutomationRule.changeset(attrs)
     |> validate_rule_values()
+    |> validate_jira_ids()
     |> validate_recipients(:email_connection_id, :email_recipients, "email")
     |> validate_recipients(:sms_connection_id, :sms_recipients, "sms")
+    |> validate_phone_recipients()
   end
 
   @spec create(attrs()) :: {:ok, AutomationRule.t()} | {:error, Ecto.Changeset.t()}
@@ -69,7 +75,7 @@ defmodule SymphonyElixir.Intake.Rules do
     attrs = attrs |> Map.put(:enabled, false) |> Map.put(:activation_status, "idle") |> Map.delete(:activated_at)
 
     with {:ok, changeset} <- validate_connection_kinds(changeset(%AutomationRule{}, attrs)) do
-      Repo.insert(changeset)
+      changeset |> Repo.insert() |> announce()
     end
   end
 
@@ -94,14 +100,19 @@ defmodule SymphonyElixir.Intake.Rules do
       changeset = changeset(rule, attrs)
 
       with {:ok, changeset} <- validate_connection_kinds(changeset) do
-        Repo.update(changeset)
+        changeset |> Repo.update() |> announce()
       end
     end
   end
 
-  @spec activate(AutomationRule.t()) ::
+  @doc """
+  Activates a rule. `:priority_ranking` stores the Jira priority IDs in the
+  order of the Jira response, read by the activation check; without it the
+  stored ranking is kept.
+  """
+  @spec activate(AutomationRule.t(), keyword()) ::
           {:ok, AutomationRule.t()} | {:error, :effects_disabled | :source_conflict | Ecto.Changeset.t()}
-  def activate(%AutomationRule{} = rule) do
+  def activate(%AutomationRule{} = rule, opts \\ []) do
     with :ok <- ensure_effects_enabled() do
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
       baseline_ready? = not is_nil(rule.baseline_generation) and not is_nil(rule.baseline_complete_at)
@@ -112,12 +123,13 @@ defmodule SymphonyElixir.Intake.Rules do
           enabled: baseline_ready?,
           activation_status: if(baseline_ready?, do: "idle", else: "activating"),
           activated_at: rule.activated_at || now,
+          priority_ranking: Keyword.get(opts, :priority_ranking, rule.priority_ranking),
           lock_version: rule.lock_version + 1
         })
 
       with {:ok, changeset} <- validate_connection_kinds(changeset),
            :ok <- ensure_effects_enabled() do
-        Repo.update(changeset) |> normalize_activation_error()
+        changeset |> Repo.update() |> normalize_activation_error() |> announce()
       end
     end
   end
@@ -133,6 +145,7 @@ defmodule SymphonyElixir.Intake.Rules do
       lock_version: rule.lock_version + 1
     })
     |> Repo.update()
+    |> announce()
   end
 
   @spec snapshot(AutomationRule.t(), DateTime.t() | nil) :: map()
@@ -152,6 +165,7 @@ defmodule SymphonyElixir.Intake.Rules do
       source_type: rule.source_type,
       source_id: rule.source_id,
       priority_ids: rule.priority_ids,
+      priority_ranking: rule.priority_ranking,
       initial_policy: rule.initial_policy,
       linear_team_id: rule.linear_team_id,
       linear_project_id: rule.linear_project_id,
@@ -170,6 +184,88 @@ defmodule SymphonyElixir.Intake.Rules do
 
   @spec active?(AutomationRule.t()) :: boolean()
   def active?(%AutomationRule{} = rule), do: rule.enabled or rule.activation_status == "activating"
+
+  @spec fetch(term()) :: {:ok, AutomationRule.t()} | {:error, :not_found}
+  def fetch(rule_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(rule_id),
+         %AutomationRule{} = rule <- Repo.get(AutomationRule, uuid) do
+      {:ok, rule}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  One page of rules ordered by `(inserted_at, id)`, optionally for one project.
+  `:after` is the `{inserted_at, id}` of the last row of the previous page.
+  """
+  @spec list_page(keyword()) :: [AutomationRule.t()]
+  def list_page(opts) do
+    limit = Keyword.fetch!(opts, :limit)
+
+    from(rule in AutomationRule, order_by: [asc: rule.inserted_at, asc: rule.id], limit: ^limit)
+    |> maybe_project(Keyword.get(opts, :project_id))
+    |> after_position(Keyword.get(opts, :after))
+    |> Repo.all()
+  end
+
+  @doc "Rule IDs in scope of a bulk \"check now\", optionally for one project."
+  @spec list_ids(binary() | nil) :: [binary()]
+  def list_ids(project_id) do
+    from(rule in AutomationRule, order_by: [asc: rule.inserted_at, asc: rule.id], select: rule.id)
+    |> maybe_project(project_id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Applies a partial edit when `version` is the current `config_version`.
+  Background scans change only `lock_version`, so they never make an open
+  form stale.
+  """
+  @spec patch_versioned(binary(), pos_integer(), attrs()) ::
+          {:ok, AutomationRule.t()}
+          | {:error, :not_found | :stale_version | :immutable_after_activation | Ecto.Changeset.t()}
+  def patch_versioned(rule_id, version, attrs), do: with_config_version(rule_id, version, &patch(&1, attrs))
+
+  @spec activate_versioned(binary(), pos_integer(), keyword()) ::
+          {:ok, AutomationRule.t()}
+          | {:error, :not_found | :stale_version | :effects_disabled | :source_conflict | Ecto.Changeset.t()}
+  def activate_versioned(rule_id, version, opts \\ []),
+    do: with_config_version(rule_id, version, &activate(&1, opts))
+
+  @spec pause_versioned(binary(), pos_integer()) ::
+          {:ok, AutomationRule.t()} | {:error, :not_found | :stale_version | Ecto.Changeset.t()}
+  def pause_versioned(rule_id, version), do: with_config_version(rule_id, version, &disable/1)
+
+  defp with_config_version(rule_id, version, fun) do
+    IntakePubSub.transaction(fn ->
+      case Repo.one(from(rule in AutomationRule, where: rule.id == ^rule_id, lock: "FOR UPDATE")) do
+        nil -> Repo.rollback(:not_found)
+        %AutomationRule{config_version: ^version} = rule -> unwrap_or_rollback(fun.(rule))
+        %AutomationRule{} -> Repo.rollback(:stale_version)
+      end
+    end)
+  end
+
+  defp unwrap_or_rollback({:ok, rule}), do: rule
+  defp unwrap_or_rollback({:error, reason}), do: Repo.rollback(reason)
+
+  defp maybe_project(query, nil), do: query
+  defp maybe_project(query, project_id), do: where(query, [rule], rule.project_id == ^project_id)
+
+  defp after_position(query, nil), do: query
+
+  defp after_position(query, {inserted_at, id}) do
+    where(query, [rule], rule.inserted_at > ^inserted_at or (rule.inserted_at == ^inserted_at and rule.id > ^id))
+  end
+
+  # Inside `with_config_version/3` the announcement waits for its commit.
+  defp announce({:ok, %AutomationRule{} = rule} = result) do
+    :ok = IntakePubSub.track_rule(rule)
+    result
+  end
+
+  defp announce(result), do: result
 
   defp normalize_activation_error({:ok, rule}), do: {:ok, rule}
 
@@ -259,8 +355,26 @@ defmodule SymphonyElixir.Intake.Rules do
 
   defp normalize_email(value), do: to_string(value)
 
-  defp normalize_phone(value) when is_binary(value), do: String.trim(value)
-  defp normalize_phone(value), do: to_string(value)
+  # A number that is not valid E.164 is kept as typed so validation rejects it.
+  defp normalize_phone(value) when is_binary(value) do
+    case Smsapi.normalize_phone(value) do
+      {:ok, e164} -> e164
+      {:error, _code} -> String.trim(value)
+    end
+  end
+
+  defp normalize_phone(value), do: value |> to_string() |> normalize_phone()
+
+  # Only a changed list is checked, so legacy rows can still be disabled.
+  defp validate_phone_recipients(changeset) do
+    validate_change(changeset, :sms_recipients, fn :sms_recipients, recipients ->
+      if Enum.all?(recipients, &(Smsapi.normalize_phone(&1) == {:ok, &1})) do
+        []
+      else
+        [sms_recipients: "must contain E.164 phone numbers"]
+      end
+    end)
+  end
 
   defp validate_recipients(changeset, connection_field, recipient_field, channel) do
     recipients = get_field(changeset, recipient_field)
@@ -297,6 +411,24 @@ defmodule SymphonyElixir.Intake.Rules do
       add_error(changeset, :priority_ids, "must contain at least one non-empty ID")
     end
   end
+
+  # Jira IDs are interpolated into JQL, so only plain digits are accepted.
+  defp validate_jira_ids(changeset) do
+    changeset
+    |> validate_format(:source_id, ~r/\A[0-9]+\z/, message: "must contain only digits")
+    |> validate_change(:priority_ids, fn :priority_ids, ids -> priority_id_errors(ids) end)
+  end
+
+  defp priority_id_errors(ids) when is_list(ids) do
+    cond do
+      length(ids) > 100 -> [priority_ids: "must contain at most 100 IDs"]
+      not Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/\A[0-9]+\z/, &1))) -> [priority_ids: "must contain only digits"]
+      length(Enum.uniq(ids)) != length(ids) -> [priority_ids: "must not contain duplicates"]
+      true -> []
+    end
+  end
+
+  defp priority_id_errors(_ids), do: []
 
   defp validate_connection_kinds(changeset) do
     fields = [

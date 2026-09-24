@@ -11,6 +11,94 @@ defmodule SymphonyElixirWeb.Router do
     plug(:put_secure_browser_headers)
   end
 
+  pipeline :csrf_bootstrap do
+    plug(:fetch_session)
+    plug(:protect_from_forgery)
+  end
+
+  # Operator mutations need a JSON body, a same-origin Origin and the session
+  # CSRF token. Forge webhooks are routed outside this pipeline and keep
+  # their own signature checks.
+  pipeline :operator_api do
+    plug(:fetch_session)
+    plug(SymphonyElixirWeb.Plugs.OperatorMutation)
+  end
+
+  # Intake API. Declared before the /api/v1/:issue_identifier catch-all so the
+  # single-segment paths (/csrf, /automations, /integrations, /cases) are not captured.
+  scope "/api/v1", SymphonyElixirWeb do
+    pipe_through(:csrf_bootstrap)
+
+    get("/csrf", CsrfController, :show)
+  end
+
+  scope "/api/v1", SymphonyElixirWeb do
+    pipe_through(:operator_api)
+
+    get("/automations", AutomationController, :index)
+    post("/automations", AutomationController, :create)
+    post("/automations/check", AutomationController, :check_all)
+    # Keeps GET/PATCH /automations/check from being read as a rule ID.
+    get("/automations/check", AutomationController, :method_not_allowed)
+    patch("/automations/check", AutomationController, :method_not_allowed)
+    get("/automations/:id", AutomationController, :show)
+    patch("/automations/:id", AutomationController, :update)
+    post("/automations/:id/preview", AutomationController, :preview)
+    post("/automations/:id/activate", AutomationController, :activate)
+    post("/automations/:id/pause", AutomationController, :pause)
+    post("/automations/:id/check", AutomationController, :check)
+
+    get("/integrations", IntegrationController, :index)
+    post("/integrations", IntegrationController, :create)
+    get("/integrations/:id", IntegrationController, :show)
+    patch("/integrations/:id", IntegrationController, :update)
+    post("/integrations/:id/test", IntegrationController, :test)
+    post("/integrations/:id/test-send", IntegrationController, :test_send)
+    get("/integrations/:id/jira/boards", IntegrationController, :jira_boards)
+    get("/integrations/:id/jira/filters", IntegrationController, :jira_filters)
+    get("/integrations/:id/jira/priorities", IntegrationController, :jira_priorities)
+
+    get("/projects/:id/linear-options", LinearOptionsController, :show)
+    post("/projects/:id/linear-hold-label", LinearOptionsController, :create_hold_label)
+
+    get("/cases", CaseController, :index)
+    get("/cases/:ref", CaseController, :show)
+    get("/cases/:ref/events", CaseController, :events)
+    post("/cases/:ref/acknowledge", CaseActionController, :acknowledge)
+    post("/cases/:ref/approve-repair", CaseActionController, :approve_repair)
+    post("/cases/:ref/reanalyze", CaseActionController, :reanalyze)
+
+    post("/deliveries/:id/retry", DeliveryController, :retry)
+  end
+
+  # 405 for any other method on the intake paths, outside the mutation guard.
+  scope "/api/v1", SymphonyElixirWeb do
+    match(:*, "/csrf", CsrfController, :method_not_allowed)
+    match(:*, "/automations", AutomationController, :method_not_allowed)
+    match(:*, "/automations/check", AutomationController, :method_not_allowed)
+    match(:*, "/automations/:id", AutomationController, :method_not_allowed)
+    match(:*, "/automations/:id/preview", AutomationController, :method_not_allowed)
+    match(:*, "/automations/:id/activate", AutomationController, :method_not_allowed)
+    match(:*, "/automations/:id/pause", AutomationController, :method_not_allowed)
+    match(:*, "/automations/:id/check", AutomationController, :method_not_allowed)
+    match(:*, "/integrations", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id/test", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id/test-send", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id/jira/boards", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id/jira/filters", IntegrationController, :method_not_allowed)
+    match(:*, "/integrations/:id/jira/priorities", IntegrationController, :method_not_allowed)
+    match(:*, "/projects/:id/linear-options", LinearOptionsController, :method_not_allowed)
+    match(:*, "/projects/:id/linear-hold-label", LinearOptionsController, :method_not_allowed)
+    match(:*, "/cases", CaseController, :method_not_allowed)
+    match(:*, "/cases/:ref", CaseController, :method_not_allowed)
+    match(:*, "/cases/:ref/events", CaseController, :method_not_allowed)
+    match(:*, "/cases/:ref/acknowledge", CaseActionController, :method_not_allowed)
+    match(:*, "/cases/:ref/approve-repair", CaseActionController, :method_not_allowed)
+    match(:*, "/cases/:ref/reanalyze", CaseActionController, :method_not_allowed)
+    match(:*, "/deliveries/:id/retry", DeliveryController, :method_not_allowed)
+  end
+
   scope "/", SymphonyElixirWeb do
     get("/api/v1/state", ObservabilityApiController, :state)
     match(:*, "/api/v1/state", ObservabilityApiController, :method_not_allowed)

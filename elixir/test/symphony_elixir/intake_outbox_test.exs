@@ -231,8 +231,16 @@ defmodule SymphonyElixir.IntakeOutboxTest do
 
     assert email_claim.id == email.id
 
+    # Spec §13: effects_enabled=false blocks new analyses regardless of analysis.enabled.
+    assert :empty = Outbox.claim(claim_opts(now, effects_enabled: false, analysis_enabled: true))
+
+    assert :empty =
+             Outbox.claim(claim_opts(now, operation: "analysis", effects_enabled: false, analysis_enabled: true))
+
+    assert Repo.get!(IntegrationDelivery, analysis.id).status == "pending"
+
     assert {:ok, analysis_claim} =
-             Outbox.claim(claim_opts(now, effects_enabled: false, analysis_enabled: true))
+             Outbox.claim(claim_opts(now, effects_enabled: true, analysis_enabled: true))
 
     assert analysis_claim.id == analysis.id
 

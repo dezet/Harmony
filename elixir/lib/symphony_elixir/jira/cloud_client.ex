@@ -24,6 +24,16 @@ defmodule SymphonyElixir.Jira.CloudClient do
     paginate_offset(opts, "#{@api_prefix}/priority/search", "values")
   end
 
+  @doc "Read-only identity check used by the connection test."
+  @spec current_user(keyword()) :: :ok | {:error, map()}
+  def current_user(opts \\ []) do
+    case request(opts, :get, "#{@api_prefix}/myself") do
+      {:ok, %{body: %{"accountId" => account_id}}} when is_binary(account_id) and account_id != "" -> :ok
+      {:ok, _response} -> malformed_response()
+      {:error, _reason} = error -> error
+    end
+  end
+
   @spec list_comments(String.t()) :: {:ok, [map()]} | {:error, map()}
   @spec list_comments(String.t(), keyword()) :: {:ok, [map()]} | {:error, map()}
   def list_comments(issue_id_or_key, opts \\ []) when is_binary(issue_id_or_key) do
@@ -62,6 +72,15 @@ defmodule SymphonyElixir.Jira.CloudClient do
     with {:ok, id} <- numeric_id(board_id),
          {:ok, response} <- request(opts, :get, "/rest/agile/1.0/board/#{id}/configuration") do
       parse_board_filter(response.body)
+    end
+  end
+
+  @doc "Reads one saved filter; used to verify a rule source before activation."
+  @spec filter_exists(String.t() | integer(), keyword()) :: :ok | {:error, map()}
+  def filter_exists(filter_id, opts \\ []) do
+    with {:ok, id} <- numeric_id(filter_id),
+         {:ok, _response} <- request(opts, :get, "#{@api_prefix}/filter/#{id}") do
+      :ok
     end
   end
 

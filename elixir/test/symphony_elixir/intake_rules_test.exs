@@ -67,7 +67,7 @@ defmodule SymphonyElixir.IntakeRulesTest do
     assert rule.sms_recipients == ["+48123123123"]
   end
 
-  test "non-string recipient values are normalized to provider-ready text" do
+  test "recipients are normalized to provider-ready text and phones are deduplicated as E.164" do
     email = connection!("smtp", %{host: "smtp.example.test"})
     sms = connection!("smsapi", %{sender: "Harmony"})
 
@@ -77,12 +77,30 @@ defmodule SymphonyElixir.IntakeRulesTest do
         email_connection_id: email.id,
         email_recipients: [123],
         sms_connection_id: sms.id,
-        sms_recipients: [48_123_123_123]
+        sms_recipients: ["+48 123 123 123", "0048123123123", "+48-123-(123)-123", "+48 600 100 200"]
       })
 
     assert {:ok, rule} = Rules.create(attrs)
     assert rule.email_recipients == ["123"]
-    assert rule.sms_recipients == ["48123123123"]
+    assert rule.sms_recipients == ["+48123123123", "+48600100200"]
+
+    assert {:ok, patched} = Rules.patch(rule, %{sms_recipients: ["+48 600 100 200", "+48600100200"]})
+    assert patched.sms_recipients == ["+48600100200"]
+  end
+
+  test "phone recipients without an international prefix are rejected instead of dropped" do
+    sms = connection!("smsapi", %{sender: "Harmony"})
+    attrs = Map.merge(rule_attrs(), %{sms_connection_id: sms.id})
+
+    for invalid <- [[48_123_123_123], ["48123123123"], ["+48 123 123 123", "not-a-phone"], ["+0123456789"]] do
+      assert {:error, changeset} = Rules.create(%{attrs | sms_recipients: invalid})
+      assert {"must contain E.164 phone numbers", _meta} = changeset.errors[:sms_recipients]
+    end
+
+    assert {:ok, rule} = Rules.create(%{attrs | sms_recipients: ["+48123123123"]})
+    assert {:error, changeset} = Rules.patch(rule, %{sms_recipients: ["600100200"]})
+    assert {"must contain E.164 phone numbers", _meta} = changeset.errors[:sms_recipients]
+    assert Repo.get!(AutomationRule, rule.id).sms_recipients == ["+48123123123"]
   end
 
   test "a missing referenced connection is rejected by the foreign key" do
