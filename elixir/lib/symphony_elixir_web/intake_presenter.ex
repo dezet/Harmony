@@ -68,6 +68,7 @@ defmodule SymphonyElixirWeb.IntakePresenter do
           | {:validation, map()}
           | {:dependency, String.t()}
           | {:confirmation_required, String.t()}
+          | {:activation_blocked, String.t(), map()}
           | Ecto.Changeset.t()
 
   @spec rule(AutomationRule.t()) :: map()
@@ -230,6 +231,9 @@ defmodule SymphonyElixirWeb.IntakePresenter do
   def error(%Ecto.Changeset{} = changeset), do: error({:validation, changeset_errors(changeset)})
 
   def error({:validation, fields}) when is_map(fields), do: envelope(:validation_failed, fields)
+
+  def error({:activation_blocked, code, fields}) when is_binary(code) and is_map(fields),
+    do: {422, %{error: %{code: code, message: "Rule requirements for activation are not met", fields: fields}}}
 
   def error({:dependency, code}) when code in @dependency_codes,
     do: {503, %{error: %{code: code, message: "External service is unavailable or refused the request", fields: %{}}}}

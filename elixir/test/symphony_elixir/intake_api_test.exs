@@ -66,6 +66,9 @@ defmodule SymphonyElixir.IntakeApiTest do
           {:ok, %{status: 200, body: %{"points" => 12.5, "username" => "synthetic"}}}
         end
       ],
+      analysis_profile_fun: fn ->
+        Process.get(:analysis_profile_result, {:ok, %{model: "synthetic-analysis-model", effort: "medium"}})
+      end,
       case_action_opts: [
         analysis_profile: %{model: "synthetic-analysis-model", effort: "medium"},
         refresh_fun: fn ->
@@ -254,6 +257,7 @@ defmodule SymphonyElixir.IntakeApiTest do
 
     test "activation is a separate confirmed step and the kill switch blocks it", ctx do
       %{rule: rule} = rule_fixture!()
+      Process.put(:jira_priorities, [%{"id" => "1", "name" => "High"}, %{"id" => "2", "name" => "Medium"}])
 
       unconfirmed = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version})
       assert %{"error" => %{"code" => "confirmation_required", "fields" => %{"confirmed" => _}}} = json_response(unconfirmed, 422)
@@ -276,7 +280,7 @@ defmodule SymphonyElixir.IntakeApiTest do
       assert %{"rule" => %{"enabled" => false, "activation_status" => "idle"}} = json_response(paused, 200)
     end
 
-    test "check uses the scheduler lock, reports skipped rules and fails closed without a scheduler", ctx do
+    test "check claims one scan synchronously, returns its id and fails closed without a scheduler", ctx do
       %{rule: idle} = rule_fixture!()
 
       no_scheduler = mutate(ctx, :post, "/api/v1/automations/#{idle.id}/check", %{})
@@ -284,15 +288,23 @@ defmodule SymphonyElixir.IntakeApiTest do
 
       parent = self()
 
+      request_fun = fn request ->
+        send(parent, {:scan_jira_request, request[:method], URI.parse(request[:url]).path, self()})
+
+        receive do
+          :release_scan -> jira_route(request[:method], URI.parse(request[:url]).path, request)
+        after
+          5_000 -> {:error, :timeout}
+        end
+      end
+
       start_supervised!(
         {SymphonyElixir.Intake.Scheduler,
-         poller: fn rule_id, _opts ->
-           send(parent, {:scan_started, rule_id})
-           {:ok, :synthetic}
-         end,
+         run_opts: [request_fun: request_fun, analysis_enabled: true, analysis_model: "synthetic", analysis_effort: "medium"],
          tick_interval_ms: 0,
          enabled?: fn -> true end,
-         effects_enabled?: fn -> true end}
+         effects_enabled?: fn -> true end,
+         result_observer: fn rule_id, error_code -> send(parent, {:scan_reported, rule_id, error_code}) end}
       )
 
       inactive = mutate(ctx, :post, "/api/v1/automations/#{idle.id}/check", %{})
@@ -300,9 +312,14 @@ defmodule SymphonyElixir.IntakeApiTest do
 
       %{rule: active} = rule_fixture!(active: true, source_id: "43")
       accepted = mutate(ctx, :post, "/api/v1/automations/#{active.id}/check", %{})
-      assert %{"status" => "accepted", "rule_id" => rule_id} = json_response(accepted, 202)
+      assert %{"status" => "accepted", "rule_id" => rule_id, "scan_id" => scan_id} = json_response(accepted, 202)
       assert rule_id == active.id
-      assert_receive {:scan_started, ^rule_id}
+      assert %AutomationScan{rule_id: ^rule_id, status: "running"} = Repo.get!(AutomationScan, scan_id)
+
+      assert_receive {:scan_jira_request, :get, _path, worker}, 2_000
+      repeated = mutate(ctx, :post, "/api/v1/automations/#{active.id}/check", %{})
+      assert json_response(repeated, 409)["error"]["code"] == "scan_in_progress"
+      assert Repo.aggregate(from(scan in AutomationScan, where: scan.rule_id == ^rule_id), :count) == 1
 
       missing = mutate(ctx, :post, "/api/v1/automations/#{Ecto.UUID.generate()}/check", %{})
       assert json_response(missing, 404)["error"]["code"] == "not_found"
@@ -311,6 +328,96 @@ defmodule SymphonyElixir.IntakeApiTest do
       assert %{"accepted_rule_ids" => accepted_ids, "skipped" => skipped} = json_response(bulk, 202)
       assert idle.id not in accepted_ids
       assert %{"rule_id" => idle.id, "code" => "rule_not_active"} in skipped
+      assert %{"rule_id" => active.id, "code" => "scan_in_progress"} in skipped
+
+      send(worker, :release_scan)
+      release_scan_requests()
+      assert_receive {:scan_reported, ^rule_id, _code}, 2_000
+    end
+  end
+
+  describe "activation requirements" do
+    test "activation reads Jira, Linear, the analysis profile and channels without writing", ctx do
+      %{rule: rule} = rule_fixture!()
+      smtp = smtp_connection!()
+      sms = sms_connection!()
+
+      Repo.update_all(from(r in AutomationRule, where: r.id == ^rule.id),
+        set: [
+          email_connection_id: smtp.id,
+          email_recipients: ["oncall@example.test"],
+          sms_connection_id: sms.id,
+          sms_recipients: ["+48600100200"],
+          priority_ids: ["1"]
+        ]
+      )
+
+      conn = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version, "confirmed" => true})
+      assert %{"status" => "activating"} = json_response(conn, 202)
+
+      requests = drain_jira_requests()
+      assert {:get, _myself} = Enum.find(requests, fn {_method, url} -> String.ends_with?(url, "/rest/api/3/myself") end)
+      assert Enum.any?(requests, fn {_method, url} -> String.ends_with?(url, "/rest/agile/1.0/board/42/configuration") end)
+      assert Enum.any?(requests, fn {_method, url} -> String.ends_with?(url, "/rest/api/3/priority/search") end)
+      assert Enum.all?(requests, fn {method, _url} -> method == :get end)
+
+      assert_received {:linear_request, %{"query" => query}, _headers}
+      refute query =~ "mutation"
+      refute_mutation_sent()
+      assert Repo.aggregate(IntegrationDelivery, :count) == 0
+    end
+
+    test "a rule whose requirements are not met stays inactive with a specific 422 code", ctx do
+      other_team = "99999999-9999-4999-8999-999999999999"
+
+      cases = [
+        {[linear_states: [%{"id" => "backlog-id", "name" => "Backlog", "type" => "backlog"}]], "linear_todo_state_missing", "linear_todo_state_id"},
+        {[linear_states: [%{"id" => "other-todo", "name" => "Todo", "type" => "unstarted"}]], "linear_todo_state_mismatch", "linear_todo_state_id"},
+        {[linear_labels: [%{"id" => "bug", "name" => "bug"}]], "linear_hold_label_missing", "linear_hold_label_id"},
+        {[linear_team_id: other_team], "linear_team_missing", "linear_team_id"},
+        {[linear_projects: [%{"id" => "other-project", "name" => "Other"}]], "linear_project_missing", "linear_project_id"},
+        {[jira_priorities: [%{"id" => "1", "name" => "High"}]], "jira_priority_unknown", "priority_ids"},
+        {[jira_board_missing: true], "jira_source_not_found", "source_id"},
+        {[analysis_profile_result: {:error, :analysis_profile_unavailable}], "analysis_profile_unavailable", "analysis_profile"},
+        {[email_disabled: true], "email_connection_unavailable", "email_connection_id"}
+      ]
+
+      for {overrides, code, field} <- cases do
+        %{rule: rule} = rule_fixture!()
+        Process.put(:jira_priorities, [%{"id" => "1", "name" => "High"}, %{"id" => "2", "name" => "Medium"}])
+        Enum.each(overrides, fn {key, value} -> Process.put(key, value) end)
+
+        if overrides[:email_disabled] do
+          smtp = smtp_connection!()
+          Repo.update_all(from(c in IntegrationConnection, where: c.id == ^smtp.id), set: [enabled: false])
+
+          Repo.update_all(from(r in AutomationRule, where: r.id == ^rule.id),
+            set: [email_connection_id: smtp.id, email_recipients: ["oncall@example.test"]]
+          )
+        end
+
+        conn = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version, "confirmed" => true})
+        assert %{"error" => %{"code" => ^code, "fields" => fields}} = json_response(conn, 422), code
+        assert Map.has_key?(fields, field), "#{code}: #{inspect(fields)}"
+        assert %AutomationRule{enabled: false, activation_status: "idle"} = Repo.get!(AutomationRule, rule.id)
+
+        Enum.each(overrides, fn {key, _value} -> Process.delete(key) end)
+        drain_jira_requests()
+      end
+
+      assert Repo.aggregate(AutomationScan, :count) == 0
+    end
+
+    test "an unavailable dependency is 503 without the provider body", ctx do
+      %{rule: rule} = rule_fixture!()
+      Process.put(:jira_status, {500, "provider-body-canary"})
+
+      conn = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version, "confirmed" => true})
+      body = response(conn, 503)
+      assert Jason.decode!(body)["error"]["code"] == "jira_unavailable"
+      refute body =~ "provider-body-canary"
+      assert Repo.get!(AutomationRule, rule.id).activation_status == "idle"
+      refute_received {:linear_request, _payload, _headers}
     end
   end
 
@@ -804,6 +911,16 @@ defmodule SymphonyElixir.IntakeApiTest do
     end
   end
 
+  defp release_scan_requests do
+    receive do
+      {:scan_jira_request, _method, _path, worker} ->
+        send(worker, :release_scan)
+        release_scan_requests()
+    after
+      200 -> :ok
+    end
+  end
+
   defp refute_mutation_sent do
     receive do
       {:linear_request, %{"query" => query}, _headers} ->
@@ -1085,7 +1202,14 @@ defmodule SymphonyElixir.IntakeApiTest do
   end
 
   defp jira_route(:get, "/rest/api/3/myself", _request), do: ok(%{"accountId" => "synthetic"})
-  defp jira_route(:get, "/rest/agile/1.0/board/42/configuration", _request), do: ok(%{"filter" => %{"id" => "1001"}})
+
+  defp jira_route(:get, "/rest/agile/1.0/board/42/configuration", _request) do
+    if Process.get(:jira_board_missing),
+      do: {:ok, %{status: 404, body: %{"errorMessages" => ["missing"]}, headers: %{}}},
+      else: ok(%{"filter" => %{"id" => "1001"}})
+  end
+
+  defp jira_route(:get, "/rest/agile/1.0/board/43/configuration", _request), do: ok(%{"filter" => %{"id" => "1002"}})
 
   defp jira_route(:post, "/rest/api/3/search/jql", _request) do
     ok(%{"issues" => Process.get(:jira_issues, []), "isLast" => true})
@@ -1095,7 +1219,7 @@ defmodule SymphonyElixir.IntakeApiTest do
   defp jira_route(:get, "/rest/api/3/filter/search", _request), do: offset_page([%{"id" => "1001", "name" => "Pilne"}])
 
   defp jira_route(:get, "/rest/api/3/priority/search", _request) do
-    offset_page([%{"id" => "3", "name" => "Highest"}, %{"id" => "1", "name" => "High"}])
+    offset_page(Process.get(:jira_priorities, [%{"id" => "3", "name" => "Highest"}, %{"id" => "1", "name" => "High"}]))
   end
 
   defp jira_route(_method, _path, _request), do: {:ok, %{status: 404, body: %{}, headers: %{}}}
@@ -1118,17 +1242,18 @@ defmodule SymphonyElixir.IntakeApiTest do
             "pageInfo" => %{"hasNextPage" => false},
             "nodes" => [
               %{
-                "id" => @team_id,
+                "id" => Process.get(:linear_team_id, @team_id),
                 "key" => "OPS",
                 "name" => "Operations",
                 "states" => %{
-                  "nodes" => [
-                    %{"id" => "backlog-id", "name" => "Backlog", "type" => "backlog"},
-                    %{"id" => @todo_id, "name" => "Todo", "type" => "unstarted"}
-                  ]
+                  "nodes" =>
+                    Process.get(:linear_states, [
+                      %{"id" => "backlog-id", "name" => "Backlog", "type" => "backlog"},
+                      %{"id" => @todo_id, "name" => "Todo", "type" => "unstarted"}
+                    ])
                 },
                 "labels" => %{"nodes" => labels},
-                "projects" => %{"nodes" => [%{"id" => @project_uuid, "name" => "Portal"}]}
+                "projects" => %{"nodes" => Process.get(:linear_projects, [%{"id" => @project_uuid, "name" => "Portal"}])}
               }
             ]
           }

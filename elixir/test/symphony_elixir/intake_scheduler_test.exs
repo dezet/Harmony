@@ -1,13 +1,14 @@
 defmodule SymphonyElixir.IntakeSchedulerTest do
   use SymphonyElixir.TestSupport
 
+  import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SymphonyElixir.Intake.Rules
   alias SymphonyElixir.Intake.Scheduler
   alias SymphonyElixir.Repo
-  alias SymphonyElixir.Storage.{IntegrationConnection, Project}
+  alias SymphonyElixir.Storage.{AutomationRule, AutomationScan, IntegrationConnection, Project}
 
   setup do
     write_workflow_file!(Workflow.workflow_file_path(), intake_effects_enabled: true)
@@ -229,7 +230,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     :ok = Sandbox.allow(Repo, self(), scheduler)
     on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
 
-    assert :accepted = Scheduler.check_now(scheduler, rule.id)
+    assert {:accepted, nil} = Scheduler.check_now(scheduler, rule.id)
     assert_receive {:manual_scan_started, rule_id, worker}
     assert rule_id == rule.id
     assert {:error, :scan_in_progress} = Scheduler.check_now(scheduler, rule.id)
@@ -237,6 +238,63 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     send(worker, {:finish_manual_scan, rule.id})
     assert_receive {:manual_scan_finished, rule_id}
     assert rule_id == rule.id
+  end
+
+  test "a manual check claims its scan synchronously, returns the scan id and runs it asynchronously", %{
+    project: project,
+    connection: connection
+  } do
+    Sandbox.mode(Repo, {:shared, self()})
+
+    connection =
+      connection
+      |> Ecto.Changeset.change(settings: Map.put(connection.settings, "account_email", "ops@example.test"))
+      |> Repo.update!()
+
+    rule = active_rule!(project, connection, "claimed-manual", ~U[2026-09-23 12:00:00Z], 300)
+    parent = self()
+
+    request_fun = fn request ->
+      send(parent, {:jira_search, request[:method], self()})
+
+      receive do
+        :release_scan -> {:ok, %{status: 200, body: %{"issues" => [], "isLast" => true}}}
+      after
+        5_000 -> {:error, :timeout}
+      end
+    end
+
+    {:ok, scheduler} =
+      Scheduler.start_link(
+        name: nil,
+        tick_interval_ms: 0,
+        enabled?: true,
+        effects_enabled?: true,
+        run_opts: [
+          request_fun: request_fun,
+          analysis_enabled: true,
+          analysis_model: "synthetic-model",
+          analysis_effort: "medium"
+        ],
+        result_observer: fn rule_id, error_code -> send(parent, {:scan_reported, rule_id, error_code}) end
+      )
+
+    on_exit(fn -> if Process.alive?(scheduler), do: GenServer.stop(scheduler) end)
+
+    assert {:accepted, scan_id} = Scheduler.check_now(scheduler, rule.id)
+    assert %AutomationScan{rule_id: rule_id, status: "running", mode: "poll"} = Repo.get!(AutomationScan, scan_id)
+    assert rule_id == rule.id
+    assert %AutomationRule{lease_token: lease_token} = Repo.get!(AutomationRule, rule.id)
+    assert is_binary(lease_token)
+
+    assert_receive {:jira_search, :post, worker}, 2_000
+    assert {:error, :scan_in_progress} = Scheduler.check_now(scheduler, rule.id)
+    assert {:ok, []} = Scheduler.tick(scheduler, now: ~U[2026-09-23 13:00:00Z])
+    assert Repo.aggregate(from(scan in AutomationScan, where: scan.rule_id == ^rule.id), :count) == 1
+
+    send(worker, :release_scan)
+    assert_receive {:scan_reported, ^rule_id, nil}, 2_000
+    assert %AutomationScan{status: "succeeded"} = Repo.get!(AutomationScan, scan_id)
   end
 
   test "manual checks distinguish missing, inactive, leased, and activating rules", %{
@@ -279,7 +337,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     assert {:error, :not_found} = Scheduler.check_now(scheduler, Ecto.UUID.generate())
     assert {:error, :rule_not_active} = Scheduler.check_now(scheduler, inactive.id)
     assert {:error, :scan_in_progress} = Scheduler.check_now(scheduler, leased.id)
-    assert :accepted = Scheduler.check_now(scheduler, activating.id)
+    assert {:accepted, nil} = Scheduler.check_now(scheduler, activating.id)
     assert_receive {:activating_manual_started, rule_id, worker}
     assert rule_id == activating.id
 

@@ -194,6 +194,11 @@ hold-label creation and test-send return 409 `effects_disabled`; test-send also 
 `intake.enabled`. A connection test only reads identity (Jira `myself`, SMTP EHLO/TLS/AUTH without
 DATA, SMSAPI profile); test-send queues one case-less outbox delivery per `Idempotency-Key` that
 counts toward the hourly limit. SMTP hosts must be listed in `intake.smtp_allowed_hosts`.
+Activation first verifies with reads only: the Jira connection, identity, source and priorities;
+the Linear team, project, the state named exactly `Todo` and the hold label; the configured analysis
+profile; and every selected channel. An unmet requirement returns 422 with its code (for example
+`linear_todo_state_missing`), an unavailable provider 503. A manual check claims the scan
+synchronously and returns its `scan_id`; a scan already running returns 409.
 
 Minimal project config:
 

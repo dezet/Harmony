@@ -17,16 +17,29 @@ defmodule SymphonyElixir.Intake.Poller do
   @scan_claim_lock_id 1_212_978_509
   @max_active_scans 2
 
+  @type context :: %{scan: AutomationScan.t(), rule: AutomationRule.t(), lease_token: String.t()}
+
   @spec run(binary(), keyword()) :: {:ok, AutomationScan.t()} | {:error, term()}
   def run(rule_id, opts \\ []) when is_binary(rule_id) do
-    case start_scan(rule_id, opts) do
-      {:ok, context} ->
-        process_scan(context, opts)
-
-      {:error, reason} ->
-        {:error, reason}
+    case start(rule_id, opts) do
+      {:ok, context} -> resume(context, opts)
+      {:error, reason} -> {:error, reason}
     end
   end
+
+  @doc """
+  Claims the rule lease and records a running scan in one short transaction,
+  without contacting Jira. The same checks as `run/2` apply: an active lease
+  is `:scan_in_progress` and the global limit is `:scan_capacity`.
+  """
+  @spec start(binary(), keyword()) :: {:ok, context()} | {:error, term()}
+  def start(rule_id, opts \\ []) when is_binary(rule_id), do: start_scan(rule_id, opts)
+
+  @doc "Runs a scan claimed by `start/2` to completion under its lease."
+  @spec resume(context(), keyword()) :: {:ok, AutomationScan.t()} | {:error, term()}
+  def resume(%{scan: %AutomationScan{}, rule: %AutomationRule{}, lease_token: token} = context, opts \\ [])
+      when is_binary(token),
+      do: process_scan(context, opts)
 
   defp process_scan(context, opts) do
     with {:ok, profile} <- Intake.analysis_profile(opts),

@@ -4,14 +4,17 @@ defmodule SymphonyElixirWeb.AutomationController do
   activation, pause and manual "check now".
 
   Edits are optimistic on `config_version` (`version` in the body) and never
-  activate a rule. Activation is a separate confirmed step and is refused
-  while `intake.effects_enabled` is false.
+  activate a rule. Activation is a separate confirmed step, is refused while
+  `intake.effects_enabled` is false and first verifies the §7.1 requirements
+  with reads only (`ActivationCheck`); the checked `config_version` must still
+  be current when the rule is activated. A manual check returns the ID of the
+  scan it claimed.
   """
 
   use Phoenix.Controller, formats: [:json]
 
   alias Plug.Conn
-  alias SymphonyElixir.Intake.{Preview, Rules, Scheduler}
+  alias SymphonyElixir.Intake.{ActivationCheck, Preview, Rules, Scheduler}
   alias SymphonyElixirWeb.{IntakeParams, IntakePresenter}
 
   @rule_fields ~w(
@@ -86,9 +89,11 @@ defmodule SymphonyElixirWeb.AutomationController do
     with :ok <- IntakeParams.permit(body, ~w(version confirmed)),
          {:ok, version} <- IntakeParams.positive_integer(body, "version"),
          :ok <- IntakeParams.confirmed(body),
-         {:ok, rule_id} <- IntakeParams.uuid(id),
          :ok <- IntakeParams.effects_enabled(),
-         {:ok, rule} <- Rules.activate_versioned(rule_id, version) do
+         {:ok, current} <- Rules.fetch(id),
+         :ok <- if(current.config_version == version, do: :ok, else: {:error, :stale_version}),
+         :ok <- ActivationCheck.run(current, activation_opts()),
+         {:ok, rule} <- Rules.activate_versioned(current.id, version) do
       status = if rule.enabled, do: "enabled", else: rule.activation_status
       conn |> put_status(:accepted) |> json(%{status: status, rule: IntakePresenter.rule(rule)})
     else
@@ -114,8 +119,8 @@ defmodule SymphonyElixirWeb.AutomationController do
   def check(conn, %{"id" => id}) do
     with :ok <- IntakeParams.permit(conn.body_params, []),
          {:ok, rule_id} <- IntakeParams.uuid(id),
-         :accepted <- check_now(rule_id) do
-      conn |> put_status(:accepted) |> json(%{status: "accepted", rule_id: rule_id})
+         {:accepted, scan_id} <- check_now(rule_id) do
+      conn |> put_status(:accepted) |> json(%{status: "accepted", rule_id: rule_id, scan_id: scan_id})
     else
       {:error, reason} -> IntakePresenter.render_error(conn, reason)
     end
@@ -131,7 +136,7 @@ defmodule SymphonyElixirWeb.AutomationController do
       conn
       |> put_status(:accepted)
       |> json(%{
-        accepted_rule_ids: for({rule_id, :accepted} <- results, do: rule_id),
+        accepted_rule_ids: for({rule_id, {:accepted, _scan_id}} <- results, do: rule_id),
         skipped: for({rule_id, {:error, code}} <- results, do: %{rule_id: rule_id, code: Atom.to_string(code)})
       })
     else
@@ -141,6 +146,22 @@ defmodule SymphonyElixirWeb.AutomationController do
 
   @spec method_not_allowed(Conn.t(), map()) :: Conn.t()
   def method_not_allowed(conn, _params), do: IntakePresenter.render_error(conn, :method_not_allowed)
+
+  defp activation_opts do
+    linear_opts =
+      case IntakeParams.adapter(:linear_request_fun) do
+        nil -> []
+        request_fun -> [request_fun: request_fun]
+      end
+
+    [jira_opts: IntakeParams.jira_opts(), linear_opts: linear_opts]
+    |> then(fn opts ->
+      case IntakeParams.adapter(:analysis_profile_fun) do
+        nil -> opts
+        profile_fun -> Keyword.put(opts, :analysis_profile_fun, profile_fun)
+      end
+    end)
+  end
 
   defp check_rules(rule_ids) do
     Enum.reduce_while(rule_ids, {:ok, []}, fn rule_id, {:ok, acc} ->
@@ -155,7 +176,7 @@ defmodule SymphonyElixirWeb.AutomationController do
   # scheduler (intake disabled at boot) fails closed.
   defp check_now(rule_id) do
     case Scheduler.check_now(IntakeParams.adapter(:scheduler, Scheduler), rule_id) do
-      :accepted -> :accepted
+      {:accepted, scan_id} -> {:accepted, scan_id}
       {:error, reason} when is_atom(reason) -> {:error, reason}
     end
   catch

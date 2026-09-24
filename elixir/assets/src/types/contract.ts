@@ -752,6 +752,7 @@ export interface AutomationActivation {
 export interface AutomationCheck {
   status: "accepted";
   rule_id: string;
+  scan_id: string;
 }
 
 export interface AutomationBulkCheck {

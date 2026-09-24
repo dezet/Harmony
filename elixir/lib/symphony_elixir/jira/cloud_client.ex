@@ -75,6 +75,15 @@ defmodule SymphonyElixir.Jira.CloudClient do
     end
   end
 
+  @doc "Reads one saved filter; used to verify a rule source before activation."
+  @spec filter_exists(String.t() | integer(), keyword()) :: :ok | {:error, map()}
+  def filter_exists(filter_id, opts \\ []) do
+    with {:ok, id} <- numeric_id(filter_id),
+         {:ok, _response} <- request(opts, :get, "#{@api_prefix}/filter/#{id}") do
+      :ok
+    end
+  end
+
   @spec search_board_issues(String.t() | integer(), [String.t() | integer()], keyword()) ::
           {:ok, [Issue.t()]} | {:error, map()}
   def search_board_issues(board_id, priority_ids, opts \\ []) do
