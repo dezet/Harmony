@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -42,6 +42,8 @@ const sampleProject: Project = {
   linear_project_slug: "portal-linear",
   linear_team_key: "COD",
   linear_human_review_state: "Human Review",
+  display_name: "Portal klienta",
+  ui_color: "gold",
   config_version: 3,
   config: { review: { trigger: "@hreview" } },
   inserted_at: "2026-01-01T00:00:00Z",
@@ -240,5 +242,111 @@ describe("ProjectConfigForm (edit mode)", () => {
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
 
     expect(await screen.findByText("must be a JSON object")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectConfigForm (presentation)", () => {
+  function stubSave() {
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        new Response(JSON.stringify({ project: sampleProject }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function putBody(fetchMock: ReturnType<typeof stubSave>) {
+    const call = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/api/v1/projects/project-1") && init?.method === "PUT",
+    );
+    return JSON.parse(call?.[1]?.body as string);
+  }
+
+  it("offers the display name and three color swatches, purple by default", () => {
+    renderForm();
+
+    expect(screen.getByLabelText("Nazwa wyświetlana")).toHaveValue("");
+    const colors = screen.getByRole("radiogroup", { name: "Kolor projektu" });
+    const swatches = within(colors).getAllByRole("radio");
+    expect(swatches.map((radio) => radio.getAttribute("value"))).toEqual(["purple", "gold", "teal"]);
+    expect(within(colors).getByRole("radio", { name: "Fioletowy" })).toBeChecked();
+    expect(within(colors).getByRole("radio", { name: "Złoty" })).not.toBeChecked();
+    expect(within(colors).getByRole("radio", { name: "Morski" })).not.toBeChecked();
+    expect(screen.getByText(/nie oznacza stanu projektu/i)).toBeInTheDocument();
+  });
+
+  it("pre-fills the stored display name and color", async () => {
+    renderForm({ project: sampleProject });
+
+    expect(await screen.findByLabelText("Nazwa wyświetlana")).toHaveValue("Portal klienta");
+    expect(screen.getByRole("radio", { name: "Złoty" })).toBeChecked();
+  });
+
+  it("sends the chosen display name and color", async () => {
+    const fetchMock = stubSave();
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
+
+    await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
+    await userEvent.type(screen.getByLabelText("Nazwa wyświetlana"), "  Finanse  ");
+    await userEvent.click(screen.getByRole("radio", { name: "Morski" }));
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(putBody(fetchMock)).toMatchObject({ display_name: "Finanse", ui_color: "teal" }));
+  });
+
+  it("sends a cleared display name as null so the slug is shown", async () => {
+    const fetchMock = stubSave();
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Nazwa wyświetlana")).toHaveValue("Portal klienta"));
+
+    await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(putBody(fetchMock)).toMatchObject({ display_name: null, ui_color: "gold" }));
+  });
+
+  it("rejects a display name longer than 100 characters", async () => {
+    const fetchMock = stubSave();
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
+
+    await userEvent.clear(screen.getByLabelText("Nazwa wyświetlana"));
+    await userEvent.click(screen.getByLabelText("Nazwa wyświetlana"));
+    await userEvent.paste("a".repeat(101));
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Nazwa może mieć najwyżej 100 znaków")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nazwa wyświetlana")).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a server color error onto the swatches", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "validation_failed",
+                message: "Validation failed",
+                fields: { ui_color: ["is invalid"] },
+              },
+            }),
+            { status: 422, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+    renderForm({ project: sampleProject });
+    await waitFor(() => expect(screen.getByLabelText("Slug")).toHaveValue("portal"));
+
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("is invalid")).toBeInTheDocument();
   });
 });

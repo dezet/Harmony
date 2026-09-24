@@ -3,32 +3,34 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import { Breadcrumbs, crumbsFor } from "@/components/layout/Breadcrumbs";
 
+const labels = (pathname: string) => crumbsFor(pathname).map((c) => c.label);
+
 describe("crumbsFor", () => {
-  it("maps known paths to crumb trails", () => {
-    expect(crumbsFor("/")).toEqual([{ label: "Overview", to: "/" }]);
-    expect(crumbsFor("/runtime").map((c) => c.label)).toEqual(["Overview", "Runtime"]);
-    expect(crumbsFor("/projects").map((c) => c.label)).toEqual(["Overview", "Projects"]);
-    expect(crumbsFor("/projects/new").map((c) => c.label)).toEqual([
-      "Overview",
-      "Projects",
-      "New",
+  it("starts every trail at the team space and names the A sections in Polish", () => {
+    expect(labels("/")).toEqual(["Przestrzeń zespołu", "Centrum spraw"]);
+    expect(labels("/automations")).toEqual(["Przestrzeń zespołu", "Automatyzacje"]);
+    expect(labels("/integrations")).toEqual(["Przestrzeń zespołu", "Integracje"]);
+    expect(labels("/overview")).toEqual(["Przestrzeń zespołu", "Diagnostyka"]);
+    expect(labels("/runtime")).toEqual([
+      "Przestrzeń zespołu",
+      "Diagnostyka",
+      "Środowisko uruchomieniowe",
     ]);
-    expect(crumbsFor("/projects/p1/edit").map((c) => c.label)).toEqual([
-      "Overview",
-      "Projects",
-      "Edit",
-    ]);
-    expect(crumbsFor("/projects/alpha").map((c) => c.label)).toEqual([
-      "Overview",
-      "Projects",
-      "alpha",
-    ]);
+    expect(crumbsFor("/runtime").find((c) => c.label === "Diagnostyka")?.to).toBe("/overview");
+    expect(crumbsFor("/")[0].to).toBeUndefined();
+  });
+
+  it("keeps project and run deep-link trails", () => {
+    expect(labels("/projects")).toEqual(["Przestrzeń zespołu", "Projekty"]);
+    expect(labels("/projects/new")).toEqual(["Przestrzeń zespołu", "Projekty", "Nowy projekt"]);
+    expect(labels("/projects/p1/edit")).toEqual(["Przestrzeń zespołu", "Projekty", "Edycja"]);
+    expect(labels("/projects/alpha")).toEqual(["Przestrzeń zespołu", "Projekty", "alpha"]);
     expect(crumbsFor("/projects/alpha").find((c) => c.label === "alpha")?.to).toBe(
       "/projects/alpha",
     );
-    expect(crumbsFor("/projects/alpha/runs/COD-10").map((c) => c.label)).toEqual([
-      "Overview",
-      "Projects",
+    expect(labels("/projects/alpha/runs/COD-10")).toEqual([
+      "Przestrzeń zespołu",
+      "Projekty",
       "alpha",
       "COD-10",
     ]);
@@ -39,6 +41,10 @@ describe("crumbsFor", () => {
       "/projects/alpha/runs/COD-10",
     );
   });
+
+  it("names unknown paths as not found", () => {
+    expect(labels("/nope")).toEqual(["Przestrzeń zespołu", "Nie znaleziono"]);
+  });
 });
 
 describe("Breadcrumbs", () => {
@@ -48,11 +54,11 @@ describe("Breadcrumbs", () => {
         <Breadcrumbs />
       </MemoryRouter>,
     );
-    const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
+    const nav = screen.getByRole("navigation", { name: "Ścieżka" });
     expect(nav).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/projects");
-    // current crumb is text, not a link
-    expect(screen.queryByRole("link", { name: "New" })).not.toBeInTheDocument();
-    expect(screen.getByText("New")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Projekty" })).toHaveAttribute("href", "/projects");
+    expect(screen.queryByRole("link", { name: "Przestrzeń zespołu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Nowy projekt" })).not.toBeInTheDocument();
+    expect(screen.getByText("Nowy projekt")).toHaveAttribute("aria-current", "page");
   });
 });

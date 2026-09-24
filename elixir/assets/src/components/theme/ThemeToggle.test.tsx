@@ -18,11 +18,11 @@ describe("ThemeToggle", () => {
       </ThemeProvider>,
     );
 
-    const button = await screen.findByRole("button", { name: /switch to dark mode/i });
+    const button = await screen.findByRole("button", { name: "Włącz tryb ciemny" });
     await user.click(button);
     expect(document.documentElement.classList.contains("dark")).toBe(true);
 
-    await user.click(screen.getByRole("button", { name: /switch to light mode/i }));
+    await user.click(screen.getByRole("button", { name: "Włącz tryb jasny" }));
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 });

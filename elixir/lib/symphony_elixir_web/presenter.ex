@@ -34,6 +34,8 @@ defmodule SymphonyElixirWeb.Presenter do
         linear_project_slug: project.linear_project_slug,
         linear_team_key: project.linear_team_key,
         linear_human_review_state: project.linear_human_review_state,
+        display_name: project.display_name,
+        ui_color: project.ui_color,
         config_version: project.config_version
       },
       counts: %{

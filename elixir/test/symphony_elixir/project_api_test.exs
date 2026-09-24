@@ -111,6 +111,52 @@ defmodule SymphonyElixir.ProjectApiTest do
     assert body["project"]["forge_secret"] == "unset"
   end
 
+  @tag :db
+  test "create and show carry display_name and ui_color" do
+    :ok = checkout_repo(%{})
+
+    body =
+      json_response(json_post("/api/v1/projects", Map.merge(@valid, %{"display_name" => "Finanse", "ui_color" => "gold"})), 201)
+
+    assert %{"display_name" => "Finanse", "ui_color" => "gold"} = body["project"]
+
+    shown = json_response(get(build_conn(), "/api/v1/projects/#{body["project"]["id"]}"), 200)
+    assert %{"display_name" => "Finanse", "ui_color" => "gold"} = shown["project"]
+  end
+
+  @tag :db
+  test "a project without presentation reads as no name and purple" do
+    :ok = checkout_repo(%{})
+
+    body = json_response(json_post("/api/v1/projects", @valid), 201)
+    assert %{"display_name" => nil, "ui_color" => "purple"} = body["project"]
+  end
+
+  @tag :db
+  test "update without presentation keys keeps them, null clears the name" do
+    :ok = checkout_repo(%{})
+
+    %{"project" => %{"id" => id}} =
+      json_response(json_post("/api/v1/projects", Map.merge(@valid, %{"display_name" => "Finanse", "ui_color" => "teal"})), 201)
+
+    kept = json_response(json_put("/api/v1/projects/#{id}", @valid), 200)
+    assert %{"display_name" => "Finanse", "ui_color" => "teal"} = kept["project"]
+
+    cleared = json_response(json_put("/api/v1/projects/#{id}", Map.put(@valid, "display_name", nil)), 200)
+    assert %{"display_name" => nil, "ui_color" => "teal"} = cleared["project"]
+  end
+
+  @tag :db
+  test "rejects an unknown ui_color and a display name over 100 characters" do
+    :ok = checkout_repo(%{})
+
+    color = json_response(json_post("/api/v1/projects", Map.put(@valid, "ui_color", "red")), 422)
+    assert is_list(color["error"]["fields"]["ui_color"])
+
+    name = json_response(json_post("/api/v1/projects", Map.put(@valid, "display_name", String.duplicate("a", 101))), 422)
+    assert is_list(name["error"]["fields"]["display_name"])
+  end
+
   defp start_test_endpoint do
     endpoint_config =
       :symphony_elixir

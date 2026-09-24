@@ -52,5 +52,12 @@ defmodule SymphonyElixir.ProjectConfig.Sync do
       config_version: config.review.template_version,
       config: config.raw
     }
+    |> put_present(:display_name, config.display_name)
+    |> put_present(:ui_color, config.ui_color)
   end
+
+  # A presentation field the YAML omits stays out of the attrs, so the upsert
+  # keeps the value set in the UI.
+  defp put_present(attrs, _key, nil), do: attrs
+  defp put_present(attrs, key, value), do: Map.put(attrs, key, value)
 end

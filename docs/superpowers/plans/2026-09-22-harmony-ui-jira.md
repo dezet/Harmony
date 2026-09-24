@@ -511,13 +511,13 @@ Pliki: `elixir/assets/{AGENTS,CLAUDE}.md`, `FE/index.css`, `FE/App.tsx`,
 `FE/features/project/components/ProjectConfigForm.tsx` i jego test,
 `BT/project_config_test.exs`, `BT/storage_test.exs`.
 
-- [ ] T20.1 RED: sidebar ma polskie pozycje i nazwy projektu, aktywny projekt wskazuje filtr spraw.
-- [ ] T20.2 Zaktualizuj obie instrukcje motywu po angielsku; zakaz hand-edit ui/* pozostaje.
-- [ ] T20.3 Tokeny i typografia A, desktop/mobile shell, menu wysuwane; bez paska koncepcji/profilu demo.
-- [ ] T20.4 Nowe route i /overview jako zachowany ekran techniczny; nie usuń run deep-linków.
-- [ ] T20.5 display_name/ui_color działają w DB/API/YAML/form; brak pola w YAML nie kasuje ustawienia UI.
-- [ ] T20.6 Badge, hover, focus i reduced motion dokładnie §4.2; color nie oznacza health.
-- [ ] T20.7 Dark mode zachowuje układ A, nie przełącza na makietę B.
+- [x] T20.1 RED: sidebar ma polskie pozycje i nazwy projektu, aktywny projekt wskazuje filtr spraw.
+- [x] T20.2 Zaktualizuj obie instrukcje motywu po angielsku; zakaz hand-edit ui/* pozostaje.
+- [x] T20.3 Tokeny i typografia A, desktop/mobile shell, menu wysuwane; bez paska koncepcji/profilu demo.
+- [x] T20.4 Nowe route i /overview jako zachowany ekran techniczny; nie usuń run deep-linków.
+- [x] T20.5 display_name/ui_color działają w DB/API/YAML/form; brak pola w YAML nie kasuje ustawienia UI.
+- [x] T20.6 Badge, hover, focus i reduced motion dokładnie §4.2; color nie oznacza health.
+- [x] T20.7 Dark mode zachowuje układ A, nie przełącza na makietę B.
 
 Test: `cd elixir/assets && npm run test -- --run src/components/layout src/App.test.tsx src/components/theme src/features/project/components/ProjectConfigForm.test.tsx`;
 `cd elixir && mise exec -- mix test test/symphony_elixir/project_config_test.exs test/symphony_elixir/storage_test.exs`.

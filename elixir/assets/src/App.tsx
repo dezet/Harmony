@@ -5,6 +5,7 @@ import { RuntimePage } from "@/features/runtime/RuntimePage";
 import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
+import { CaseCenterPlaceholder, SectionPlaceholder } from "@/routes/SectionPlaceholder";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import { RunDetailPage } from "@/features/run/RunDetailPage";
 
@@ -12,7 +13,26 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<OverviewPage />} />
+        <Route index element={<CaseCenterPlaceholder />} />
+        <Route
+          path="automations"
+          element={
+            <SectionPlaceholder
+              title="Automatyzacje"
+              description="Reguły sprawdzania zgłoszeń Jira i ich stan."
+            />
+          }
+        />
+        <Route
+          path="integrations"
+          element={
+            <SectionPlaceholder
+              title="Integracje"
+              description="Połączenia, na których opiera się Twoja automatyzacja."
+            />
+          }
+        />
+        <Route path="overview" element={<OverviewPage />} />
         <Route path="runtime" element={<RuntimePage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/new" element={<ProjectFormPage />} />
