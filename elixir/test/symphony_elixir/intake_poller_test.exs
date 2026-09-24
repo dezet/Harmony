@@ -532,8 +532,9 @@ defmodule SymphonyElixir.IntakePollerTest do
 
     assert {:error, :scan_capacity} = Poller.run(third_rule.id, poll_opts([], request_fun: request_fun.(third_rule.id, false)))
 
-    send(first_worker, {:finish_claim, first_rule.id})
-    send(second_worker, {:finish_claim, second_rule.id})
+    # Claims may arrive in either order; release each worker with the rule it claimed.
+    send(first_worker, {:finish_claim, first_id})
+    send(second_worker, {:finish_claim, second_id})
     assert {:ok, first_scan} = Task.await(first, 5_000)
     assert {:ok, second_scan} = Task.await(second, 5_000)
     assert first_scan.status == "succeeded"

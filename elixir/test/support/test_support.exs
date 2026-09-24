@@ -33,7 +33,13 @@ defmodule SymphonyElixir.TestSupport do
           checkout_repo: 1
         ]
 
-      setup do
+      setup context do
+        # The application's global Orchestrator polls on its own timer and would read
+        # this test's WORKFLOW.md, work-source fetchers and tracker stubs mid-test.
+        # Tests drive their own named Orchestrators; tag `:global_orchestrator` only
+        # when a test asserts on the application's instance itself.
+        SymphonyElixir.TestSupport.set_global_orchestrator(Map.get(context, :global_orchestrator, false))
+
         workflow_root =
           Path.join(
             System.tmp_dir!(),
@@ -101,6 +107,23 @@ defmodule SymphonyElixir.TestSupport do
 
   def checkout_repo(_context) do
     :ok = Sandbox.checkout(Repo)
+  end
+
+  @doc false
+  def set_global_orchestrator(true) do
+    case Supervisor.restart_child(SymphonyElixir.Supervisor, SymphonyElixir.Orchestrator) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+      {:error, :running} -> :ok
+    end
+  end
+
+  def set_global_orchestrator(false) do
+    if Process.whereis(SymphonyElixir.Orchestrator) do
+      :ok = Supervisor.terminate_child(SymphonyElixir.Supervisor, SymphonyElixir.Orchestrator)
+    end
+
+    :ok
   end
 
   def stop_default_http_server do

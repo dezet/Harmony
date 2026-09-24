@@ -16,6 +16,7 @@ defmodule SymphonyElixir.IntakeSchedulerTest do
     {:ok, project: project!(), connection: jira_connection!()}
   end
 
+  @tag :global_orchestrator
   test "rule due times stay independent and a failed Jira scan does not block another rule", %{
     project: project,
     connection: connection

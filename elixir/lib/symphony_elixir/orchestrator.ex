@@ -1037,22 +1037,20 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
+  defp reconcile_stalled_running_issues(%State{running: running} = state) when map_size(running) == 0,
+    do: state
+
   defp reconcile_stalled_running_issues(%State{} = state) do
     timeout_ms = Config.settings!().codex.stall_timeout_ms
 
-    cond do
-      timeout_ms <= 0 ->
-        state
+    if timeout_ms <= 0 do
+      state
+    else
+      now = DateTime.utc_now()
 
-      map_size(state.running) == 0 ->
-        state
-
-      true ->
-        now = DateTime.utc_now()
-
-        Enum.reduce(state.running, state, fn {issue_id, running_entry}, state_acc ->
-          maybe_restart_stalled_issue(state_acc, issue_id, running_entry, now, timeout_ms)
-        end)
+      Enum.reduce(state.running, state, fn {issue_id, running_entry}, state_acc ->
+        maybe_restart_stalled_issue(state_acc, issue_id, running_entry, now, timeout_ms)
+      end)
     end
   end
 
@@ -2708,13 +2706,19 @@ defmodule SymphonyElixir.Orchestrator do
   defp record_session_completion_totals(state, _running_entry), do: state
 
   defp refresh_runtime_config(%State{} = state) do
-    config = Config.settings!()
+    case Config.settings() do
+      {:ok, config} ->
+        %{
+          state
+          | poll_interval_ms: config.polling.interval_ms,
+            max_concurrent_agents: config.agent.max_concurrent_agents
+        }
 
-    %{
-      state
-      | poll_interval_ms: config.polling.interval_ms,
-        max_concurrent_agents: config.agent.max_concurrent_agents
-    }
+      {:error, reason} ->
+        Logger.error("Invalid WORKFLOW.md reload reason=#{inspect(reason)}; keeping last known good runtime config")
+
+        state
+    end
   end
 
   defp retry_candidate_issue?(%Issue{} = issue, terminal_states) do

@@ -133,6 +133,26 @@ defmodule SymphonyElixir.ExtensionsTest do
     assert {:stop, {:missing_workflow_file, ^missing_path, :enoent}} = WorkflowStore.init([])
   end
 
+  test "workflow store applies every rewrite even while another process reads the file mid-write" do
+    ensure_workflow_store_running()
+    path = Workflow.workflow_file_path()
+    reader = spawn_link(fn -> read_workflow_until_stopped() end)
+
+    stale_revision =
+      Enum.find_value(1..2_000, fn revision ->
+        prompt = "Prompt revision #{revision}"
+        write_workflow_file!(path, prompt: prompt)
+
+        case Workflow.current() do
+          {:ok, %{prompt: ^prompt}} -> nil
+          {:ok, %{prompt: stale_prompt}} -> {revision, stale_prompt}
+        end
+      end)
+
+    send(reader, :stop)
+    assert stale_revision == nil
+  end
+
   test "workflow store start_link and poll callback cover missing-file error paths" do
     ensure_workflow_store_running()
     existing_path = Workflow.workflow_file_path()
@@ -701,6 +721,16 @@ defmodule SymphonyElixir.ExtensionsTest do
   end
 
   defp assert_eventually(_fun, 0), do: flunk("condition not met in time")
+
+  defp read_workflow_until_stopped do
+    receive do
+      :stop -> :ok
+    after
+      0 ->
+        _ = WorkflowStore.current()
+        read_workflow_until_stopped()
+    end
+  end
 
   defp ensure_workflow_store_running do
     if Process.whereis(WorkflowStore) do
