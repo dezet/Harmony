@@ -530,13 +530,13 @@ Nowe pliki pod `FE/features/cases/`: `CasesPage.tsx`, `CaseToolbar.tsx`,
 `CaseStats.tsx`, `CaseList.tsx`, `CaseListItem.tsx`, `useCaseFilters.ts`,
 `CasesPage.test.tsx`, `useCaseFilters.test.ts`.
 
-- [ ] T21.1 RED: przejście po URL z project/q/filter oraz Back/Forward odtwarza wynik.
-- [ ] T21.2 Lista domyślna, 25 rekordów + pokaż więcej, dane wyłącznie przez hooki T19.
-- [ ] T21.3 Stats i badge używają różnych udokumentowanych zakresów agregacji, nie długości items.
-- [ ] T21.4 Szukanie 300 ms debounce, anulowanie starego requestu, reset cursorów, empty result.
-- [ ] T21.5 Loading/error/offline i brak Jira reguł to zaprojektowane stany, nie spinner bez końca.
-- [ ] T21.6 „Sprawdź teraz”: pending→zakolejkowano, 409/503 obsłużone bez fałszywego sukcesu skanu.
-- [ ] T21.7 Preferencja view w localStorage, jawny URL ma pierwszeństwo; nie zapisuj danych spraw.
+- [x] T21.1 RED: przejście po URL z project/q/filter oraz Back/Forward odtwarza wynik.
+- [x] T21.2 Lista domyślna, 25 rekordów + pokaż więcej, dane wyłącznie przez hooki T19.
+- [x] T21.3 Stats i badge używają różnych udokumentowanych zakresów agregacji, nie długości items.
+- [x] T21.4 Szukanie 300 ms debounce, anulowanie starego requestu, reset cursorów, empty result.
+- [x] T21.5 Loading/error/offline i brak Jira reguł to zaprojektowane stany, nie spinner bez końca.
+- [x] T21.6 „Sprawdź teraz”: pending→zakolejkowano, 409/503 obsłużone bez fałszywego sukcesu skanu.
+- [x] T21.7 Preferencja view w localStorage, jawny URL ma pierwszeństwo; nie zapisuj danych spraw.
 
 Test: `cd elixir/assets && npm run test -- --run src/features/cases/CasesPage.test.tsx src/features/cases/useCaseFilters.test.ts`.
 Odbiór: AC01/AC02/AC17. Nie importuj danych z app.js makiety do runtime.

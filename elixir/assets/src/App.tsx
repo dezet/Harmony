@@ -5,7 +5,8 @@ import { RuntimePage } from "@/features/runtime/RuntimePage";
 import { ProjectsPage } from "@/routes/ProjectsPage";
 import { ProjectFormPage } from "@/routes/ProjectFormPage";
 import { NotFoundPage } from "@/routes/NotFoundPage";
-import { CaseCenterPlaceholder, SectionPlaceholder } from "@/routes/SectionPlaceholder";
+import { SectionPlaceholder } from "@/routes/SectionPlaceholder";
+import { CasesPage } from "@/features/cases/CasesPage";
 import { ProjectWorkspacePage } from "@/features/project/ProjectWorkspacePage";
 import { RunDetailPage } from "@/features/run/RunDetailPage";
 
@@ -13,7 +14,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<CaseCenterPlaceholder />} />
+        <Route index element={<CasesPage />} />
         <Route
           path="automations"
           element={

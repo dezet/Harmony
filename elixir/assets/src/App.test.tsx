@@ -49,6 +49,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/v1/projects")) return json({ projects: PROJECTS });
+      if (url.includes("/api/v1/automations")) return json({ items: [], meta: { next_cursor: null, page_size: 100 } });
       if (url.includes("/api/v1/cases")) {
         return json({
           items: [],
