@@ -1,11 +1,24 @@
 defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
   use Mix.Task
 
-  alias __MODULE__.SnapshotOrchestrator
-  alias SymphonyElixir.{Config, HttpServer, Storage}
+  alias __MODULE__.{IntakeSeed, ProviderStubs, SnapshotOrchestrator}
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SymphonyElixir.{Config, HttpServer, Repo, Storage}
+  alias SymphonyElixir.Storage.{Project, WorkRun}
 
   @moduledoc """
   Serves the React SPA against a deterministic browser E2E snapshot source.
+
+  The harness uses its own PostgreSQL database (`harmony_e2e`, or
+  `HARMONY_E2E_DATABASE_NAME`), created and migrated on start. After boot the
+  repo runs in a shared SQL sandbox: the seeded data and every write made by
+  the suite live in one transaction that is never committed, so each run
+  starts from the same data and the database keeps nothing afterwards.
+
+  Intake runs with a synthetic workflow (`intake.enabled: false`,
+  `intake.effects_enabled: true`): no scheduler or dispatcher starts, and the
+  Jira, Linear, SMTP and SMSAPI calls of the controllers go to in-process
+  stubs (`ProviderStubs`). Nothing leaves the machine.
   """
   @shortdoc "Serves a deterministic React SPA browser E2E harness"
 
@@ -34,14 +47,60 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     end
 
     install_runtime_guards()
+    prepare_database!()
     Mix.Task.run("app.start")
+    checkout_shared_sandbox!()
 
-    seed_e2e_project()
+    portal = seed_e2e_project()
+    :ok = IntakeSeed.seed!(portal)
 
     orchestrator = unique_orchestrator_name()
     {:ok, _pid} = SnapshotOrchestrator.start_link(name: orchestrator)
 
+    scheduler = :"#{__MODULE__}.SchedulerStub"
+    {:ok, _pid} = ProviderStubs.start_link(name: scheduler)
+    install_intake_adapters(scheduler)
+
     serve_forever(port, orchestrator)
+  end
+
+  @e2e_database "harmony_e2e"
+
+  # A dedicated database, created and migrated before the sandbox pool is
+  # installed; the development database is never touched.
+  defp prepare_database! do
+    database = System.get_env("HARMONY_E2E_DATABASE_NAME", @e2e_database)
+
+    unless database =~ "e2e" do
+      Mix.raise("HARMONY_E2E_DATABASE_NAME must name a dedicated E2E database (contain \"e2e\"), got: #{database}")
+    end
+
+    repo_config = Application.get_env(:symphony_elixir, Repo, [])
+    Application.put_env(:symphony_elixir, Repo, Keyword.merge(repo_config, database: database))
+
+    Mix.Task.run("ecto.create", ["--quiet"])
+    Mix.Task.run("ecto.migrate", ["--quiet"])
+
+    Application.put_env(
+      :symphony_elixir,
+      Repo,
+      Keyword.merge(repo_config, database: database, pool: Sandbox, ownership_timeout: :infinity)
+    )
+  end
+
+  defp checkout_shared_sandbox! do
+    :ok = Sandbox.checkout(Repo, ownership_timeout: :infinity)
+    :ok = Sandbox.mode(Repo, {:shared, self()})
+
+    if Repo.aggregate(Project, :count) != 0 do
+      Mix.raise("The E2E database is not empty; the harness only writes inside its sandbox and expects no committed rows")
+    end
+  end
+
+  defp install_intake_adapters(scheduler) do
+    endpoint = SymphonyElixirWeb.Endpoint
+    config = Application.get_env(:symphony_elixir, endpoint, [])
+    Application.put_env(:symphony_elixir, endpoint, Keyword.put(config, :intake_adapters, ProviderStubs.adapters(scheduler)))
   end
 
   defp serve_forever(port, orchestrator) do
@@ -75,6 +134,8 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     {:ok, project} =
       Storage.upsert_project(%{
         slug: "react-spa-e2e",
+        display_name: "Portal klienta",
+        ui_color: "purple",
         forge_owner: "harmony-e2e",
         forge_repo: "react-spa-e2e",
         forge_base_branch: "main",
@@ -86,24 +147,33 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
       })
 
     seed_e2e_run(project)
-    :ok
+    project
   end
 
-  # Upserts a durable WorkRun for COD-1 (the identifier that the snapshot
+  # Inserts a durable WorkRun for COD-1 (the identifier that the snapshot
   # version=1 puts in the running list) so that /api/v1/runs/COD-1 and
   # /api/v1/runs/COD-1/stream return real data in the e2e harness.
+  # Its `inserted_at` is fixed so the case projection orders it
+  # deterministically next to the seeded intake cases.
   defp seed_e2e_run(project) do
-    {:ok, work_run} =
-      Storage.upsert_work_run(%{
+    inserted_at = DateTime.add(IntakeSeed.base_time(), -15 * 60, :second)
+
+    work_run =
+      %WorkRun{}
+      |> WorkRun.changeset(%{
         project_id: project.id,
         type: "linear_issue",
         status: "running",
         dedupe_key: "e2e-cod-1",
         linear_issue_id: "react-spa-e2e-1",
         linear_identifier: "COD-1",
+        linear_url: "https://linear.app/harmony-e2e/issue/COD-1",
         agent_backend: "codex",
-        payload: %{}
+        payload: %{"title" => "Synchronizacja statusów zgłoszeń z Linear"}
       })
+      |> Ecto.Changeset.put_change(:inserted_at, inserted_at)
+      |> Ecto.Changeset.put_change(:updated_at, inserted_at)
+      |> Repo.insert!()
 
     unless Storage.work_event_exists?(project.id, work_run.id, "run_started") do
       {:ok, _event} =
@@ -144,14 +214,11 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
     :ok
   end
 
-  # Returns the absolute path for the e2e artifact PNG under the workspace root.
-  # Falls back to a system tmp dir if the workspace root is not configured.
+  # Returns the absolute path for the e2e artifact PNG under the workspace root
+  # of the synthetic workflow (a temporary directory of the harness).
   defp build_e2e_artifact_path(project) do
-    root =
-      case Config.settings() do
-        {:ok, settings} -> Path.expand(settings.workspace.root)
-        {:error, _} -> Path.join(System.tmp_dir!(), "harmony_e2e_workspaces")
-      end
+    {:ok, settings} = Config.settings()
+    root = Path.expand(settings.workspace.root)
 
     dir = Path.join([root, "e2e-#{project.id}", ".harmony", "artifacts"])
     Path.join(dir, "e2e-screenshot.png")
@@ -242,6 +309,48 @@ defmodule Mix.Tasks.Harmony.ReactSpaE2eServer do
 
   defp install_runtime_guards do
     Application.put_env(:symphony_elixir, :work_source_fetchers, [])
+    Application.put_env(:symphony_elixir, :workflow_file_path, write_e2e_workflow!())
+  end
+
+  # A synthetic workflow: no tracker token, no hooks, a temporary workspace
+  # root, intake disabled at boot (no scheduler, no dispatcher) but manual
+  # effects allowed so rule activation runs its read-only checks.
+  defp write_e2e_workflow! do
+    dir = Path.join(System.tmp_dir!(), "harmony-react-spa-e2e")
+    path = Path.join(dir, "WORKFLOW.md")
+    # The workspace root only holds the artifact PNG of the previous run.
+    File.rm_rf!(Path.join(dir, "workspaces"))
+    File.mkdir_p!(dir)
+
+    File.write!(path, """
+    ---
+    tracker:
+      kind: linear
+      project_slugs:
+        - react-spa-e2e
+      active_states:
+        - Todo
+        - In Progress
+      terminal_states:
+        - Done
+        - Canceled
+    polling:
+      interval_ms: 3600000
+    workspace:
+      root: #{Path.join(dir, "workspaces")}
+    agent:
+      max_concurrent_agents: 1
+    intake:
+      enabled: false
+      effects_enabled: true
+      public_url: https://harmony-e2e.example.test
+      smtp_allowed_hosts:
+        - smtp.e2e.example.test
+    ---
+    Synthetic React SPA E2E workflow; no agent is ever started.
+    """)
+
+    path
   end
 
   defmodule SnapshotOrchestrator do

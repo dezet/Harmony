@@ -639,16 +639,16 @@ Pliki: nowe `elixir/assets/e2e/{cases,automations,integrations}.spec.ts`,
 `harmony-visual.spec.ts`; istniejący `react-spa.spec.ts`,
 `elixir/lib/mix/tasks/harmony.react_spa_e2e_server.ex`.
 
-- [ ] T27.1 RED: dodaj przepływy na fixture T01, bez interceptu zastępującego całą aplikację obrazkiem.
-- [ ] T27.2 Desktop: wszystkie projekty→Finanse→Lista/Kanban→szczegół→oba linki→powrót.
-- [ ] T27.3 Mobile 390×844: hamburger, wybór projektu, dialog, focus restore, zero horizontal overflow.
-- [ ] T27.4 Sprawdź 1440×1050, 1024×900, 768×1024 i 390×844, także dark/reduced motion.
-- [ ] T27.5 Hover/focus wszystkich trzech kolorów: wyliczony kolor tła i biała kropka,
+- [x] T27.1 RED: dodaj przepływy na fixture T01, bez interceptu zastępującego całą aplikację obrazkiem.
+- [x] T27.2 Desktop: wszystkie projekty→Finanse→Lista/Kanban→szczegół→oba linki→powrót.
+- [x] T27.3 Mobile 390×844: hamburger, wybór projektu, dialog, focus restore, zero horizontal overflow.
+- [x] T27.4 Sprawdź 1440×1050, 1024×900, 768×1024 i 390×844, także dark/reduced motion.
+- [x] T27.5 Hover/focus wszystkich trzech kolorów: wyliczony kolor tła i biała kropka,
       duration 200 ms lub 0 przy reduced motion. Zrzut po zakończeniu transition.
-- [ ] T27.6 Filtry, wyszukiwanie, Back/Forward, reload i per-column pokaż więcej.
-- [ ] T27.7 Formularz: 15 min, jeden priorytet, oba kanały, zapisz→preview→potwierdź;
+- [x] T27.6 Filtry, wyszukiwanie, Back/Forward, reload i per-column pokaż więcej.
+- [x] T27.7 Formularz: 15 min, jeden priorytet, oba kanały, zapisz→preview→potwierdź;
       test backend zapewnia brak efektów przy samym preview.
-- [ ] T27.8 401/403/429/timeout/offline/reconnect/empty i konflikt zapisu mają widoczny stan.
+- [x] T27.8 401/403/429/timeout/offline/reconnect/empty i konflikt zapisu mają widoczny stan.
 - [ ] T27.9 Screenshoty bazowe zatwierdza człowiek przez porównanie z A.
       Zabronione automatyczne `--update-snapshots` tylko po to, aby test przeszedł.
 
