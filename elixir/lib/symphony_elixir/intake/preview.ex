@@ -67,7 +67,7 @@ defmodule SymphonyElixir.Intake.Preview do
       sample_limit: @sample_limit,
       match_count: match_count,
       truncated: match_count > @sample_limit,
-      warnings: warnings(rule, match_count, MapSet.size(linked))
+      warnings: warnings(rule, match_count, map_size(linked))
     }
   end
 
@@ -80,11 +80,13 @@ defmodule SymphonyElixir.Intake.Preview do
       priority_name: issue.priority_name,
       status_name: issue.status_name,
       url: if(is_binary(site_url), do: Issue.browse_url(issue, site_url)),
-      already_linked: MapSet.member?(linked, to_string(issue.id))
+      already_linked: Map.has_key?(linked, to_string(issue.id))
     }
   end
 
-  defp linked_issue_ids(_connection_id, []), do: MapSet.new()
+  # A plain map keyed by issue ID: `MapSet.new/0` and `MapSet.new/1` in two
+  # clauses give Dialyzer a union that breaks the opaque `MapSet.t()`.
+  defp linked_issue_ids(_connection_id, []), do: %{}
 
   defp linked_issue_ids(connection_id, issue_ids) do
     from(intake_case in IntakeCase,
@@ -92,7 +94,7 @@ defmodule SymphonyElixir.Intake.Preview do
       select: intake_case.jira_issue_id
     )
     |> Repo.all()
-    |> MapSet.new()
+    |> Map.new(&{&1, true})
   end
 
   defp warnings(rule, match_count, linked_count) do
