@@ -594,7 +594,7 @@ describe("T24.6 aktywacja wymaga zapisu i potwierdzenia", () => {
 
   it("odrzucenie aktywacji 422 pokazuje polskie powody przy polach", async () => {
     server.on(`POST /api/v1/automations/${RULE_ID}/activate`, () =>
-      apiError(422, "linear_todo_state_mismatch", {
+      apiError(422, "activation_blocked", {
         linear_todo_state_id: ["linear_todo_state_mismatch"],
         priority_ids: ["jira_priority_unknown"],
         analysis_profile: ["analysis_profile_unavailable"],

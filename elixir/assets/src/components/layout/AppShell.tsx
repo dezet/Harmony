@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Outlet } from "react-router-dom";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -23,8 +23,12 @@ function MobileNav() {
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/30 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none min-[851px]:hidden" />
         <Dialog.Popup className="fixed inset-y-0 left-0 z-50 w-[83%] overflow-y-auto shadow-[20px_0_70px_#0005] outline-none transition-transform duration-200 ease-[ease] data-ending-style:-translate-x-full data-starting-style:-translate-x-full motion-reduce:transition-none min-[601px]:w-3/4 min-[851px]:hidden">
           <Dialog.Title className="sr-only">Menu nawigacji</Dialog.Title>
-          <Dialog.Close className="sr-only rounded-[7px] bg-card px-3 py-2 text-xs text-foreground focus:not-sr-only focus:absolute focus:top-3 focus:right-3">
-            Zamknij menu
+          {/* Icon close in the menu header, styled like the case detail close. */}
+          <Dialog.Close
+            aria-label="Zamknij menu"
+            className="absolute top-[22px] right-3 z-10 inline-flex rounded-[5px] p-[7px] text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <X aria-hidden className="size-4" strokeWidth={1.6} />
           </Dialog.Close>
           <Sidebar className="min-h-full" onNavigate={() => setOpen(false)} />
         </Dialog.Popup>

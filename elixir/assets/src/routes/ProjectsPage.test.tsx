@@ -48,7 +48,9 @@ describe("ProjectsPage", () => {
     );
 
     renderPage();
-    await waitFor(() => expect(screen.getByText("portal")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("link", { name: "portal" })).toHaveAttribute("href", "/projects/portal"));
+    expect(screen.getByRole("heading", { level: 1, name: "Projekty" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edytuj projekt portal" })).toHaveAttribute("href", "/projects/1/edit");
     expect(screen.getByText("dezet/portal")).toBeInTheDocument();
   });
 
@@ -66,8 +68,8 @@ describe("ProjectsPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("No projects configured")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /new project/i })).toHaveAttribute(
+    expect(await screen.findByText("Brak skonfigurowanych projektów")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Nowy projekt" })).toHaveAttribute(
       "href",
       "/projects/new",
     );
@@ -89,7 +91,7 @@ describe("ProjectsPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Could not load projects")).toBeInTheDocument();
+    expect(await screen.findByText("Nie udało się wczytać projektów")).toBeInTheDocument();
     expect(screen.getByText("Database unavailable")).toBeInTheDocument();
   });
 });

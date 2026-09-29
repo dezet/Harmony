@@ -81,7 +81,8 @@ describe("RunDetailPage", () => {
     it("renders the status badge from the fixture", async () => {
       renderAt("/projects/alpha/runs/COD-10");
       // status = "running" in the detail fixture; may appear in both header and rail
-      const badges = await screen.findAllByText("running");
+      const badges = await screen.findAllByTitle("running");
+      expect(badges[0]).toHaveTextContent("W toku");
       expect(badges.length).toBeGreaterThan(0);
     });
 
@@ -123,14 +124,14 @@ describe("RunDetailPage", () => {
       );
     });
 
-    it("renders 'Run not found' heading", async () => {
+    it("renders the Polish not-found heading", async () => {
       renderAt("/projects/alpha/runs/MISSING-99");
-      expect(await screen.findByText("Run not found")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { level: 1, name: "Nie znaleziono przebiegu" })).toBeInTheDocument();
     });
 
     it("renders a back link to the project page", async () => {
       renderAt("/projects/alpha/runs/MISSING-99");
-      const link = await screen.findByRole("link", { name: /back to project/i });
+      const link = await screen.findByRole("link", { name: "Wróć do projektu" });
       expect(link).toHaveAttribute("href", "/projects/alpha");
     });
   });

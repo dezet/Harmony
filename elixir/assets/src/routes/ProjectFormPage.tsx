@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useProject } from "@/features/projects/useProjects";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -17,10 +18,14 @@ export function ProjectFormPage() {
     error: projectError,
   } = useProject(id);
 
+  useEffect(() => {
+    document.title = `${editing ? "Edycja projektu" : "Nowy projekt"} — Harmony`;
+  }, [editing]);
+
   if (editing && isProjectLoading) {
     return (
       <div className="max-w-xl space-y-4">
-        <h1 className="text-2xl font-semibold">Edit project</h1>
+        <h1 className="text-title">Edycja projektu</h1>
         <Skeleton className="h-96 w-full" />
       </div>
     );
@@ -32,23 +37,23 @@ export function ProjectFormPage() {
         ? projectError.message
         : projectError instanceof Error
           ? projectError.message
-          : "Unexpected error";
+          : "Nieoczekiwany błąd";
 
     return (
       <div className="max-w-xl space-y-4">
-        <h1 className="text-2xl font-semibold">Edit project</h1>
+        <h1 className="text-title">Edycja projektu</h1>
         <Alert variant="destructive">
-          <AlertTitle>Could not load project</AlertTitle>
+          <AlertTitle>Nie udało się wczytać projektu</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
-        <Button variant="outline" render={<Link to="/projects">Back to projects</Link>} />
+        <Button variant="outline" render={<Link to="/projects">Wróć do projektów</Link>} />
       </div>
     );
   }
 
   return (
     <div className="max-w-xl space-y-4">
-      <h1 className="text-2xl font-semibold">{editing ? "Edit project" : "New project"}</h1>
+      <h1 className="text-title">{editing ? "Edycja projektu" : "Nowy projekt"}</h1>
       <ProjectConfigForm
         project={editing ? project : undefined}
         onSuccess={() => navigate("/projects")}

@@ -71,7 +71,11 @@ Page features live under `src/features/{overview,runtime,projects,project,run,ca
 is implemented in `src/features/project/` and renders the Work tab with live data from
 `/api/v1/projects/:slug/summary` and `/api/v1/work_runs?project=:slug`. The run detail page
 (`/projects/:slug/runs/:identifier`) is implemented in `src/features/run/` and fetches from
-`/api/v1/runs/:identifier` (detail) and `/api/v1/runs/:identifier/stream` (paginated events).
+`/api/v1/runs/:identifier` (detail) and `/api/v1/runs/:identifier/stream` (paginated events). `/overview` is Diagnostyka: the agent-run
+overview plus the Jira intake metrics of `StatePayload.intake` (queues, unknown results, stale leases,
+analysis pool, channel errors, rule scans; aggregated in PostgreSQL by `Intake.Diagnostics`) and a
+link to `/runtime`. All kept screens use Polish labels and theme A tokens; raw tracker, forge and
+event data (states, event types, error codes) stay verbatim.
 
 ## Project workspace tabs
 
@@ -107,9 +111,10 @@ Two operator-initiated run actions are wired end-to-end:
     subprocess may keep running until it exhausts context/timeout. The operator-facing meaning is:
     stop tracking + free the slot + mark status `"stopped"` + prevent re-dispatch this cycle. If the
     tracker issue is still active on Linear the run may be re-dispatched on a later poll.
-  - Frontend: Stop button in `RunRail` enabled when `status === "running" | "blocked"`. Click opens
-    `ConfirmDialog` (shadcn `AlertDialog`, focus-trapped). Confirm fires `useStopRun` mutation
-    (no optimistic update); on success shows `toast.success("Run stop requested")` and invalidates
+  - Frontend: Stop button ("Zatrzymaj") in `RunRail` enabled when `status === "running" | "blocked"`.
+    Click opens `ConfirmDialog` (shadcn `AlertDialog`, focus-trapped) whose copy describes the soft
+    stop; never call it killing the process. Confirm fires `useStopRun` mutation (no optimistic
+    update); on success shows `toast.success("Zażądano zatrzymania przebiegu")` and invalidates
     `RUN_KEY`. On error surfaces `ApiError.code` in a toast.
   - HTTP responses: 200 `{status:"stopped"}`, 404 `run_not_found`, 409 `already_terminal`, 405 on
     wrong method.
@@ -117,26 +122,27 @@ Two operator-initiated run actions are wired end-to-end:
 - **Retry now:** `POST /api/v1/runs/:identifier/retry` → `RunActionController.retry/2` → `Orchestrator.retry_now/2`
   - Reuses `handle_info(:retry_issue)` by sending the message immediately (0ms timer) after
     cancelling the existing timer. The 0ms race with the poll tick is harmless — stale token → no-op.
-  - Frontend: Retry button in `RunRail` enabled when `status === "retrying"`. Fires directly
-    (no confirm dialog). Success toast: `"Retry scheduled"`.
+  - Frontend: Retry button ("Ponów teraz") in `RunRail` enabled when `status === "retrying"`. Fires
+    directly (no confirm dialog). Success toast: `"Zaplanowano ponowienie"`.
   - HTTP responses: 200 `{status:"retrying"}`, 404 `run_not_found`, 409 `not_retrying`, 405 on
     wrong method.
 
 - **Rate-limit rendering:** `RateLimits` in the Runtime page renders defensively: progress bars when
   a bucket (`primary`/`secondary`/`credits`) has numeric `used`+`limit`; key-value fallback for
-  unknown fields; `"No rate limit data."` when null/empty. The shape is opaque (Codex passes it
+  unknown fields; `"Brak danych o limitach zapytań."` when null/empty. The shape is opaque (Codex passes it
   through raw); only `limit_id`/`limit_name` + bucket presence are validated. `RateLimitsPayload`
   and `RateLimitBucket` types live in `contract.ts`.
 
 - **A11y additions (Phase 5):**
-  - RunStream list: `aria-live="polite"` `aria-atomic="false"` `aria-label="Run event stream"` for
-    live-append announcements.
+  - RunStream list: `aria-live="polite"` `aria-atomic="false"` `aria-label="Strumień zdarzeń przebiegu"`
+    for live-append announcements.
   - Filter buttons on RunStream: `aria-pressed` reflecting active state.
-  - Stop/Retry buttons: `aria-label="Stop this run"` / `"Stopping run…"` / `"Retry this run now"` /
-    `"Retrying run…"` (pending variants).
+  - Stop/Retry buttons: `aria-label="Zatrzymaj ten przebieg"` / `"Zatrzymywanie przebiegu…"` /
+    `"Ponów ten przebieg teraz"` / `"Ponawianie przebiegu…"` (pending variants).
   - ConfirmDialog: focus trap via shadcn AlertDialog (Base UI).
   - Page `document.title` effects: `"${identifier} — Harmony"` on RunDetailPage; slugged title on
-    ProjectWorkspacePage; `"Runtime — Harmony"` / `"Overview — Harmony"` on Runtime/OverviewPage.
+    ProjectWorkspacePage; `"Środowisko uruchomieniowe — Harmony"` / `"Diagnostyka — Harmony"` on
+    Runtime/OverviewPage.
   - Channel error: `useRunChannel(onConnectionError?)` triggers an inline `role=alert` Alert on
     RunDetailPage if the Phoenix channel join fails.
 

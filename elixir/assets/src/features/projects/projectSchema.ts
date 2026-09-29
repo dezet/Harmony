@@ -7,10 +7,10 @@ export const DISPLAY_NAME_MAX = 100;
 // The form holds `config` as a JSON string in a textarea. This schema validates
 // the string parses to a JSON object, and toProjectInput transforms it.
 export const projectFormSchema = yup.object({
-  slug: yup.string().trim().required("Slug is required"),
-  github_owner: yup.string().trim().required("GitHub owner is required"),
-  github_repo: yup.string().trim().required("GitHub repo is required"),
-  github_base_branch: yup.string().trim().required("Base branch is required"),
+  slug: yup.string().trim().required("Podaj slug projektu"),
+  github_owner: yup.string().trim().required("Wybierz repozytorium (właściciel)"),
+  github_repo: yup.string().trim().required("Wybierz repozytorium"),
+  github_base_branch: yup.string().trim().required("Podaj gałąź bazową"),
   display_name: yup
     .string()
     .trim()
@@ -32,14 +32,14 @@ export const projectFormSchema = yup.object({
   clear_tracker_secret: yup.boolean().default(false),
   config_version: yup
     .number()
-    .typeError("Version must be a number")
-    .integer()
-    .min(1)
-    .required("Version is required"),
+    .typeError("Wersja musi być liczbą")
+    .integer("Wersja musi być liczbą całkowitą")
+    .min(1, "Wersja musi być co najmniej 1")
+    .required("Podaj wersję konfiguracji"),
   config_json: yup
     .string()
     .default("{}")
-    .test("is-json-object", "Config must be a JSON object", (value) => {
+    .test("is-json-object", "Konfiguracja musi być obiektem JSON", (value) => {
       try {
         const parsed = JSON.parse(value || "{}");
         return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);

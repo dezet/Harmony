@@ -15,22 +15,24 @@ export function ActiveRuns({ rows }: { rows: RunningEntry[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Active runs</CardTitle>
+        <CardTitle>
+          <h2 className="text-[17px] font-semibold">Aktywne przebiegi</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No runs in progress.</p>
+          <p className="text-sm text-muted-foreground">Brak przebiegów w toku.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Issue</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Turns</TableHead>
-                <TableHead>Tokens</TableHead>
-                <TableHead>Elapsed</TableHead>
-                <TableHead>Last event</TableHead>
+                <TableHead>Zgłoszenie</TableHead>
+                <TableHead>Projekt</TableHead>
+                <TableHead>Stan w trackerze</TableHead>
+                <TableHead>Tury</TableHead>
+                <TableHead>Tokeny</TableHead>
+                <TableHead>Czas</TableHead>
+                <TableHead>Ostatnie zdarzenie</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -52,7 +54,7 @@ export function ActiveRuns({ rows }: { rows: RunningEntry[] }) {
                   <TableCell>{row.state}</TableCell>
                   <TableCell className="font-mono">{row.turn_count}</TableCell>
                   <TableCell className="font-mono">
-                    {row.tokens.total_tokens.toLocaleString("en-US")}
+                    {row.tokens.total_tokens.toLocaleString("pl-PL")}
                   </TableCell>
                   <TableCell>
                     <ElapsedTime since={row.started_at} />

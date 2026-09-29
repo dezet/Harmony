@@ -56,15 +56,15 @@ export function RunDetailPage() {
   if (detailError instanceof ApiError && detailError.status === 404) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-        <h1 className="text-2xl font-semibold">Run not found</h1>
+        <h1 className="text-title">Nie znaleziono przebiegu</h1>
         <p className="text-muted-foreground">
-          No run with identifier <span className="font-mono">{identifier}</span> exists.
+          Nie ma przebiegu o identyfikatorze <span className="font-mono">{identifier}</span>.
         </p>
         <Link
           to={`/projects/${slug}`}
           className="text-sm underline underline-offset-2"
         >
-          Back to project
+          Wróć do projektu
         </Link>
       </div>
     );
@@ -74,11 +74,11 @@ export function RunDetailPage() {
   if (detailError) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load run</AlertTitle>
+        <AlertTitle>Nie udało się wczytać przebiegu</AlertTitle>
         <AlertDescription>{detailError.message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void detailRefetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>
@@ -93,7 +93,7 @@ export function RunDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <h1 className="font-mono text-2xl font-semibold">{detail.identifier}</h1>
+        <h1 className="font-mono text-title max-[1150px]:text-[26px] max-[600px]:text-[27px]">{detail.identifier}</h1>
         <StatusBadge status={detail.status} />
       </div>
 
@@ -103,9 +103,9 @@ export function RunDetailPage() {
         <div className="space-y-3">
           {channelFailed && (
             <Alert variant="default">
-              <AlertTitle>Live updates unavailable</AlertTitle>
+              <AlertTitle>Aktualizacje na żywo są niedostępne</AlertTitle>
               <AlertDescription>
-                Showing the latest loaded data; reconnect by refreshing.
+                Widzisz ostatnio wczytane dane; odśwież stronę, aby połączyć się ponownie.
               </AlertDescription>
             </Alert>
           )}

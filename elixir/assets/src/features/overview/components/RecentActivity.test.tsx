@@ -18,6 +18,8 @@ describe("RecentActivity", () => {
     // newest (event_11) first; oldest two (event_0, event_1) dropped
     expect(items[0]).toHaveTextContent("event_11");
     expect(screen.queryByText("event_0")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ostatnia aktywność" })).toBeInTheDocument();
+    expect(items[0]).toHaveTextContent(/temu$/);
   });
 
   it("renders nothing without events", () => {

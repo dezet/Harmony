@@ -128,7 +128,7 @@ describe("AppRoutes", () => {
   it("keeps the technical overview at /overview", async () => {
     renderAt("/overview");
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument(),
+      expect(heading()).toHaveTextContent("Diagnostyka"),
     );
     expect(screen.getByRole("link", { name: "Diagnostyka" })).toHaveAttribute(
       "aria-current",
@@ -172,11 +172,11 @@ describe("AppRoutes", () => {
 
   it("shows the projects page at /projects", () => {
     renderAt("/projects");
-    expect(screen.getByRole("heading", { name: /projects/i })).toBeInTheDocument();
+    expect(heading()).toHaveTextContent("Projekty");
   });
 
   it("shows a not-found page for unknown routes", () => {
     renderAt("/nope");
-    expect(within(screen.getByRole("main")).getByText(/not found/i)).toBeInTheDocument();
+    expect(heading()).toHaveTextContent("Nie znaleziono strony");
   });
 });

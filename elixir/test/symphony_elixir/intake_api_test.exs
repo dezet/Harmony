@@ -371,7 +371,7 @@ defmodule SymphonyElixir.IntakeApiTest do
       assert Repo.aggregate(IntegrationDelivery, :count) == 0
     end
 
-    test "a rule whose requirements are not met stays inactive with a specific 422 code", ctx do
+    test "a rule whose requirements are not met stays inactive with activation_blocked and per-field codes", ctx do
       other_team = "99999999-9999-4999-8999-999999999999"
 
       cases = [
@@ -401,8 +401,9 @@ defmodule SymphonyElixir.IntakeApiTest do
         end
 
         conn = mutate(ctx, :post, "/api/v1/automations/#{rule.id}/activate", %{"version" => rule.config_version, "confirmed" => true})
-        assert %{"error" => %{"code" => ^code, "fields" => fields}} = json_response(conn, 422), code
-        assert Map.has_key?(fields, field), "#{code}: #{inspect(fields)}"
+        assert %{"error" => %{"code" => "activation_blocked", "fields" => fields}} = json_response(conn, 422), code
+        assert code in Map.get(fields, field, []), "#{code}: #{inspect(fields)}"
+        assert Enum.all?(Map.values(fields), &(is_list(&1) and &1 != [] and Enum.all?(&1, fn value -> value =~ ~r/^[a-z0-9_]+$/ end)))
         assert %AutomationRule{enabled: false, activation_status: "idle"} = Repo.get!(AutomationRule, rule.id)
 
         Enum.each(overrides, fn {key, _value} -> Process.delete(key) end)

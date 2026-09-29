@@ -17,7 +17,7 @@ export function ConfigurationTab({ projectId, slug }: ConfigurationTabProps) {
   const { data: project, isLoading, error, refetch } = useProject(projectId);
 
   function handleSuccess() {
-    toast.success("Configuration saved");
+    toast.success("Zapisano konfigurację");
     void queryClient.invalidateQueries({ queryKey: PROJECT_SUMMARY_KEY(slug) });
   }
 
@@ -33,14 +33,14 @@ export function ConfigurationTab({ projectId, slug }: ConfigurationTabProps) {
   }
 
   if (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error";
+    const message = error instanceof Error ? error.message : "Nieoczekiwany błąd";
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load configuration</AlertTitle>
+        <AlertTitle>Nie udało się wczytać konfiguracji</AlertTitle>
         <AlertDescription>{message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>

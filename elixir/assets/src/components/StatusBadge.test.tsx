@@ -3,40 +3,44 @@ import { describe, it, expect } from "vitest";
 import { StatusBadge } from "@/components/StatusBadge";
 
 describe("StatusBadge", () => {
-  it("renders the raw status text", () => {
-    render(<StatusBadge status="running" />);
-    expect(screen.getByText("running")).toBeInTheDocument();
+  it.each([
+    ["queued", "W kolejce"],
+    ["running", "W toku"],
+    ["retrying", "Ponawianie"],
+    ["blocked", "Zablokowany"],
+    ["failed", "Nieudany"],
+    ["stopped", "Zatrzymany"],
+    ["human_review", "Przegląd człowieka"],
+    ["completed", "Zakończony"],
+    ["succeeded", "Zakończony sukcesem"],
+    ["handed_off", "Przekazany"],
+    ["cancelled", "Anulowany"],
+  ])("labels the Harmony run status %s in Polish and keeps the raw value", (status, label) => {
+    render(<StatusBadge status={status} />);
+    const badge = screen.getByText(label);
+    expect(badge).toHaveAttribute("data-slot", "badge");
+    expect(badge).toHaveAttribute("title", status);
   });
 
-  it("renders secondary variant for completed", () => {
-    const { container } = render(<StatusBadge status="completed" />);
-    // secondary badge has bg-secondary class
-    expect(container.querySelector("[data-slot=badge]")).toBeTruthy();
-    expect(screen.getByText("completed")).toBeInTheDocument();
+  it("uses the destructive variant for failed and blocked runs", () => {
+    render(
+      <>
+        <StatusBadge status="failed" />
+        <StatusBadge status="blocked" />
+      </>,
+    );
+    expect(screen.getByText("Nieudany")).toHaveAttribute("data-variant", "destructive");
+    expect(screen.getByText("Zablokowany")).toHaveAttribute("data-variant", "destructive");
   });
 
-  it("renders destructive variant for failed", () => {
-    render(<StatusBadge status="failed" />);
-    expect(screen.getByText("failed")).toBeInTheDocument();
-  });
-
-  it("renders destructive variant for blocked", () => {
-    render(<StatusBadge status="blocked" />);
-    expect(screen.getByText("blocked")).toBeInTheDocument();
-  });
-
-  it("renders outline variant for running", () => {
-    render(<StatusBadge status="running" />);
-    expect(screen.getByText("running")).toBeInTheDocument();
-  });
-
-  it("renders outline variant for queued", () => {
-    render(<StatusBadge status="queued" />);
-    expect(screen.getByText("queued")).toBeInTheDocument();
-  });
-
-  it("renders outline variant for unknown status", () => {
+  it("shows an unknown historical status verbatim instead of hiding it", () => {
     render(<StatusBadge status="someUnknownStatus" />);
     expect(screen.getByText("someUnknownStatus")).toBeInTheDocument();
+  });
+
+  it("keeps external raw data (e.g. a CI status) untranslated", () => {
+    render(<StatusBadge status="running" raw />);
+    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.queryByText("W toku")).not.toBeInTheDocument();
   });
 });

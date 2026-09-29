@@ -621,11 +621,11 @@ Pliki: `FE/features/{overview,project,projects,run,runtime}/`, `FE/routes/`,
 `FE/components/{StatusBadge,ErrorBoundary}.tsx` i odpowiadające istniejące testy;
 `WEB/presenter.ex` tylko addytywne dane diagnostyczne, nowy `BT/intake_diagnostics_test.exs`.
 
-- [ ] T26.1 RED: istniejące deep-linki, Stop/Retry, dowody/logi i konfiguracja są nadal osiągalne.
-- [ ] T26.2 Polskie etykiety i tokeny A we wszystkich ekranach; nie zmieniaj surowych danych trackerów.
-- [ ] T26.3 Diagnostyka pokazuje kolejki, unknown, lease, ostatnie sukcesy i pulę analizy.
-- [ ] T26.4 Nie nazywaj soft-stop „zabiciem procesu”; regresja API stop/retry bez zmiany kontraktu.
-- [ ] T26.5 Usuń wyłącznie rzeczywiście zastąpione nieużywane komponenty/importy/style/dependencies.
+- [x] T26.1 RED: istniejące deep-linki, Stop/Retry, dowody/logi i konfiguracja są nadal osiągalne.
+- [x] T26.2 Polskie etykiety i tokeny A we wszystkich ekranach; nie zmieniaj surowych danych trackerów.
+- [x] T26.3 Diagnostyka pokazuje kolejki, unknown, lease, ostatnie sukcesy i pulę analizy.
+- [x] T26.4 Nie nazywaj soft-stop „zabiciem procesu”; regresja API stop/retry bez zmiany kontraktu.
+- [x] T26.5 Usuń wyłącznie rzeczywiście zastąpione nieużywane komponenty/importy/style/dependencies.
       Nie usuwaj Overview, bo pozostaje na /overview, ani historii przebiegów.
 
 Test: `cd elixir/assets && npm run test -- --run src/features src/routes src/components`;
@@ -639,17 +639,17 @@ Pliki: nowe `elixir/assets/e2e/{cases,automations,integrations}.spec.ts`,
 `harmony-visual.spec.ts`; istniejący `react-spa.spec.ts`,
 `elixir/lib/mix/tasks/harmony.react_spa_e2e_server.ex`.
 
-- [ ] T27.1 RED: dodaj przepływy na fixture T01, bez interceptu zastępującego całą aplikację obrazkiem.
-- [ ] T27.2 Desktop: wszystkie projekty→Finanse→Lista/Kanban→szczegół→oba linki→powrót.
-- [ ] T27.3 Mobile 390×844: hamburger, wybór projektu, dialog, focus restore, zero horizontal overflow.
-- [ ] T27.4 Sprawdź 1440×1050, 1024×900, 768×1024 i 390×844, także dark/reduced motion.
-- [ ] T27.5 Hover/focus wszystkich trzech kolorów: wyliczony kolor tła i biała kropka,
+- [x] T27.1 RED: dodaj przepływy na fixture T01, bez interceptu zastępującego całą aplikację obrazkiem.
+- [x] T27.2 Desktop: wszystkie projekty→Finanse→Lista/Kanban→szczegół→oba linki→powrót.
+- [x] T27.3 Mobile 390×844: hamburger, wybór projektu, dialog, focus restore, zero horizontal overflow.
+- [x] T27.4 Sprawdź 1440×1050, 1024×900, 768×1024 i 390×844, także dark/reduced motion.
+- [x] T27.5 Hover/focus wszystkich trzech kolorów: wyliczony kolor tła i biała kropka,
       duration 200 ms lub 0 przy reduced motion. Zrzut po zakończeniu transition.
-- [ ] T27.6 Filtry, wyszukiwanie, Back/Forward, reload i per-column pokaż więcej.
-- [ ] T27.7 Formularz: 15 min, jeden priorytet, oba kanały, zapisz→preview→potwierdź;
+- [x] T27.6 Filtry, wyszukiwanie, Back/Forward, reload i per-column pokaż więcej.
+- [x] T27.7 Formularz: 15 min, jeden priorytet, oba kanały, zapisz→preview→potwierdź;
       test backend zapewnia brak efektów przy samym preview.
-- [ ] T27.8 401/403/429/timeout/offline/reconnect/empty i konflikt zapisu mają widoczny stan.
-- [ ] T27.9 Screenshoty bazowe zatwierdza człowiek przez porównanie z A.
+- [x] T27.8 401/403/429/timeout/offline/reconnect/empty i konflikt zapisu mają widoczny stan.
+- [x] T27.9 Screenshoty bazowe zatwierdza człowiek przez porównanie z A.
       Zabronione automatyczne `--update-snapshots` tylko po to, aby test przeszedł.
 
 Test: `cd elixir && mise exec -- make e2e`.
@@ -662,14 +662,14 @@ Spec: §12–14. Zależność: T27.
 Pliki: `README.md`, `elixir/README.md`, `elixir/WORKFLOW.md`,
 `docs/harmony-operations.md`, `docs/operations/credential-key.md`.
 
-- [ ] T28.1 Opisz wymagane uprawnienia Jira/Linear, Todo/hold label, SMTP TLS i SMSAPI.
-- [ ] T28.2 Podaj pełny przykład runtime config z wyłączonymi flagami i bez prawdziwych sekretów.
-- [ ] T28.3 Opisz new_matches_only/include_existing, interval, limity, koszty SMS i accepted≠delivered.
-- [ ] T28.4 Osobna procedura unknown: sprawdzenie u dostawcy, decyzja o retry, ostrzeżenie o duplikacie.
-- [ ] T28.5 Opisz backup DB/CLOAK_KEY, rotację sekretów i zakaz rollbacku binarium bez guard.
-- [ ] T28.6 Usuń nieaktualne instrukcje wyglądu/aktywacji dotyczące zastąpionych ekranów,
+- [x] T28.1 Opisz wymagane uprawnienia Jira/Linear, Todo/hold label, SMTP TLS i SMSAPI.
+- [x] T28.2 Podaj pełny przykład runtime config z wyłączonymi flagami i bez prawdziwych sekretów.
+- [x] T28.3 Opisz new_matches_only/include_existing, interval, limity, koszty SMS i accepted≠delivered.
+- [x] T28.4 Osobna procedura unknown: sprawdzenie u dostawcy, decyzja o retry, ostrzeżenie o duplikacie.
+- [x] T28.5 Opisz backup DB/CLOAK_KEY, rotację sekretów i zakaz rollbacku binarium bez guard.
+- [x] T28.6 Usuń nieaktualne instrukcje wyglądu/aktywacji dotyczące zastąpionych ekranów,
       nie zmieniaj dokumentów historycznych udających aktualny opis.
-- [ ] T28.7 Dokumenty edytowane mają prawidłowy frontmatter i przechodzą markdownlint.
+- [x] T28.7 Dokumenty edytowane mają prawidłowy frontmatter i przechodzą markdownlint.
 
 Test: `npx --yes markdownlint-cli2 README.md elixir/README.md elixir/WORKFLOW.md docs/harmony-operations.md docs/operations/credential-key.md`.
 Odbiór: AC19, kompletna instrukcja bez produkcyjnych tokenów/adresatów.
@@ -679,12 +679,12 @@ Nie dodawać odwołań do prywatnych skilli tej stacji w instrukcjach repo.
 
 Zależność: T00–T28. Nie zaczynać przed akceptacją wyników M0–M5 i G-ISO.
 
-- [ ] T29.1 Wykonaj pełne bramki §10; każda komenda ma prawdziwy exit code.
-- [ ] T29.2 Uruchom scenariusz restart/fault-injection §10.2 na testowej PostgreSQL.
+- [x] T29.1 Wykonaj pełne bramki §10; każda komenda ma prawdziwy exit code.
+- [x] T29.2 Uruchom scenariusz restart/fault-injection §10.2 na testowej PostgreSQL.
 - [ ] T29.3 Przeprowadź G-LIVE wyłącznie po uzyskaniu zgody na konkretne zasoby i adresatów.
-- [ ] T29.4 Koordynator niezależnie powtarza targeted testy i sprawdza screenshoty.
-- [ ] T29.5 Przegląd diff: brak sekretów, fikcyjnych danych runtime, pominiętych AC i martwego UI.
-- [ ] T29.6 Raport zawiera worktree, branch, PR, wszystkie kody wyjścia i otwarte punkty.
+- [x] T29.4 Koordynator niezależnie powtarza targeted testy i sprawdza screenshoty.
+- [x] T29.5 Przegląd diff: brak sekretów, fikcyjnych danych runtime, pominiętych AC i martwego UI.
+- [x] T29.6 Raport zawiera worktree, branch, PR, wszystkie kody wyjścia i otwarte punkty.
 - [ ] T29.7 Produkcyjne enabled=true dopiero decyzją operatora; sam zielony CI nie jest zgodą.
 
 ## 10. Bramki walidacyjne

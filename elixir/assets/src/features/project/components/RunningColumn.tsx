@@ -12,11 +12,11 @@ export function RunningColumn({ rows, slug }: RunningColumnProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Running</CardTitle>
+        <CardTitle>Przebiegi w toku</CardTitle>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No runs in progress.</p>
+          <p className="text-sm text-muted-foreground">Brak przebiegów w toku.</p>
         ) : (
           <ul className="space-y-2">
             {rows.map((row) => (
@@ -30,7 +30,7 @@ export function RunningColumn({ rows, slug }: RunningColumnProps) {
                   </Link>
                   <span className="text-muted-foreground">{row.state}</span>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {row.turn_count} turns
+                    tury: {row.turn_count}
                   </span>
                   <ElapsedTime since={row.started_at} />
                 </div>

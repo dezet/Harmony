@@ -208,6 +208,15 @@ defmodule SymphonyElixir.IntakeRulesTest do
     assert patched.config_version == 2
   end
 
+  test "snapshot names the project by its display name and falls back to the slug" do
+    assert {:ok, rule} = Rules.create(rule_attrs())
+    project = Repo.get!(Project, rule.project_id)
+    assert Rules.snapshot(rule).project_name == project.slug
+
+    project |> Project.changeset(%{display_name: "Finanse"}) |> Repo.update!()
+    assert Rules.snapshot(rule).project_name == "Finanse"
+  end
+
   test "changing source disables an active rule and target fields stay immutable" do
     assert {:ok, rule} = Rules.create(rule_attrs())
     assert {:ok, active} = Rules.activate(rule)

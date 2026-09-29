@@ -43,10 +43,10 @@ describe("NeedsAttention", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByText("Zablokowany")).toBeInTheDocument();
     expect(screen.getByText("sandbox denied")).toBeInTheDocument();
-    expect(screen.getByText("Retry failing")).toBeInTheDocument();
-    expect(screen.getByText(/agent timeout/)).toBeInTheDocument();
+    expect(screen.getByText("Ponawianie z błędem")).toBeInTheDocument();
+    expect(screen.getByText("Próba #3: agent timeout")).toBeInTheDocument();
     // HAR-42 has a project slug → should be a link
     const link = screen.getByRole("link", { name: "HAR-42" });
     expect(link).toHaveAttribute("href", "/projects/alpha/runs/HAR-42");
@@ -61,6 +61,6 @@ describe("NeedsAttention", () => {
         <NeedsAttention state={{ generated_at: "2026-06-12T00:00:00Z" }} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/all clear/i)).toBeInTheDocument();
+    expect(screen.getByText("Wszystko w porządku — nic nie wymaga uwagi.")).toBeInTheDocument();
   });
 });

@@ -6,6 +6,12 @@ import { useNow } from "@/lib/useNow";
 const KNOWN_BUCKET_KEYS = ["primary", "secondary", "credits"] as const;
 type KnownBucketKey = (typeof KNOWN_BUCKET_KEYS)[number];
 
+const BUCKET_LABELS: Record<KnownBucketKey, string> = {
+  primary: "podstawowy",
+  secondary: "dodatkowy",
+  credits: "kredyty",
+};
+
 function ResetLabel({
   bucket,
 }: {
@@ -20,7 +26,7 @@ function ResetLabel({
     const secs = Math.round(bucket.reset_in_ms / 1000);
     return (
       <span className="text-xs text-muted-foreground ml-2">
-        resets in {formatDuration(secs)}
+        reset za {formatDuration(secs)}
       </span>
     );
   }
@@ -29,7 +35,7 @@ function ResetLabel({
     if (secs != null && secs > 0) {
       return (
         <span className="text-xs text-muted-foreground ml-2">
-          resets in {formatDuration(secs)}
+          reset za {formatDuration(secs)}
         </span>
       );
     }
@@ -41,9 +47,10 @@ function BucketRow({
   name,
   bucket,
 }: {
-  name: string;
+  name: KnownBucketKey;
   bucket: RateLimitBucket;
 }) {
+  const label = BUCKET_LABELS[name];
   const hasProgress =
     typeof bucket.used === "number" && typeof bucket.limit === "number";
 
@@ -51,13 +58,13 @@ function BucketRow({
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between text-sm">
-          <span className="capitalize text-muted-foreground">{name}</span>
+          <span className="capitalize text-muted-foreground">{label}</span>
           <span>
             {bucket.used} / {bucket.limit}
             <ResetLabel bucket={bucket} />
           </span>
         </div>
-        <Progress value={bucket.used!} max={bucket.limit!} aria-label={`${name} usage`} />
+        <Progress value={bucket.used!} max={bucket.limit!} aria-label={`Wykorzystanie: ${label}`} />
       </div>
     );
   }
@@ -68,7 +75,7 @@ function BucketRow({
   );
   return (
     <div>
-      <span className="capitalize text-sm text-muted-foreground">{name}</span>
+      <span className="capitalize text-sm text-muted-foreground">{label}</span>
       <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm">
         {entries.map(([k, v]) => (
           <div key={k} className="contents">
@@ -105,7 +112,7 @@ export function RateLimits({
 }) {
   // null / undefined / empty object → empty state
   if (!value || Object.keys(value).length === 0) {
-    return <p className="text-muted-foreground">No rate limit data.</p>;
+    return <p className="text-muted-foreground">Brak danych o limitach zapytań.</p>;
   }
 
   const header = value.limit_name ?? value.limit_id ?? null;

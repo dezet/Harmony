@@ -11,7 +11,7 @@ function JsonEditorSkeleton() {
     <Skeleton
       className="w-full rounded-md border"
       style={{ minHeight: "160px" }}
-      aria-label="Loading editor…"
+      aria-label="Wczytywanie edytora…"
     />
   );
 }

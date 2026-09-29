@@ -21,7 +21,7 @@ describe("ActiveRuns", () => {
               last_message: null,
               started_at: "2026-06-12T00:00:00Z",
               last_event_at: null,
-              tokens: { input_tokens: 1200, output_tokens: 800, total_tokens: 2000 },
+              tokens: { input_tokens: 7200, output_tokens: 4800, total_tokens: 12000 },
               project: { id: "p1", name: "Alpha", slug: "alpha" },
             },
           ]}
@@ -31,7 +31,11 @@ describe("ActiveRuns", () => {
     expect(screen.getByText("HAR-44")).toBeInTheDocument();
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.getByText("2,000")).toBeInTheDocument();
+    expect(screen.getByText(/^12\s000$/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Aktywne przebiegi" })).toBeInTheDocument();
+    for (const name of ["Zgłoszenie", "Projekt", "Stan w trackerze", "Tury", "Tokeny", "Czas", "Ostatnie zdarzenie"]) {
+      expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
     expect(screen.getByText("turn_completed")).toBeInTheDocument();
     // Identifier links to run detail when project slug present
     const link = screen.getByRole("link", { name: "HAR-44" });
@@ -72,6 +76,6 @@ describe("ActiveRuns", () => {
         <ActiveRuns rows={[]} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/no runs in progress/i)).toBeInTheDocument();
+    expect(screen.getByText("Brak przebiegów w toku.")).toBeInTheDocument();
   });
 });

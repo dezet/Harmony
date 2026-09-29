@@ -8,12 +8,12 @@ export function useStopRun(identifier: string) {
   return useMutation({
     mutationFn: () => stopRun(identifier),
     onSuccess: () => {
-      toast.success("Run stop requested");
+      toast.success("Zażądano zatrzymania przebiegu");
       void qc.invalidateQueries({ queryKey: RUN_KEY(identifier) });
     },
     onError: (err) => {
       const code = err instanceof ApiError ? err.code : "unknown";
-      toast.error(`Failed to stop run (${code})`);
+      toast.error(`Nie udało się zatrzymać przebiegu (${code})`);
     },
   });
 }
@@ -23,12 +23,12 @@ export function useRetryRun(identifier: string) {
   return useMutation({
     mutationFn: () => retryRun(identifier),
     onSuccess: () => {
-      toast.success("Retry scheduled");
+      toast.success("Zaplanowano ponowienie");
       void qc.invalidateQueries({ queryKey: RUN_KEY(identifier) });
     },
     onError: (err) => {
       const code = err instanceof ApiError ? err.code : "unknown";
-      toast.error(`Failed to retry run (${code})`);
+      toast.error(`Nie udało się ponowić przebiegu (${code})`);
     },
   });
 }

@@ -93,10 +93,10 @@ describe("ConfigurationTab", () => {
     renderTab({ projectId: "proj-1", slug: "alpha" });
 
     await waitFor(() =>
-      expect(screen.getByText(/failed to load configuration/i)).toBeInTheDocument(),
+      expect(screen.getByText("Nie udało się wczytać konfiguracji")).toBeInTheDocument(),
     );
     expect(screen.getByText("Project not found")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBeInTheDocument();
   });
 
   it("calls onSuccess (toast + invalidate) after successful save", async () => {
@@ -122,8 +122,8 @@ describe("ConfigurationTab", () => {
 
     const { userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: "Zapisz" }));
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Configuration saved"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Zapisano konfigurację"));
   });
 });

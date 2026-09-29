@@ -16,17 +16,17 @@ export function RetryBlockedColumn({ retrying, blocked, slug }: RetryBlockedColu
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Retry &amp; blocked</CardTitle>
+        <CardTitle>Ponawiane i zablokowane</CardTitle>
       </CardHeader>
       <CardContent>
         {isEmpty ? (
-          <p className="text-sm text-muted-foreground">Nothing stuck.</p>
+          <p className="text-sm text-muted-foreground">Nic nie utknęło.</p>
         ) : (
           <ul className="space-y-2">
             {blocked.map((item) => (
               <li key={item.issue_id} className="flex flex-col gap-0.5 text-sm">
                 <div className="flex items-center gap-2">
-                  <Badge variant="destructive">Blocked</Badge>
+                  <Badge variant="destructive">Zablokowany</Badge>
                   <Link
                     to={`/projects/${slug}/runs/${item.issue_identifier}`}
                     className="font-mono underline underline-offset-2 hover:opacity-80"
@@ -42,7 +42,7 @@ export function RetryBlockedColumn({ retrying, blocked, slug }: RetryBlockedColu
             {retrying.map((item) => (
               <li key={item.issue_id} className="flex flex-col gap-0.5 text-sm">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline">Retry #{item.attempt}</Badge>
+                  <Badge variant="outline">Próba #{item.attempt}</Badge>
                   <Link
                     to={`/projects/${slug}/runs/${item.issue_identifier}`}
                     className="font-mono underline underline-offset-2 hover:opacity-80"
@@ -55,7 +55,7 @@ export function RetryBlockedColumn({ retrying, blocked, slug }: RetryBlockedColu
                 )}
                 {item.due_at && (
                   <span className="text-xs text-muted-foreground">
-                    due <ElapsedTime since={item.due_at} />
+                    termin: <ElapsedTime since={item.due_at} />
                   </span>
                 )}
               </li>

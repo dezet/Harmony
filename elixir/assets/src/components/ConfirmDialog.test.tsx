@@ -28,8 +28,8 @@ describe("ConfirmDialog", () => {
 
   it("renders default confirm and cancel labels", () => {
     renderDialog()
-    expect(screen.getByRole("button", { name: /confirm/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Potwierdź" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Anuluj" })).toBeInTheDocument()
   })
 
   it("renders custom confirm and cancel labels", () => {
@@ -41,14 +41,14 @@ describe("ConfirmDialog", () => {
   it("calls onConfirm when confirm button is clicked", async () => {
     const onConfirm = vi.fn()
     renderDialog({ onConfirm })
-    await userEvent.click(screen.getByRole("button", { name: /confirm/i }))
+    await userEvent.click(screen.getByRole("button", { name: "Potwierdź" }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
   it("calls onOpenChange(false) when Cancel is clicked", async () => {
     const onOpenChange = vi.fn()
     renderDialog({ onOpenChange })
-    await userEvent.click(screen.getByRole("button", { name: /cancel/i }))
+    await userEvent.click(screen.getByRole("button", { name: "Anuluj" }))
     expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything())
   })
 
@@ -63,7 +63,7 @@ describe("ConfirmDialog", () => {
   it("disables confirm button and shows spinner when isPending is true", () => {
     renderDialog({ isPending: true })
     // When pending, we render a disabled Button with aria-label "Working…"
-    const pendingBtn = screen.getByRole("button", { name: /working/i })
+    const pendingBtn = screen.getByRole("button", { name: "Trwa wykonywanie…" })
     expect(pendingBtn).toBeDisabled()
     // The spinner icon should be present (Loader2 renders an svg)
     expect(pendingBtn.querySelector("svg")).toBeTruthy()
@@ -72,7 +72,7 @@ describe("ConfirmDialog", () => {
   it("does not call onConfirm when confirm button is disabled (isPending)", async () => {
     const onConfirm = vi.fn()
     renderDialog({ isPending: true, onConfirm })
-    const pendingBtn = screen.getByRole("button", { name: /working/i })
+    const pendingBtn = screen.getByRole("button", { name: "Trwa wykonywanie…" })
     // Disabled buttons should not fire click events
     expect(pendingBtn).toBeDisabled()
     expect(onConfirm).not.toHaveBeenCalled()
@@ -89,7 +89,7 @@ describe("ConfirmDialog", () => {
     const onOpenChange = vi.fn()
     const onConfirm = vi.fn()
     renderDialog({ onOpenChange, onConfirm })
-    await userEvent.click(screen.getByRole("button", { name: /confirm/i }))
+    await userEvent.click(screen.getByRole("button", { name: "Potwierdź" }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
     expect(onOpenChange).not.toHaveBeenCalled()
   })

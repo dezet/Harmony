@@ -67,24 +67,24 @@ describe("DataTable", () => {
 
   it("renders default empty state message when emptyMessage not provided", () => {
     render(<DataTable columns={columns} data={[]} />);
-    expect(screen.getByText("No rows.")).toBeInTheDocument();
+    expect(screen.getByText("Brak wierszy.")).toBeInTheDocument();
   });
 
   it("does not render Load more button when hasNextPage is false", () => {
     render(<DataTable columns={columns} data={data} hasNextPage={false} />);
-    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wczytaj więcej" })).not.toBeInTheDocument();
   });
 
   it("renders Load more button when hasNextPage is true", () => {
     render(<DataTable columns={columns} data={data} hasNextPage={true} onLoadMore={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wczytaj więcej" })).toBeInTheDocument();
   });
 
   it("calls onLoadMore when Load more is clicked", async () => {
     const user = userEvent.setup();
     const onLoadMore = vi.fn();
     render(<DataTable columns={columns} data={data} hasNextPage={true} onLoadMore={onLoadMore} />);
-    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await user.click(screen.getByRole("button", { name: "Wczytaj więcej" }));
     expect(onLoadMore).toHaveBeenCalledOnce();
   });
 
@@ -98,7 +98,7 @@ describe("DataTable", () => {
         isLoading={true}
       />
     );
-    expect(screen.getByRole("button", { name: /load more/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Wczytaj więcej" })).toBeDisabled();
   });
 
   it("sortable column header has aria-sort='ascending' after first click and 'descending' after second click", async () => {
@@ -131,7 +131,7 @@ describe("DataTable", () => {
 
   it("shows Loading… row when data is empty and isLoading is true", () => {
     render(<DataTable columns={columns} data={[]} isLoading={true} />);
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
-    expect(screen.queryByText("No rows.")).not.toBeInTheDocument();
+    expect(screen.getByText("Wczytywanie…")).toBeInTheDocument();
+    expect(screen.queryByText("Brak wierszy.")).not.toBeInTheDocument();
   });
 });

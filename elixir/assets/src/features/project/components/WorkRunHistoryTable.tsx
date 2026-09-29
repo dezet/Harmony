@@ -25,7 +25,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
     () => [
       {
         id: "identifier",
-        header: "Identifier",
+        header: "Identyfikator",
         accessorFn: (row) => row.linear_identifier ?? "—",
         cell: ({ getValue, row: tableRow }) => {
           const v = getValue() as string;
@@ -45,12 +45,12 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
       },
       {
         id: "type",
-        header: "Type",
+        header: "Typ",
         accessorKey: "type",
       },
       {
         id: "status",
-        header: "Status",
+        header: "Stan",
         accessorKey: "status",
         cell: ({ getValue }) => <StatusBadge status={getValue() as string} />,
       },
@@ -67,7 +67,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
               <a
                 href={url}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="underline underline-offset-2"
               >
                 #{row.github_pr_number}
@@ -79,7 +79,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
       },
       {
         id: "updated",
-        header: "Updated",
+        header: "Aktualizacja",
         accessorKey: "updated_at",
         cell: ({ getValue }) => <ElapsedTime since={getValue() as string} />,
       },
@@ -90,11 +90,11 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
   if (error) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Error loading history</AlertTitle>
+        <AlertTitle>Nie udało się wczytać historii</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>
@@ -108,7 +108,7 @@ export function WorkRunHistoryTable({ slug }: WorkRunHistoryTableProps) {
       hasNextPage={hasNextPage}
       onLoadMore={() => void fetchNextPage()}
       isLoading={isFetching}
-      emptyMessage="No work runs yet."
+      emptyMessage="Brak przebiegów."
     />
   );
 }

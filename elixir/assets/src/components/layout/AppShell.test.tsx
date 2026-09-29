@@ -103,6 +103,27 @@ describe("AppShell", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
+  it("closes the mobile menu with a visible X icon button named Zamknij menu", async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    const trigger = screen.getByRole("button", { name: "Otwórz menu" });
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Menu nawigacji" });
+    const close = within(dialog).getByRole("button", { name: "Zamknij menu" });
+
+    // An icon button like the case detail close: no visible text, never hidden until focus.
+    expect(close).toHaveAttribute("aria-label", "Zamknij menu");
+    expect(close).toHaveTextContent(/^$/);
+    expect(close.querySelector("svg.lucide-x")).toHaveAttribute("aria-hidden", "true");
+    expect(close).not.toHaveClass("sr-only");
+
+    close.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it("closes the mobile menu after choosing a destination", async () => {
     const user = userEvent.setup();
     renderShell();

@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { AUTOMATION_KEY, AUTOMATIONS_KEY, INTEGRATIONS_KEY } from "@/lib/queryClient";
 import { actionErrorMessage } from "@/features/cases/useCaseActions";
+import { ACTIVATION_BLOCKED } from "@/types/contract";
 import type {
   ApiPage,
   AutomationFilters,
@@ -306,18 +307,18 @@ export function requirementMessage(code: string): string {
   return CODE_MESSAGES[code] ?? GENERIC_REQUIREMENT;
 }
 
-/** Polish text of a failed automation request. */
+/** Polish text of a failed automation request; a refused activation lists every unmet requirement. */
 export function automationErrorMessage(error: unknown): string {
+  const blocked = activationFailures(error);
+  if (blocked) return [...new Set(Object.values(blocked).flat().map(requirementMessage))].join(" ");
   if (error instanceof ApiError && CODE_MESSAGES[error.code]) return CODE_MESSAGES[error.code];
   return actionErrorMessage(error);
 }
 
-/** Activation failure codes per field (`error.fields` of a 422 activation refusal). */
+/** Requirement codes per field of a refused activation (422 `activation_blocked`). */
 export function activationFailures(error: unknown): Record<string, string[]> | null {
-  if (!(error instanceof ApiError) || error.status !== 422 || !error.fields) return null;
-  const codes = Object.values(error.fields).flat();
-  const isActivation = codes.length > 0 && codes.every((code) => /^[a-z0-9_]+$/.test(code));
-  return isActivation && error.code !== "validation_failed" ? error.fields : null;
+  if (!(error instanceof ApiError) || error.status !== 422 || error.code !== ACTIVATION_BLOCKED) return null;
+  return error.fields && Object.keys(error.fields).length > 0 ? error.fields : null;
 }
 
 const RULE_ERRORS: Record<string, string> = {

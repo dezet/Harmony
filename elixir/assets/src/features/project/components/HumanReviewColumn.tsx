@@ -10,11 +10,11 @@ export function HumanReviewColumn({ prs }: HumanReviewColumnProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>→ Human Review</CardTitle>
+        <CardTitle>→ Przegląd człowieka</CardTitle>
       </CardHeader>
       <CardContent>
         {prs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing waiting for review.</p>
+          <p className="text-sm text-muted-foreground">Nic nie czeka na przegląd.</p>
         ) : (
           <ul className="space-y-3">
             {prs.map((pr) => {
@@ -30,7 +30,7 @@ export function HumanReviewColumn({ prs }: HumanReviewColumnProps) {
                     <a
                       href={prUrl}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="font-medium underline underline-offset-2"
                     >
                       #{pr.github_pr_number}
@@ -40,7 +40,7 @@ export function HumanReviewColumn({ prs }: HumanReviewColumnProps) {
                         <a
                           href={pr.linear_url}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className="font-mono text-xs text-muted-foreground underline underline-offset-2"
                         >
                           {pr.linear_identifier}
@@ -51,7 +51,7 @@ export function HumanReviewColumn({ prs }: HumanReviewColumnProps) {
                         </span>
                       )
                     )}
-                    {ciStatus !== null && <StatusBadge status={ciStatus} />}
+                    {ciStatus !== null && <StatusBadge status={ciStatus} raw />}
                   </div>
                 </li>
               );

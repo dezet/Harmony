@@ -63,8 +63,8 @@ function renderEditForm(id = "project-1") {
 describe("ProjectFormPage (create)", () => {
   it("shows a validation error when slug is empty", async () => {
     renderForm();
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
-    expect(await screen.findByText(/slug is required/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
+    expect(await screen.findByText("Podaj slug projektu")).toBeInTheDocument();
   });
 
   it("submits and navigates to the list on success", async () => {
@@ -89,10 +89,10 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repozytorium" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(screen.getByText("Projects list")).toBeInTheDocument());
   });
@@ -125,13 +125,13 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repozytorium" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     expect(await screen.findByText("must be a JSON object")).toBeInTheDocument();
-    expect(screen.getByLabelText("Config (JSON)")).toHaveAccessibleDescription(
+    expect(screen.getByLabelText("Konfiguracja (JSON)")).toHaveAccessibleDescription(
       "must be a JSON object",
     );
   });
@@ -158,12 +158,12 @@ describe("ProjectFormPage (create)", () => {
 
     renderForm();
     await userEvent.type(screen.getByLabelText("Slug"), "portal");
-    await userEvent.click(screen.getByRole("combobox", { name: "Repository" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Repozytorium" }));
     await screen.findByRole("option", { name: /dezet\/portal/i });
     await userEvent.click(screen.getByRole("option", { name: /dezet\/portal/i }));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Zapisz" })).toBeDisabled());
   });
 });
 
@@ -199,7 +199,7 @@ describe("ProjectFormPage (edit)", () => {
 
     expect(await screen.findByLabelText("Slug")).toHaveValue("portal");
     expect(screen.getByDisplayValue("develop")).toBeInTheDocument();
-    expect(screen.getByLabelText("Config (JSON)")).toHaveValue(
+    expect(screen.getByLabelText("Konfiguracja (JSON)")).toHaveValue(
       JSON.stringify({ review: { trigger: "@hreview" } }, null, 2),
     );
   });
@@ -218,9 +218,9 @@ describe("ProjectFormPage (edit)", () => {
 
     renderEditForm();
 
-    expect(await screen.findByText("Could not load project")).toBeInTheDocument();
+    expect(await screen.findByText("Nie udało się wczytać projektu")).toBeInTheDocument();
     expect(screen.getByText("Project not found")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back to projects/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Wróć do projektów" })).toHaveAttribute(
       "href",
       "/projects",
     );
@@ -261,8 +261,8 @@ describe("ProjectFormPage (edit)", () => {
 
     renderEditForm();
 
-    await waitFor(() => expect(screen.getByLabelText("Base branch")).toHaveValue("main"));
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(screen.getByLabelText("Gałąź bazowa")).toHaveValue("main"));
+    await userEvent.click(screen.getByRole("button", { name: "Zapisz" }));
 
     await waitFor(() => expect(screen.getByText("Projects list")).toBeInTheDocument());
 

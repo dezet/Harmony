@@ -6,8 +6,8 @@ import { needsAttention, type AttentionItem } from "@/lib/health";
 import type { StatePayload } from "@/types/contract";
 
 const kindLabels: Record<AttentionItem["kind"], string> = {
-  blocked: "Blocked",
-  retry_error: "Retry failing",
+  blocked: "Zablokowany",
+  retry_error: "Ponawianie z błędem",
   sandbox_warning: "Sandbox",
 };
 
@@ -17,11 +17,13 @@ export function NeedsAttention({ state }: { state: StatePayload }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Needs attention</CardTitle>
+        <CardTitle>
+          <h2 className="text-[17px] font-semibold">Wymaga uwagi</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">All clear — nothing needs attention.</p>
+          <p className="text-sm text-muted-foreground">Wszystko w porządku — nic nie wymaga uwagi.</p>
         ) : (
           <ul className="divide-y">
             {items.map((item) => (

@@ -285,8 +285,10 @@ defmodule SymphonyElixirWeb.IntakePresenter do
 
   def error({:validation, fields}) when is_map(fields), do: envelope(:validation_failed, fields)
 
+  # Stable contract: every unmet requirement is a code under its field; the
+  # top-level code only says the activation was refused.
   def error({:activation_blocked, code, fields}) when is_binary(code) and is_map(fields),
-    do: {422, %{error: %{code: code, message: "Rule requirements for activation are not met", fields: fields}}}
+    do: {422, %{error: %{code: "activation_blocked", message: "Rule requirements for activation are not met", fields: fields}}}
 
   def error({:dependency, code}) when code in @dependency_codes,
     do: {503, %{error: %{code: code, message: "External service is unavailable or refused the request", fields: %{}}}}

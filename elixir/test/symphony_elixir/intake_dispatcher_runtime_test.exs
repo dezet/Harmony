@@ -10,6 +10,8 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
   alias SymphonyElixir.Storage.{AutomationRule, IntakeCase, IntegrationConnection, IntegrationDelivery, Project}
 
   @public_url "https://harmony.example.test"
+  # Positive receives wait long enough for a loaded host; negative ones keep short windows.
+  @receive_timeout 2_000
 
   setup do
     :ok = Sandbox.checkout(Repo)
@@ -53,7 +55,7 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
       assert {:ok, %{io: 4, analysis: 1}} = DispatcherRuntime.tick(runtime)
       delivery_id = delivery.id
-      assert_receive {:adapter_called, ^delivery_id, "email", "running"}
+      assert_receive {:adapter_called, ^delivery_id, "email", "running"}, @receive_timeout
       results = await_results(5)
       assert Enum.any?(results, &match?({:io, {:ok, %IntegrationDelivery{id: ^delivery_id, status: "succeeded"}}}, &1))
       assert Enum.count(results, &match?({_pool, :empty}, &1)) == 4
@@ -99,12 +101,12 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
       io_workers =
         Enum.map(1..4, fn _index ->
-          assert_receive {:adapter_started, "email", id, worker}
+          assert_receive {:adapter_started, "email", id, worker}, @receive_timeout
           assert MapSet.member?(email_ids, id)
           worker
         end)
 
-      assert_receive {:adapter_started, "analysis", analysis_id, analysis_worker}
+      assert_receive {:adapter_started, "analysis", analysis_id, analysis_worker}, @receive_timeout
       assert MapSet.member?(analysis_ids, analysis_id)
       refute_receive {:adapter_started, _operation, _id, _worker}, 200
 
@@ -113,10 +115,10 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
       [first_worker | other_workers] = io_workers
       send(first_worker, :release)
-      assert_receive {:dispatch_result, :io, {:ok, %IntegrationDelivery{status: "succeeded"}}}
+      assert_receive {:dispatch_result, :io, {:ok, %IntegrationDelivery{status: "succeeded"}}}, @receive_timeout
 
       assert {:ok, %{io: 1, analysis: 0}} = DispatcherRuntime.tick(runtime)
-      assert_receive {:adapter_started, "email", fifth_id, fifth_worker}
+      assert_receive {:adapter_started, "email", fifth_id, fifth_worker}, @receive_timeout
       assert MapSet.member?(email_ids, fifth_id)
       refute_receive {:adapter_started, _operation, _id, _worker}, 100
 
@@ -187,7 +189,7 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
       assert {:ok, %{io: 4, analysis: 0}} = DispatcherRuntime.tick(runtime)
       email_id = email.id
-      assert_receive {:adapter_called, ^email_id, "email"}
+      assert_receive {:adapter_called, ^email_id, "email"}, @receive_timeout
       assert [_ | _] = await_results(4)
       refute_receive {:adapter_called, _id, "analysis"}, 100
       assert Repo.get!(IntegrationDelivery, analysis.id).status == "pending"
@@ -236,7 +238,7 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
       log =
         capture_log(fn ->
           assert {:ok, %{io: 4, analysis: 1}} = DispatcherRuntime.tick(runtime)
-          workers = Enum.map(1..5, fn _index -> assert_receive({:worker, worker}) && worker end)
+          workers = Enum.map(1..5, fn _index -> assert_receive({:worker, worker}, @receive_timeout) && worker end)
           Enum.each(workers, &Process.exit(&1, :kill))
 
           assert Enum.all?(await_results(5), &match?({_pool, {:error, :killed}}, &1))
@@ -247,7 +249,7 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
       capture_log(fn ->
         assert {:ok, %{io: 4, analysis: 1}} = DispatcherRuntime.tick(runtime)
-        Enum.each(1..5, fn _index -> assert_receive({:worker, worker}) && Process.exit(worker, :kill) end)
+        Enum.each(1..5, fn _index -> assert_receive({:worker, worker}, @receive_timeout) && Process.exit(worker, :kill) end)
         assert length(await_results(5)) == 5
       end)
     end
@@ -281,7 +283,7 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
       Agent.update(database, fn _state -> :up end)
       assert {:ok, %{io: 4, analysis: 1}} = DispatcherRuntime.tick(runtime)
       delivery_id = delivery.id
-      assert_receive {:adapter_called, ^delivery_id}
+      assert_receive {:adapter_called, ^delivery_id}, @receive_timeout
       assert Enum.any?(await_results(5), &match?({:io, {:ok, %IntegrationDelivery{id: ^delivery_id, status: "succeeded"}}}, &1))
     end
   end
@@ -303,8 +305,16 @@ defmodule SymphonyElixir.IntakeDispatcherRuntimeTest do
 
     {:ok, runtime} = DispatcherRuntime.start_link(opts)
     :ok = Sandbox.allow(Repo, self(), runtime)
-    on_exit(fn -> if Process.alive?(runtime), do: GenServer.stop(runtime) end)
+    on_exit(fn -> stop_runtime(runtime) end)
     runtime
+  end
+
+  # The runtime may already be gone (test exit, killed worker cleanup); stopping it
+  # then is a no-op instead of a race between a liveness check and the stop.
+  defp stop_runtime(runtime) do
+    GenServer.stop(runtime)
+  catch
+    :exit, _reason -> :ok
   end
 
   defp await_results(count) do

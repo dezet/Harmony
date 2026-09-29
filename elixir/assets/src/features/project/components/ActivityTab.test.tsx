@@ -44,7 +44,7 @@ describe("ActivityTab", () => {
     renderTab(makeOkFetch({ items: [], meta: { next_cursor: null } }));
 
     await waitFor(() =>
-      expect(screen.getByText("No activity yet.")).toBeInTheDocument(),
+      expect(screen.getByText("Brak aktywności.")).toBeInTheDocument(),
     );
   });
 
@@ -55,7 +55,7 @@ describe("ActivityTab", () => {
       expect(screen.getByText("turn_start")).toBeInTheDocument(),
     );
 
-    expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wczytaj więcej" })).toBeInTheDocument();
   });
 
   it("does not show Load more button when next_cursor is null", async () => {
@@ -65,7 +65,7 @@ describe("ActivityTab", () => {
       expect(screen.getByText("turn_start")).toBeInTheDocument(),
     );
 
-    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wczytaj więcej" })).not.toBeInTheDocument();
   });
 
   it("shows error alert on API failure", async () => {
@@ -79,9 +79,9 @@ describe("ActivityTab", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText("Error loading activity")).toBeInTheDocument(),
+      expect(screen.getByText("Nie udało się wczytać aktywności")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBeInTheDocument();
   });
 
   it("calls fetchNextPage when Load more is clicked", async () => {
@@ -107,14 +107,14 @@ describe("ActivityTab", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /load more/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Wczytaj więcej" })).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await user.click(screen.getByRole("button", { name: "Wczytaj więcej" }));
 
     // After clicking, fetchNextPage is called; button eventually disappears (no more pages)
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: "Wczytaj więcej" })).not.toBeInTheDocument(),
     );
   });
 });

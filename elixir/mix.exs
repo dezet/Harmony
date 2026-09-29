@@ -32,7 +32,12 @@ defmodule SymphonyElixir.MixProject do
           SymphonyElixirWeb.ObservabilityApiController,
           SymphonyElixirWeb.Presenter,
           SymphonyElixirWeb.Router,
-          SymphonyElixirWeb.Router.Helpers
+          SymphonyElixirWeb.Router.Helpers,
+          # Browser E2E harness: exercised by `make e2e`, not by unit tests.
+          Mix.Tasks.Harmony.ReactSpaE2eServer,
+          Mix.Tasks.Harmony.ReactSpaE2eServer.IntakeSeed,
+          Mix.Tasks.Harmony.ReactSpaE2eServer.ProviderStubs,
+          Mix.Tasks.Harmony.ReactSpaE2eServer.SnapshotOrchestrator
         ]
       ],
       test_ignore_filters: [

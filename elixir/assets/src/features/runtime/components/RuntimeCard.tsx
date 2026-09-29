@@ -4,19 +4,21 @@ import type { SandboxRuntime } from "@/types/contract";
 
 export function RuntimeCard({ sandbox }: { sandbox: SandboxRuntime }) {
   const rows: Array<[string, string]> = [
-    ["Posture", sandbox.posture ?? "—"],
+    ["Tryb", sandbox.posture ?? "—"],
     [
-      "Bubblewrap",
-      sandbox.bubblewrap_available === null ? "—" : String(sandbox.bubblewrap_available),
+      "Bubblewrap dostępny",
+      sandbox.bubblewrap_available === null ? "—" : sandbox.bubblewrap_available ? "tak" : "nie",
     ],
-    ["Thread sandbox", sandbox.thread_sandbox ?? "—"],
-    ["Turn sandbox", sandbox.turn_sandbox_type ?? "—"],
+    ["Sandbox wątku", sandbox.thread_sandbox ?? "—"],
+    ["Sandbox tury", sandbox.turn_sandbox_type ?? "—"],
   ];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Runtime / sandbox</CardTitle>
+        <CardTitle>
+          <h2 className="text-[17px] font-semibold">Sandbox agentów</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

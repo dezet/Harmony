@@ -65,7 +65,7 @@ describe("RunRail", () => {
 
   it("renders status badge", () => {
     render(<RunRail detail={fixture} />);
-    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("W toku")).toBeInTheDocument();
   });
 
   it("renders turn_count", () => {
@@ -85,9 +85,9 @@ describe("RunRail", () => {
     expect(screen.getByText("280")).toBeInTheDocument();
   });
 
-  it("renders 'No token data.' when tokens are null", () => {
+  it("renders the empty token message when tokens are null", () => {
     render(<RunRail detail={{ ...fixture, tokens: null }} />);
-    expect(screen.getByText("No token data.")).toBeInTheDocument();
+    expect(screen.getByText("Brak danych o tokenach.")).toBeInTheDocument();
   });
 
   it("renders PR link with correct href", () => {
@@ -100,9 +100,9 @@ describe("RunRail", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  it("renders 'No pull requests.' when PR list is empty", () => {
+  it("renders the empty pull request message when PR list is empty", () => {
     render(<RunRail detail={{ ...fixture, pull_requests: [] }} />);
-    expect(screen.getByText("No pull requests.")).toBeInTheDocument();
+    expect(screen.getByText("Brak pull requestów.")).toBeInTheDocument();
   });
 
   it("renders artifact kind and path", () => {
@@ -111,9 +111,9 @@ describe("RunRail", () => {
     expect(screen.getByText("/artifacts/screen.png")).toBeInTheDocument();
   });
 
-  it("renders 'No artifacts.' when artifact list is empty", () => {
+  it("renders the empty artifact message when artifact list is empty", () => {
     render(<RunRail detail={{ ...fixture, artifacts: [] }} />);
-    expect(screen.getByText("No artifacts.")).toBeInTheDocument();
+    expect(screen.getByText("Brak artefaktów.")).toBeInTheDocument();
   });
 
   it("renders workspace path in mono", () => {
@@ -126,53 +126,53 @@ describe("RunRail", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("renders 'Attempt #N' when current_retry_attempt is set", () => {
+  it("renders 'Próba #N' when current_retry_attempt is set", () => {
     render(<RunRail detail={retryingDetail} />);
-    expect(screen.getByText("Attempt #3")).toBeInTheDocument();
+    expect(screen.getByText("Próba #3")).toBeInTheDocument();
   });
 
   it("does not render Attempt line when current_retry_attempt is null", () => {
     render(<RunRail detail={fixture} />);
-    expect(screen.queryByText(/Attempt #/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Próba #/)).not.toBeInTheDocument();
   });
 
   // ── Stop button ─────────────────────────────────────────────────────────────
 
-  it("Stop button has aria-label 'Stop this run'", () => {
+  it("Stop button has aria-label 'Zatrzymaj ten przebieg'", () => {
     render(<RunRail detail={fixture} />);
     expect(
-      screen.getByRole("button", { name: "Stop this run" }),
+      screen.getByRole("button", { name: "Zatrzymaj ten przebieg" }),
     ).toBeInTheDocument();
   });
 
   it("Stop button is enabled when status is 'running'", () => {
     render(<RunRail detail={fixture} />);
-    expect(screen.getByRole("button", { name: "Stop this run" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" })).not.toBeDisabled();
   });
 
   it("Stop button is enabled when status is 'blocked'", () => {
     render(<RunRail detail={blockedDetail} />);
-    expect(screen.getByRole("button", { name: "Stop this run" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" })).not.toBeDisabled();
   });
 
   it("Stop button is disabled for a terminal status", () => {
     render(<RunRail detail={completedDetail} />);
-    expect(screen.getByRole("button", { name: "Stop this run" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" })).toBeDisabled();
   });
 
   it("clicking Stop button opens the confirm dialog", async () => {
     const user = userEvent.setup();
     render(<RunRail detail={fixture} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Stop this run?")).toBeInTheDocument();
+    expect(screen.getByText("Zatrzymać ten przebieg?")).toBeInTheDocument();
   });
 
   it("confirming the dialog calls stop.mutate", async () => {
     const user = userEvent.setup();
     render(<RunRail detail={fixture} />);
-    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
     expect(stopMutate).toHaveBeenCalledTimes(1);
   });
@@ -180,7 +180,7 @@ describe("RunRail", () => {
   it("cancelling the dialog does not call stop.mutate", async () => {
     const user = userEvent.setup();
     render(<RunRail detail={fixture} />);
-    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(stopMutate).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -197,7 +197,7 @@ describe("RunRail", () => {
 
     const user = userEvent.setup();
     render(<RunRail detail={fixture} />);
-    await user.click(screen.getByRole("button", { name: "Stop this run" }));
+    await user.click(screen.getByRole("button", { name: "Zatrzymaj ten przebieg" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirm" }));
     // mutate was called with an onSettled callback
@@ -209,34 +209,34 @@ describe("RunRail", () => {
 
   // ── Retry button ─────────────────────────────────────────────────────────────
 
-  it("Retry button has aria-label 'Retry this run now'", () => {
+  it("Retry button has aria-label 'Ponów ten przebieg teraz'", () => {
     render(<RunRail detail={fixture} />);
     expect(
-      screen.getByRole("button", { name: "Retry this run now" }),
+      screen.getByRole("button", { name: "Ponów ten przebieg teraz" }),
     ).toBeInTheDocument();
   });
 
   it("Retry button is enabled only when status is 'retrying'", () => {
     render(<RunRail detail={retryingDetail} />);
     expect(
-      screen.getByRole("button", { name: "Retry this run now" }),
+      screen.getByRole("button", { name: "Ponów ten przebieg teraz" }),
     ).not.toBeDisabled();
   });
 
   it("Retry button is disabled when status is 'running'", () => {
     render(<RunRail detail={fixture} />);
-    expect(screen.getByRole("button", { name: "Retry this run now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ponów ten przebieg teraz" })).toBeDisabled();
   });
 
   it("Retry button is disabled for a terminal status", () => {
     render(<RunRail detail={completedDetail} />);
-    expect(screen.getByRole("button", { name: "Retry this run now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ponów ten przebieg teraz" })).toBeDisabled();
   });
 
   it("clicking Retry button calls retry.mutate directly (no dialog)", async () => {
     const user = userEvent.setup();
     render(<RunRail detail={retryingDetail} />);
-    await user.click(screen.getByRole("button", { name: "Retry this run now" }));
+    await user.click(screen.getByRole("button", { name: "Ponów ten przebieg teraz" }));
     expect(retryMutate).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

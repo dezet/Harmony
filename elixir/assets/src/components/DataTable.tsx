@@ -88,7 +88,7 @@ export function DataTable<TData>({
                 colSpan={columns.length}
                 className="text-center text-muted-foreground"
               >
-                Loading…
+                Wczytywanie…
               </TableCell>
             </TableRow>
           ) : table.getRowModel().rows.length === 0 ? (
@@ -97,7 +97,7 @@ export function DataTable<TData>({
                 colSpan={columns.length}
                 className="text-center text-muted-foreground"
               >
-                {emptyMessage ?? "No rows."}
+                {emptyMessage ?? "Brak wierszy."}
               </TableCell>
             </TableRow>
           ) : (
@@ -116,7 +116,7 @@ export function DataTable<TData>({
       {hasNextPage && (
         <div className="flex justify-center pt-2">
           <Button variant="outline" onClick={onLoadMore} disabled={isLoading}>
-            Load more
+            Wczytaj więcej
           </Button>
         </div>
       )}

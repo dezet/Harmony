@@ -32,11 +32,11 @@ export function ActivityTab({ slug }: ActivityTabProps) {
   if (error) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Error loading activity</AlertTitle>
+        <AlertTitle>Nie udało się wczytać aktywności</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>
@@ -46,7 +46,7 @@ export function ActivityTab({ slug }: ActivityTabProps) {
   const items = data?.pages.flatMap((p) => p.items) ?? [];
 
   if (items.length === 0) {
-    return <p className="text-muted-foreground">No activity yet.</p>;
+    return <p className="text-muted-foreground">Brak aktywności.</p>;
   }
 
   return (
@@ -64,7 +64,7 @@ export function ActivityTab({ slug }: ActivityTabProps) {
             onClick={() => void fetchNextPage()}
             disabled={isFetchingNextPage}
           >
-            {isFetchingNextPage ? "Loading…" : "Load more"}
+            {isFetchingNextPage ? "Wczytywanie…" : "Wczytaj więcej"}
           </Button>
         </div>
       )}

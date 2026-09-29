@@ -32,7 +32,7 @@ function ArtifactRow({ artifact }: { artifact: ProjectArtifact }) {
   if (artifact.kind === "screenshot") {
     return (
       <div className="flex flex-col gap-1">
-        <a href={url} target="_blank" rel="noreferrer">
+        <a href={url} target="_blank" rel="noopener noreferrer">
           <img
             src={url}
             alt={artifact.kind}
@@ -76,11 +76,11 @@ export function EvidenceTab({ slug }: EvidenceTabProps) {
   if (error) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Error loading evidence</AlertTitle>
+        <AlertTitle>Nie udało się wczytać dowodów</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
         <div className="mt-2">
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            Retry
+            Spróbuj ponownie
           </Button>
         </div>
       </Alert>
@@ -90,7 +90,7 @@ export function EvidenceTab({ slug }: EvidenceTabProps) {
   const artifacts = data?.artifacts ?? [];
 
   if (artifacts.length === 0) {
-    return <p className="text-muted-foreground">No evidence yet.</p>;
+    return <p className="text-muted-foreground">Brak dowodów.</p>;
   }
 
   const groups = groupByWorkRunId(artifacts);
@@ -117,7 +117,7 @@ export function EvidenceTab({ slug }: EvidenceTabProps) {
                 )}
                 {!workRun && (
                   <span className="text-muted-foreground text-sm font-normal">
-                    Unattached
+                    Nieprzypisane
                   </span>
                 )}
               </CardTitle>

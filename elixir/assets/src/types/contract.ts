@@ -226,12 +226,69 @@ export interface StatePayload {
   rate_limits?: RateLimitsPayload | null;
   projects?: Array<ProjectRef & { counts: ProjectCounts }>;
   durable?: Durable;
+  /** Jira intake metrics (spec §12); absent when the database is not reachable. */
+  intake?: IntakeDiagnostics;
   error?: StateError;
+}
+
+// ─── Intake diagnostics (StatePayload.intake, Presenter.intake_diagnostics_payload) ───
+
+export type IntakeOperation = "linear_create" | "analysis" | "jira_comment" | "email" | "sms";
+
+export interface IntakeQueue {
+  operation: IntakeOperation;
+  pending: number;
+  retry_wait: number;
+  running: number;
+  paused: number;
+  unknown: number;
+  failed: number;
+  /** Oldest pending, retry_wait or paused effect. */
+  oldest_waiting_at: string | null;
+}
+
+export interface IntakeRuleScan {
+  mode: "baseline" | "poll";
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+}
+
+export interface IntakeRuleDiagnostics {
+  id: string;
+  name: string;
+  project: { id: string; slug: string; name: string };
+  enabled: boolean;
+  activation_status: string;
+  last_success_at: string | null;
+  next_poll_at: string | null;
+  last_error_code: string | null;
+  last_scan: IntakeRuleScan | null;
+}
+
+export interface IntakeDiagnostics {
+  generated_at: string;
+  switches: { intake_enabled: boolean; effects_enabled: boolean; analysis_enabled: boolean };
+  backlog: { total: number; oldest_waiting_at: string | null };
+  unknown: number;
+  stale_leases: { deliveries: number; rules: number };
+  analysis: { active: number; limit: number; queued: number };
+  queues: IntakeQueue[];
+  channel_errors: Array<{ operation: IntakeOperation; error_code: string; count: number }>;
+  rules: IntakeRuleDiagnostics[];
 }
 
 export interface ApiErrorBody {
   error: { code: string; message: string; fields?: Record<string, string[]> };
 }
+
+/**
+ * Top-level code of a refused rule activation (422): every unmet requirement
+ * is a code in `fields[<field>]`, e.g. `{ linear_todo_state_id: ["linear_todo_state_mismatch"] }`.
+ */
+export const ACTIVATION_BLOCKED = "activation_blocked";
 
 // ─── Project Summary endpoint (/api/v1/projects/:ref/summary) ───────────────
 
