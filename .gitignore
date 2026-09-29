@@ -1,3 +1,6 @@
 
 # brainstorming visual companion sessions
 .superpowers/
+
+# local git worktrees
+.worktrees/
